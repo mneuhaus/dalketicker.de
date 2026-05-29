@@ -222,6 +222,11 @@ final class ErfolgskreisGtImporter implements SourceImporter
         if ($city === '') {
             $city = $defaultCity;
         }
+        // Guard against address fragments / mojibake leaking into the city
+        // (e.g. "Tö? 44a"): a real town has no digits or replacement chars.
+        if (preg_match('/[0-9?\x{FFFD}]/u', $city) || mb_strlen($city) > 40) {
+            $city = $defaultCity;
+        }
         $locationText = $this->buildLocationText($venueName, $item, $address);
         $organizer = trim((string) ($address['name'] ?? '')) ?: null;
 
