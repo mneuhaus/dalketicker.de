@@ -1,0 +1,32 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Login – {{ site_name }}{% endblock %}
+
+{% block body %}
+    <div class="max-w-sm mx-auto mt-10">
+        <h1 class="font-[family-name:var(--font-display)] text-2xl font-extrabold tracking-tight text-ink mb-6">Anmelden</h1>
+
+        <form method="post" class="bg-white rounded-2xl border border-black/5 shadow-sm p-6 space-y-4">
+            {% if error %}
+                <div class="rounded-xl bg-rose-50 text-rose-700 text-sm px-3 py-2">
+                    {{ error.messageKey|trans(error.messageData, 'security') }}
+                </div>
+            {% endif %}
+
+            <div>
+                <label for="username" class="block text-xs font-semibold uppercase tracking-wide text-ink/40 mb-1">E-Mail</label>
+                <input type="email" id="username" name="_username" value="{{ last_username }}" required autofocus
+                       class="w-full rounded-xl border border-black/10 bg-paper px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 outline-none">
+            </div>
+            <div>
+                <label for="password" class="block text-xs font-semibold uppercase tracking-wide text-ink/40 mb-1">Passwort</label>
+                <input type="password" id="password" name="_password" required
+                       class="w-full rounded-xl border border-black/10 bg-paper px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 outline-none">
+            </div>
+
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token('authenticate') }}">
+
+            <button type="submit" class="w-full rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 transition">Anmelden</button>
+        </form>
+    </div>
+{% endblock %}

@@ -1,0 +1,72 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Import-Monitoring – {{ site_name }}{% endblock %}
+
+{% macro status_badge(status) %}
+    {% set map = {'ok': 'bg-emerald-100 text-emerald-800', 'partial': 'bg-amber-100 text-amber-800', 'failed': 'bg-rose-100 text-rose-700'} %}
+    {% set label = {'ok': 'OK', 'partial': 'Teilweise', 'failed': 'Fehler'} %}
+    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold {{ map[status] ?? 'bg-black/10 text-ink/60' }}">{{ label[status] ?? status }}</span>
+{% endmacro %}
+
+{% block body %}
+    {% import _self as ui %}
+    <div class="flex items-center justify-between mb-6 gap-4">
+        <h1 class="font-[family-name:var(--font-display)] text-3xl font-extrabold tracking-tight text-ink">Import-Monitoring</h1>
+        <div class="flex items-center gap-3 text-sm">
+            <span class="text-ink/50">{{ app.user ? app.user.email }}</span>
+            <a href="{{ path('app_logout') }}" class="chip-muted">Logout</a>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden mb-8">
+        <table class="w-full text-sm">
+            <thead class="text-left text-xs uppercase tracking-wide text-ink/40 border-b border-black/5">
+                <tr>
+                    <th class="px-4 py-3">Quelle</th>
+                    <th class="px-4 py-3">Importer</th>
+                    <th class="px-4 py-3">Letzter Lauf</th>
+                    <th class="px-4 py-3">Status</th>
+                    <th class="px-4 py-3 text-right">gesehen / neu / Fehler</th>
+                    <th class="px-4 py-3 text-right">Dauer</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-black/5">
+                {% for source in sources %}
+                    {% set run = latest[source.id] ?? null %}
+                    <tr class="{{ source.enabled ? '' : 'opacity-50' }}">
+                        <td class="px-4 py-3">
+                            <div class="font-medium text-ink">{{ source.name }}</div>
+                            <div class="text-xs text-ink/40">{{ source.key }}{% if not source.enabled %} · inaktiv{% endif %}</div>
+                        </td>
+                        <td class="px-4 py-3 text-ink/60">{{ source.importer }}</td>
+                        <td class="px-4 py-3 text-ink/60">
+                            {{ run ? run.startedAt|de_date ~ ', ' ~ run.startedAt|date('H:i') : '–' }}
+                        </td>
+                        <td class="px-4 py-3">{{ run ? ui.status_badge(run.status) : '<span class="text-ink/30">noch nie</span>'|raw }}</td>
+                        <td class="px-4 py-3 text-right tabular-nums">
+                            {% if run %}{{ run.seen }} / {{ run.created }} / <span class="{{ run.errors > 0 ? 'text-rose-600 font-semibold' : 'text-ink/40' }}">{{ run.errors }}</span>{% else %}–{% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-right text-ink/50">{{ run ? (run.durationMs / 1000)|round(1) ~ ' s' : '–' }}</td>
+                    </tr>
+                    {% if run and run.status == 'failed' and run.message %}
+                        <tr class="bg-rose-50/50"><td colspan="6" class="px-4 py-2 text-xs text-rose-700 font-mono">{{ run.message|slice(0, 300) }}</td></tr>
+                    {% endif %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="font-[family-name:var(--font-display)] text-lg font-bold text-ink mb-3">Letzte Läufe</h2>
+    <div class="bg-white rounded-2xl border border-black/5 shadow-sm divide-y divide-black/5">
+        {% for run in recent %}
+            <div class="flex items-center gap-4 px-4 py-2.5 text-sm">
+                <span class="text-ink/40 text-xs w-28 shrink-0">{{ run.startedAt|de_date }} {{ run.startedAt|date('H:i') }}</span>
+                <span class="font-medium text-ink flex-1 truncate">{{ run.source.name }}</span>
+                {{ ui.status_badge(run.status) }}
+                <span class="text-ink/50 tabular-nums w-44 text-right">{{ run.seen }} ges. · {{ run.created }} neu · {{ run.errors }} Fehler</span>
+            </div>
+        {% else %}
+            <div class="px-4 py-6 text-ink/40 text-sm">Noch keine Läufe aufgezeichnet.</div>
+        {% endfor %}
+    </div>
+{% endblock %}
