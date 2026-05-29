@@ -52,18 +52,24 @@
         </ul>
     </div>
 
-    {# Place #}
-    <div>
-        <label class="block text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">Ort</label>
-        <select name="ort" class="w-full rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm focus:border-brand-500 outline-none">
-            <option value="">Alle Orte</option>
-            {% for city in allCities %}
-                <option value="{{ city }}" {{ filter.city == city ? 'selected' }}>{{ city }}</option>
-            {% endfor %}
-        </select>
-    </div>
+    {# Place — single-select tag bubbles #}
+    {% if allCities is not empty %}
+        <div>
+            <label class="block text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">Ort</label>
+            <div class="flex flex-wrap gap-2">
+                <label class="cursor-pointer {{ filter.city is null ? 'chip-active' : 'chip-muted' }}">
+                    <input type="radio" name="ort" value="" {{ filter.city is null ? 'checked' }} class="sr-only">Alle
+                </label>
+                {% for city in allCities %}
+                    <label class="cursor-pointer {{ filter.city == city ? 'chip-active' : 'chip-muted' }}">
+                        <input type="radio" name="ort" value="{{ city }}" {{ filter.city == city ? 'checked' }} class="sr-only">{{ city }}
+                    </label>
+                {% endfor %}
+            </div>
+        </div>
+    {% endif %}
 
-    {# Period — quick presets instead of a date picker (list view only). #}
+    {# Period — quick presets + an optional custom date range (list view only). #}
     {% if view|default('list') == 'list' %}
         <div>
             <label class="block text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">Zeitraum</label>
@@ -75,19 +81,22 @@
                         {{ label }}
                     </label>
                 {% endfor %}
-                {% if filter.period %}
-                    <a href="{{ path('event_index', filter.toQueryParams|filter((v, k) => k != 'zeitraum')) }}" class="chip-muted">Alle</a>
-                {% endif %}
+                <button type="button" data-date-toggle class="{{ filter.hasCustomDate ? 'chip-active' : 'chip-muted' }}">Datum…</button>
+            </div>
+            <div data-date-panel class="{{ filter.hasCustomDate ? '' : 'hidden' }} mt-2 grid grid-cols-2 gap-2">
+                <input type="date" name="von" value="{{ filter.hasCustomDate and filter.from ? filter.from|date('Y-m-d') }}" aria-label="von"
+                       class="rounded-xl border border-black/10 bg-white px-2.5 py-2 text-sm focus:border-brand-500 outline-none">
+                <input type="date" name="bis" value="{{ filter.hasCustomDate and filter.to ? filter.to|date('Y-m-d') }}" aria-label="bis"
+                       class="rounded-xl border border-black/10 bg-white px-2.5 py-2 text-sm focus:border-brand-500 outline-none">
             </div>
         </div>
     {% endif %}
 
-    <div class="flex items-center gap-3">
-        <button type="submit" class="flex-1 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 transition">Anwenden</button>
-        {% if filter.hasAny %}
-            <a href="{{ app.request.pathInfo }}" class="text-sm text-ink/50 hover:text-brand-700">Reset</a>
-        {% endif %}
-    </div>
+    {% if filter.hasAny %}
+        <div>
+            <a href="{{ app.request.pathInfo }}" class="text-sm text-ink/50 hover:text-brand-700">Filter zurücksetzen</a>
+        </div>
+    {% endif %}
 </form>
 
 <script>
@@ -97,9 +106,30 @@
         form.addEventListener('change', function (e) {
             // The "meine" toggle is handled in saved_events.js (needs to sync IDs first).
             if (e.target.matches('[data-meine]')) return;
+            // Custom date: clear the preset radios so they don't conflict.
+            if (e.target.matches('input[type=date]')) {
+                if (e.target.value) {
+                    form.querySelectorAll('input[name="zeitraum"]').forEach(function (r) { r.checked = false; });
+                }
+                form.requestSubmit();
+                return;
+            }
+            // Picking a preset clears any custom date.
+            if (e.target.matches('input[name="zeitraum"]')) {
+                form.querySelectorAll('input[type=date]').forEach(function (d) { d.value = ''; });
+            }
             if (e.target.matches('input[type=checkbox], input[type=radio], select')) {
                 form.requestSubmit();
             }
         });
+
+        // Toggle the custom date panel.
+        var dateToggle = form.querySelector('[data-date-toggle]');
+        var datePanel = form.querySelector('[data-date-panel]');
+        if (dateToggle && datePanel) {
+            dateToggle.addEventListener('click', function () {
+                datePanel.classList.toggle('hidden');
+            });
+        }
     })();
 </script>

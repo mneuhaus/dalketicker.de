@@ -53,11 +53,22 @@ final class EventFilter
             }
         }
 
+        // Custom date range (von/bis) takes precedence over the named presets.
+        $von = self::parseDate(self::clean($request->query->get('von')));
+        $bis = self::parseDate(self::clean($request->query->get('bis')));
+
         $period = self::clean($request->query->get('zeitraum'));
         if ($period !== null && !isset(self::PERIODS[$period])) {
             $period = null;
         }
-        [$from, $to] = self::resolvePeriod($period);
+
+        if ($von !== null || $bis !== null) {
+            $period = null;
+            $from = $von;
+            $to = $bis;
+        } else {
+            [$from, $to] = self::resolvePeriod($period);
+        }
 
         $onlySaved = $request->query->get('meine') === '1';
         $savedIds = [];
@@ -112,6 +123,22 @@ final class EventFilter
         };
     }
 
+    private static function parseDate(?string $value): ?\DateTimeImmutable
+    {
+        if (!$value) {
+            return null;
+        }
+        $date = \DateTimeImmutable::createFromFormat('!Y-m-d', $value, new \DateTimeZone('Europe/Berlin'));
+
+        return $date ?: null;
+    }
+
+    /** True when a custom date range is active (rather than a named preset). */
+    public function hasCustomDate(): bool
+    {
+        return $this->period === null && ($this->from !== null || $this->to !== null);
+    }
+
     private static function clean(mixed $value): ?string
     {
         if (!is_string($value)) {
@@ -133,6 +160,7 @@ final class EventFilter
             || $this->categorySlugs !== []
             || $this->city !== null
             || $this->period !== null
+            || $this->hasCustomDate()
             || $this->onlySaved;
     }
 
@@ -144,6 +172,8 @@ final class EventFilter
             'kategorie' => $this->categorySlugs,
             'ort' => $this->city,
             'zeitraum' => $this->period,
+            'von' => $this->hasCustomDate() ? $this->from?->format('Y-m-d') : null,
+            'bis' => $this->hasCustomDate() ? $this->to?->format('Y-m-d') : null,
         ];
         if ($this->onlySaved) {
             $params['meine'] = '1';
