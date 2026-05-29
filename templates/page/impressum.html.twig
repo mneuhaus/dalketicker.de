@@ -1,0 +1,52 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Impressum – {{ site_name }}{% endblock %}
+{% block meta_description %}Impressum und Anbieterkennzeichnung für {{ site_name }}.{% endblock %}
+
+{% block body %}
+    <article class="max-w-3xl mx-auto">
+        <h1 class="font-[family-name:var(--font-display)] text-3xl font-extrabold tracking-tight text-ink mb-6">Impressum</h1>
+
+        <div class="space-y-6 text-ink/80 leading-relaxed">
+            <section>
+                <h2 class="font-semibold text-ink mb-1">Angaben gemäß § 5 DDG</h2>
+                <p>
+                    Marc Neuhaus<br>
+                    <span class="text-amber-700">[Straße &amp; Hausnummer – bitte ergänzen]</span><br>
+                    <span class="text-amber-700">[PLZ Ort – bitte ergänzen]</span><br>
+                    Deutschland
+                </p>
+            </section>
+
+            <section>
+                <h2 class="font-semibold text-ink mb-1">Kontakt</h2>
+                <p>E-Mail: <a href="mailto:marc@roothirsch.com" class="text-brand-700 underline">marc@roothirsch.com</a></p>
+            </section>
+
+            <section>
+                <h2 class="font-semibold text-ink mb-1">Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV</h2>
+                <p>Marc Neuhaus (Anschrift wie oben)</p>
+            </section>
+
+            <section>
+                <h2 class="font-semibold text-ink mb-1">Art des Angebots</h2>
+                <p>{{ site_name }} ist ein nicht-kommerzielles, privates Projekt, das öffentlich zugängliche Veranstaltungshinweise aus dem Kreis Gütersloh an einem Ort bündelt.</p>
+            </section>
+
+            <section>
+                <h2 class="font-semibold text-ink mb-1">Haftung für Inhalte</h2>
+                <p>Die Inhalte stammen überwiegend aus fremden Quellen und werden automatisiert zusammengetragen. Für die Richtigkeit, Vollständigkeit und Aktualität der Veranstaltungsangaben wird keine Gewähr übernommen – maßgeblich ist immer der jeweilige Veranstalter. Bei bekannt werdenden Rechtsverletzungen werden entsprechende Inhalte umgehend entfernt.</p>
+            </section>
+
+            <section>
+                <h2 class="font-semibold text-ink mb-1">Haftung für Links</h2>
+                <p>Diese Seite verlinkt auf externe Webseiten Dritter, auf deren Inhalte kein Einfluss besteht. Für diese fremden Inhalte ist stets der jeweilige Anbieter verantwortlich.</p>
+            </section>
+
+            <section>
+                <h2 class="font-semibold text-ink mb-1">Urheberrecht &amp; Quellen</h2>
+                <p>Titel, Texte und Bilder der Veranstaltungen liegen beim jeweiligen Veranstalter bzw. der ursprünglichen Quelle. Wenn du als Veranstalter oder Quelle nicht (mehr) gelistet werden möchtest, genügt eine kurze Nachricht – siehe <a href="{{ path('page_quellen') }}" class="text-brand-700 underline">Quellen &amp; Hinweise</a>.</p>
+            </section>
+        </div>
+    </article>
+{% endblock %}

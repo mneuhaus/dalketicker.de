@@ -44,10 +44,11 @@
                 <strong class="text-ink/70">{{ site_name }}</strong> · aggregiert Veranstaltungen aus dem Kreis Gütersloh.<br>
                 Alle Angaben ohne Gewähr – maßgeblich ist immer der Veranstalter.
             </p>
-            <p class="sm:text-right">
-                Ein Projekt aus Gütersloh.<br>
-                <span class="text-ink/40">Quellen werden automatisch zusammengetragen.</span>
-            </p>
+            <nav class="flex flex-col gap-1 sm:text-right">
+                <a href="{{ path('page_quellen') }}" class="hover:text-brand-700">Quellen &amp; Hinweise</a>
+                <a href="{{ path('page_impressum') }}" class="hover:text-brand-700">Impressum</a>
+                <span class="text-ink/40">Ein Projekt aus Gütersloh.</span>
+            </nav>
         </div>
     </footer>
 </body>
