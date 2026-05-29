@@ -7,7 +7,6 @@ namespace App\Controller;
 use App\Entity\Event;
 use App\Repository\CategoryRepository;
 use App\Repository\EventRepository;
-use App\Repository\SourceRepository;
 use App\Search\EventFilter;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\Clock\ClockInterface;
@@ -22,7 +21,6 @@ final class EventController extends AbstractController
     public function __construct(
         private readonly EventRepository $events,
         private readonly CategoryRepository $categories,
-        private readonly SourceRepository $sources,
         private readonly ClockInterface $clock,
     ) {
     }
@@ -162,13 +160,12 @@ final class EventController extends AbstractController
         return $weeks;
     }
 
-    /** Shared filter dropdown data + counts. */
+    /** Shared sidebar filter data. */
     private function filterData(): array
     {
         return [
             'allCategories' => $this->categories->findAllOrdered(),
             'allCities' => $this->events->findUsedCities(),
-            'allSources' => $this->sources->findEnabled(),
         ];
     }
 }

@@ -1,6 +1,6 @@
-{% extends 'base.html.twig' %}
+{% extends 'layout_with_sidebar.html.twig' %}
 
-{% block body %}
+{% block content %}
     <div class="mb-6">
         <h1 class="font-[family-name:var(--font-display)] text-3xl sm:text-4xl font-extrabold tracking-tight text-ink">
             Was läuft im Kreis Gütersloh?
@@ -8,19 +8,16 @@
         <p class="text-ink/50 mt-1">{{ total }} kommende Veranstaltung{{ total == 1 ? '' : 'en' }}{% if filter.hasAny %} (gefiltert){% endif %}.</p>
     </div>
 
-    {{ include('event/_filters.html.twig') }}
-
     {% if groups is empty %}
-        <div class="text-center py-20 text-ink/50">
-            <div class="text-5xl mb-3">🤷</div>
-            <p class="font-medium">Nichts gefunden.</p>
-            <p class="text-sm mt-1">Probier andere Filter oder schau in den <a href="{{ path('event_month', {year: 'now'|date('Y'), month: 'now'|date('n')}) }}" class="text-brand-700 underline">Kalender</a>.</p>
+        <div class="text-center py-20 text-ink/50 border border-dashed border-black/10 rounded-2xl">
+            <p class="font-medium text-ink/70">Nichts gefunden.</p>
+            <p class="text-sm mt-1">Pass die Filter an oder schau in den <a href="{{ path('event_month', {year: 'now'|date('Y'), month: 'now'|date('n')}) }}" class="text-brand-700 underline">Kalender</a>.</p>
         </div>
     {% else %}
         <div class="space-y-8">
             {% for group in groups %}
                 <section>
-                    <div class="flex items-baseline gap-3 mb-3 sticky top-[68px] bg-paper/95 backdrop-blur py-1 z-10">
+                    <div class="flex items-baseline gap-3 mb-3 sticky top-16 bg-paper/95 backdrop-blur py-1 z-10">
                         <h2 class="font-[family-name:var(--font-display)] text-lg font-bold text-brand-800">{{ group.date|de_day_label }}</h2>
                         <span class="text-xs text-ink/40">{{ group.events|length }} Termin{{ group.events|length == 1 ? '' : 'e' }}</span>
                         <span class="flex-1 border-b border-dashed border-black/10"></span>

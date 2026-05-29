@@ -1,0 +1,80 @@
+{# Left filter sidebar: search + category checkboxes + place + period.
+   Submits via GET to the current route; auto-submits on change. #}
+<form method="get" action="{{ app.request.pathInfo }}" data-autosubmit class="space-y-6">
+    {# Search #}
+    <div>
+        <label class="block text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">Suche</label>
+        <div class="relative">
+            <input type="search" name="q" value="{{ filter.q }}" placeholder="Titel, Ort, Stichwort…"
+                   class="w-full rounded-xl border border-black/10 bg-white px-3 py-2.5 pl-9 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 outline-none">
+            <svg class="w-4 h-4 absolute left-3 top-3 text-ink/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z"/></svg>
+        </div>
+    </div>
+
+    {# Categories as checkboxes — uncheck to hide what you don't care about. #}
+    <div>
+        <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-semibold uppercase tracking-wide text-ink/40">Kategorien</span>
+            {% if filter.categorySlugs is not empty %}
+                <a href="{{ app.request.pathInfo }}{{ filter.q ? '?q=' ~ filter.q : '' }}" class="text-xs text-brand-700 hover:underline">alle</a>
+            {% endif %}
+        </div>
+        <ul class="space-y-1">
+            {% for category in allCategories %}
+                {% set active = filter.hasCategory(category.slug) %}
+                <li>
+                    <label class="flex items-center gap-2.5 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-black/5 transition {{ active ? 'bg-black/5' : '' }}">
+                        <input type="checkbox" name="kategorie[]" value="{{ category.slug }}" {{ active ? 'checked' }}
+                               class="peer sr-only">
+                        <span class="w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition"
+                              style="border-color: {{ category.color }}; background-color: {{ active ? category.color : 'transparent' }}">
+                            <svg class="w-3 h-3 text-white {{ active ? '' : 'hidden' }}" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                        </span>
+                        <span class="text-sm text-ink/80">{{ category.name }}</span>
+                    </label>
+                </li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    {# Place #}
+    <div>
+        <label class="block text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">Ort</label>
+        <select name="ort" class="w-full rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm focus:border-brand-500 outline-none">
+            <option value="">Alle Orte</option>
+            {% for city in allCities %}
+                <option value="{{ city }}" {{ filter.city == city ? 'selected' }}>{{ city }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    {# Period #}
+    <div>
+        <label class="block text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">Zeitraum</label>
+        <div class="grid grid-cols-2 gap-2">
+            <input type="date" name="von" value="{{ filter.from ? filter.from|date('Y-m-d') }}" aria-label="von"
+                   class="rounded-xl border border-black/10 bg-white px-2.5 py-2 text-sm focus:border-brand-500 outline-none">
+            <input type="date" name="bis" value="{{ filter.to ? filter.to|date('Y-m-d') }}" aria-label="bis"
+                   class="rounded-xl border border-black/10 bg-white px-2.5 py-2 text-sm focus:border-brand-500 outline-none">
+        </div>
+    </div>
+
+    <div class="flex items-center gap-3">
+        <button type="submit" class="flex-1 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 transition">Anwenden</button>
+        {% if filter.hasAny %}
+            <a href="{{ app.request.pathInfo }}" class="text-sm text-ink/50 hover:text-brand-700">Reset</a>
+        {% endif %}
+    </div>
+</form>
+
+<script>
+    (function () {
+        var form = document.querySelector('form[data-autosubmit]');
+        if (!form) return;
+        form.addEventListener('change', function (e) {
+            if (e.target.matches('input[type=checkbox], select, input[type=date]')) {
+                form.requestSubmit();
+            }
+        });
+    })();
+</script>

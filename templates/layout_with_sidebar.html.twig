@@ -1,0 +1,12 @@
+{% extends 'base.html.twig' %}
+
+{% block body %}
+    <div class="grid grid-cols-1 md:grid-cols-[16rem_minmax(0,1fr)] gap-6 items-start">
+        <aside class="md:sticky md:top-20">
+            {{ include('event/_sidebar.html.twig') }}
+        </aside>
+        <div class="min-w-0">
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+{% endblock %}

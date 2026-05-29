@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}{{ site_name }} – {{ site_tagline }}{% endblock %}</title>
     <meta name="description" content="{% block meta_description %}Alle Veranstaltungen im Kreis Gütersloh an einem Ort – Konzerte, Sport, Familie, Kultur und mehr. Endlich übersichtlich.{% endblock %}">
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌊</text></svg>">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%230a8da3%22/><g fill=%22none%22 stroke=%22%23fff%22 stroke-width=%222.4%22 stroke-linecap=%22round%22><path d=%22M6 12c2.5-2.4 5-2.4 7.5 0s5 2.4 7.5 0 5-2.4 5 0%22/><path d=%22M6 19c2.5-2.4 5-2.4 7.5 0s5 2.4 7.5 0 5-2.4 5 0%22/></g></svg>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&display=swap" rel="stylesheet">
@@ -18,9 +18,9 @@
     <div class="river-rule h-1 w-full"></div>
 
     <header class="border-b border-black/5 bg-paper/90 backdrop-blur sticky top-0 z-30">
-        <div class="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between gap-4">
-            <a href="{{ path('event_index') }}" class="flex items-center gap-2 group">
-                <span class="text-2xl">🌊</span>
+        <div class="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between gap-4">
+            <a href="{{ path('event_index') }}" class="flex items-center gap-2.5 group">
+                {{ include('_logo.html.twig') }}
                 <span class="leading-tight">
                     <span class="block font-[family-name:var(--font-display)] text-xl font-extrabold tracking-tight text-ink group-hover:text-brand-700 transition">{{ site_name }}</span>
                     <span class="block text-xs text-ink/50 -mt-0.5">{{ site_tagline }}</span>
@@ -33,12 +33,12 @@
         </div>
     </header>
 
-    <main class="flex-1 mx-auto max-w-5xl w-full px-4 py-6">
+    <main class="flex-1 mx-auto max-w-6xl w-full px-4 py-6">
         {% block body %}{% endblock %}
     </main>
 
     <footer class="border-t border-black/5 mt-10">
-        <div class="mx-auto max-w-5xl px-4 py-8 text-sm text-ink/50 flex flex-col sm:flex-row justify-between gap-4">
+        <div class="mx-auto max-w-6xl px-4 py-8 text-sm text-ink/50 flex flex-col sm:flex-row justify-between gap-4">
             <p>
                 <strong class="text-ink/70">{{ site_name }}</strong> · aggregiert Veranstaltungen aus dem Kreis Gütersloh.<br>
                 Alle Angaben ohne Gewähr – maßgeblich ist immer der Veranstalter.

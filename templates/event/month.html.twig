@@ -1,11 +1,11 @@
-{% extends 'base.html.twig' %}
+{% extends 'layout_with_sidebar.html.twig' %}
 
 {% block title %}Kalender {{ monthDate.format('n')|de_month }} {{ monthDate|date('Y') }} – {{ site_name }}{% endblock %}
 
-{% block body %}
+{% block content %}
     <div class="flex items-center justify-between mb-6 gap-4">
         <h1 class="font-[family-name:var(--font-display)] text-3xl font-extrabold tracking-tight text-ink">
-            {{ (monthDate.format('n'))|de_month }} {{ monthDate|date('Y') }}
+            {{ monthDate.format('n')|de_month }} {{ monthDate|date('Y') }}
         </h1>
         <div class="flex items-center gap-2">
             <a href="{{ path('event_month', {year: prev|date('Y'), month: prev|date('n')}) }}" class="chip-muted" aria-label="Vorheriger Monat">←</a>
@@ -13,8 +13,6 @@
             <a href="{{ path('event_month', {year: next|date('Y'), month: next|date('n')}) }}" class="chip-muted" aria-label="Nächster Monat">→</a>
         </div>
     </div>
-
-    {{ include('event/_filters.html.twig') }}
 
     <div class="bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden">
         <div class="grid grid-cols-7 text-center text-xs font-semibold text-ink/50 border-b border-black/5">

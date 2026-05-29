@@ -143,16 +143,12 @@ class EventRepository extends ServiceEntityRepository
                 ->setParameter('q', '%'.mb_strtolower($filter->q).'%');
         }
 
-        if ($filter->categorySlug !== null) {
-            $qb->andWhere('c.slug = :categorySlug')->setParameter('categorySlug', $filter->categorySlug);
+        if ($filter->categorySlugs !== []) {
+            $qb->andWhere('c.slug IN (:categorySlugs)')->setParameter('categorySlugs', $filter->categorySlugs);
         }
 
         if ($filter->city !== null) {
             $qb->andWhere('v.city = :city')->setParameter('city', $filter->city);
-        }
-
-        if ($filter->sourceKey !== null) {
-            $qb->andWhere('s.key = :sourceKey')->setParameter('sourceKey', $filter->sourceKey);
         }
 
         return $qb;

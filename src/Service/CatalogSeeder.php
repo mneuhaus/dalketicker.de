@@ -42,9 +42,9 @@ final class CatalogSeeder
     /** Idempotently create/update categories and sources. Safe to run anytime. */
     public function seedCatalog(): void
     {
-        foreach ($this->categoryDefs() as $slug => [$name, $color, $icon, $order]) {
+        foreach ($this->categoryDefs() as $slug => [$name, $color, $order]) {
             $category = $this->categoryRepo->findBySlug($slug) ?? new Category($name, $slug);
-            $category->setName($name)->setColor($color)->setIcon($icon)->setSortOrder($order);
+            $category->setName($name)->setColor($color)->setIcon(null)->setSortOrder($order);
             $this->em->persist($category);
             $this->categories[$slug] = $category;
         }
@@ -116,25 +116,25 @@ final class CatalogSeeder
         }
     }
 
-    /** @return array<string, array{0:string,1:string,2:string,3:int}> */
+    /** @return array<string, array{0:string,1:string,2:int}> */
     private function categoryDefs(): array
     {
         $defs = [
-            'musik' => ['Konzert & Musik', '#e11d48', '🎵'],
-            'party' => ['Party & Nightlife', '#7c3aed', '🎉'],
-            'buehne' => ['Bühne & Theater', '#d97706', '🎭'],
-            'kunst' => ['Kunst & Ausstellung', '#0891b2', '🖼️'],
-            'familie' => ['Familie & Kinder', '#16a34a', '🧸'],
-            'sport' => ['Sport', '#2563eb', '⚽'],
-            'markt' => ['Markt & Fest', '#db2777', '🎪'],
-            'genuss' => ['Essen & Genuss', '#ca8a04', '🍻'],
-            'bildung' => ['Bildung & Vortrag', '#475569', '🎓'],
-            'sonstiges' => ['Sonstiges', '#0a8da3', '✨'],
+            'musik' => ['Konzert & Musik', '#e11d48'],
+            'party' => ['Party & Nightlife', '#7c3aed'],
+            'buehne' => ['Bühne & Theater', '#d97706'],
+            'kunst' => ['Kunst & Ausstellung', '#0891b2'],
+            'familie' => ['Familie & Kinder', '#16a34a'],
+            'sport' => ['Sport', '#2563eb'],
+            'markt' => ['Markt & Fest', '#db2777'],
+            'genuss' => ['Essen & Genuss', '#ca8a04'],
+            'bildung' => ['Bildung & Vortrag', '#475569'],
+            'sonstiges' => ['Sonstiges', '#0a8da3'],
         ];
         $order = 0;
         $out = [];
-        foreach ($defs as $slug => [$name, $color, $icon]) {
-            $out[$slug] = [$name, $color, $icon, $order++];
+        foreach ($defs as $slug => [$name, $color]) {
+            $out[$slug] = [$name, $color, $order++];
         }
 
         return $out;

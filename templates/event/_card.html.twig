@@ -25,9 +25,7 @@
     <div class="min-w-0 flex-1">
         <div class="flex items-start gap-2 flex-wrap">
             {% if event.category %}
-                <span class="chip text-white text-xs" style="background-color: {{ event.category.color }}">
-                    {% if event.category.icon %}{{ event.category.icon }} {% endif %}{{ event.category.name }}
-                </span>
+                <span class="chip text-white text-xs" style="background-color: {{ event.category.color }}">{{ event.category.name }}</span>
             {% endif %}
         </div>
         <h3 class="font-[family-name:var(--font-display)] text-lg font-bold text-ink leading-snug mt-1 group-hover:text-brand-700 transition line-clamp-2">
