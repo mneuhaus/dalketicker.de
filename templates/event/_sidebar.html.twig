@@ -84,7 +84,7 @@
 
     {% if filter.hasAny %}
         <div>
-            <a href="{{ app.request.pathInfo }}" class="text-sm text-ink/50 hover:text-brand-700">Filter zurücksetzen</a>
+            <a href="{{ app.request.pathInfo }}" data-reset-filters class="text-sm text-ink/50 hover:text-brand-700">Filter zurücksetzen</a>
         </div>
     {% endif %}
 </form>

@@ -38,7 +38,7 @@
             <span class="chip text-white text-xs" style="background-color: {{ event.category.color }}">{{ event.category.name }}</span>
         {% endif %}
         <h3 class="font-[family-name:var(--font-display)] text-lg font-bold text-ink leading-snug mt-1 group-hover:text-brand-700 transition line-clamp-2">
-            <a href="{{ path('event_show', {id: event.id, slug: event.slug}) }}" class="before:absolute before:inset-0 before:z-0">{{ event.title }}</a>
+            <a href="{{ path('event_show', {id: event.id, slug: event.slug}|merge(filter.toQueryParams|default({}))) }}" class="before:absolute before:inset-0 before:z-0">{{ event.title }}</a>
         </h3>
         {% if event.displayLocation %}
             <p class="text-sm text-ink/60 mt-1 flex items-center gap-1.5">

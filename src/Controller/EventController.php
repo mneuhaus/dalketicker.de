@@ -111,19 +111,28 @@ final class EventController extends AbstractController
     }
 
     #[Route('/event/{id}-{slug}', name: 'event_show', requirements: ['id' => '\d+', 'slug' => '[^/]*'], methods: ['GET'])]
-    public function show(int $id, string $slug): Response
+    public function show(Request $request, int $id, string $slug): Response
     {
         $event = $this->events->findVisible($id);
         if ($event === null) {
             throw $this->createNotFoundException('Event nicht gefunden.');
         }
 
-        // Canonicalize the slug in the URL.
+        $filter = EventFilter::fromRequest($request);
+
+        // Canonicalize the slug in the URL (keep the filter query).
         if ($slug !== $event->getSlug()) {
-            return $this->redirectToRoute('event_show', ['id' => $id, 'slug' => $event->getSlug()], Response::HTTP_MOVED_PERMANENTLY);
+            return $this->redirectToRoute('event_show', ['id' => $id, 'slug' => $event->getSlug()] + $filter->toQueryParams(), Response::HTTP_MOVED_PERMANENTLY);
         }
 
-        return $this->render('event/show.html.twig', ['event' => $event]);
+        $around = $this->events->findAround($filter, $event);
+
+        return $this->render('event/show.html.twig', [
+            'event' => $event,
+            'before' => $around['before'],
+            'after' => $around['after'],
+            'filter' => $filter,
+        ]);
     }
 
     /**

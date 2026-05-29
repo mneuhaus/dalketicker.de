@@ -87,6 +87,35 @@ class EventRepository extends ServiceEntityRepository
         return $this->findInRange($start, $start->modify('first day of next month'), $filter);
     }
 
+    /**
+     * Events chronologically before and after $current within the same filtered,
+     * visible set — for the "davor/danach" sidebar on the detail page.
+     *
+     * @return array{before: Event[], after: Event[]}
+     */
+    public function findAround(EventFilter $filter, Event $current, int $limit = 8): array
+    {
+        $after = $this->visibleQueryBuilder($filter)
+            ->andWhere('(e.startsAt > :start OR (e.startsAt = :start AND e.id > :id))')
+            ->andWhere('e.id != :id')
+            ->setParameter('start', $current->getStartsAt())
+            ->setParameter('id', $current->getId())
+            ->orderBy('e.startsAt', 'ASC')->addOrderBy('e.id', 'ASC')
+            ->setMaxResults($limit)
+            ->getQuery()->getResult();
+
+        $before = $this->visibleQueryBuilder($filter)
+            ->andWhere('(e.startsAt < :start OR (e.startsAt = :start AND e.id < :id))')
+            ->andWhere('e.id != :id')
+            ->setParameter('start', $current->getStartsAt())
+            ->setParameter('id', $current->getId())
+            ->orderBy('e.startsAt', 'DESC')->addOrderBy('e.id', 'DESC')
+            ->setMaxResults($limit)
+            ->getQuery()->getResult();
+
+        return ['before' => array_reverse($before), 'after' => $after];
+    }
+
     public function findVisible(int $id): ?Event
     {
         return $this->createQueryBuilder('e')

@@ -13,11 +13,23 @@
     <svg class="w-5 h-5 text-brand-600 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="{{ paths[name] }}"/></svg>
 {% endmacro %}
 
+{% macro neighbor(e, filter) %}
+    <a href="{{ path('event_show', {id: e.id, slug: e.slug}|merge(filter.toQueryParams|default({}))) }}"
+       class="block rounded-xl border border-black/5 bg-white p-3 hover:border-brand-200 hover:shadow-sm transition">
+        <div class="text-xs font-semibold" style="color: {{ e.category ? e.category.color : 'var(--color-brand-700)' }}">
+            {{ e.startsAt|de_date }}{% if not e.allDay %} · {{ e.startsAt|date('H:i') }}{% endif %}
+        </div>
+        <div class="text-sm font-medium text-ink leading-snug line-clamp-2 mt-0.5">{{ e.title }}</div>
+        {% if e.displayLocation %}<div class="text-xs text-ink/50 line-clamp-1 mt-0.5">{{ e.displayLocation }}</div>{% endif %}
+    </a>
+{% endmacro %}
+
 {% block body %}
     {% import _self as ui %}
-    <a href="{{ path('event_index') }}" class="text-sm text-ink/50 hover:text-brand-700 inline-flex items-center gap-1 mb-4">← Alle Veranstaltungen</a>
+    <a href="{{ path('event_index', filter.toQueryParams|default({})) }}" class="text-sm text-ink/50 hover:text-brand-700 inline-flex items-center gap-1 mb-4">← Alle Veranstaltungen</a>
 
-    <article class="bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden max-w-3xl">
+    <div class="lg:grid lg:grid-cols-[minmax(0,1fr)_19rem] lg:gap-6 lg:items-start">
+    <article class="bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden">
         {% if event.imageUrl %}
             <img src="{{ event.imageUrl }}" alt="" class="w-full max-h-80 object-cover">
         {% endif %}
@@ -77,4 +89,26 @@
             </div>
         </div>
     </article>
+
+    {% if before or after %}
+        <aside class="mt-6 lg:mt-0 space-y-6">
+            {% if after %}
+                <div>
+                    <h2 class="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">Danach</h2>
+                    <div class="space-y-2">
+                        {% for e in after %}{{ ui.neighbor(e, filter) }}{% endfor %}
+                    </div>
+                </div>
+            {% endif %}
+            {% if before %}
+                <div>
+                    <h2 class="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">Davor</h2>
+                    <div class="space-y-2">
+                        {% for e in before %}{{ ui.neighbor(e, filter) }}{% endfor %}
+                    </div>
+                </div>
+            {% endif %}
+        </aside>
+    {% endif %}
+    </div>
 {% endblock %}
