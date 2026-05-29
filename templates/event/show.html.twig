@@ -19,8 +19,6 @@
             <div class="shrink-0 w-14 h-14 rounded-lg overflow-hidden bg-black/5">
                 <img src="{{ e.imageUrl }}" alt="" loading="lazy" referrerpolicy="no-referrer" class="w-full h-full object-cover">
             </div>
-        {% else %}
-            <div class="shrink-0 w-1.5 rounded-full" style="background-color: {{ e.category ? e.category.color : 'var(--color-brand-400)' }}"></div>
         {% endif %}
         <div class="min-w-0">
             <div class="text-xs font-semibold" style="color: {{ e.category ? e.category.color : 'var(--color-brand-700)' }}">

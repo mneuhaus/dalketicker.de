@@ -1,56 +1,72 @@
 {# A single event card. Expects `event`.
-   Hierarchy: title first, a compact time column on the left (the day already
-   lives in the group header), one calm meta row (place · price · category),
-   a category-coloured accent bar for fast scanning, image as a steady thumb.
+   Two shapes: a media card (image front-and-center, full-width banner on top)
+   when the event has an image; otherwise a compact row (time column + body).
    The title link stretches over the whole card; the bookmark sits above it. #}
-{% set color = event.category ? event.category.color : 'var(--color-brand-400)' %}
 {% set multiDay = event.endsAt and event.endsAt|date('Y-m-d') != event.startsAt|date('Y-m-d') %}
-<article data-event-card="{{ event.id }}"
-         class="group relative flex gap-3 sm:gap-4 rounded-2xl border border-black/5 bg-white p-4 shadow-sm transition hover:shadow-md hover:border-black/10">
+{% set showUrl = path('event_show', {id: event.id, slug: event.slug}|merge(filter.toQueryParams|default({}))) %}
 
-    {# category accent #}
-    <span class="absolute left-0 top-4 bottom-4 w-1 rounded-r-full" style="background-color: {{ color }}"></span>
+{% macro meta(event) %}
+    <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-ink/55">
+        {% if event.displayLocation %}
+            <span class="inline-flex items-center gap-1 min-w-0 max-w-full">
+                <svg class="w-3.5 h-3.5 shrink-0 text-ink/35" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                <span class="truncate">{{ event.displayLocation }}</span>
+            </span>
+        {% endif %}
+        {% if event.price %}<span class="text-ink/25">·</span><span class="whitespace-nowrap">{{ event.price }}</span>{% endif %}
+        {% if event.category %}<span class="text-ink/25">·</span><span class="font-medium whitespace-nowrap" style="color: {{ event.category.color }}">{{ event.category.name }}</span>{% endif %}
+    </div>
+{% endmacro %}
 
-    {# bookmark #}
+{% import _self as card %}
+
+{% set bookmark %}
     <button type="button" data-save-btn data-event-id="{{ event.id }}" aria-pressed="false"
-            class="save-btn absolute top-2.5 right-2.5 z-20 rounded-lg bg-white/70 backdrop-blur-sm p-1 text-ink/30 hover:text-brand-600 transition"
+            class="save-btn absolute top-2.5 right-2.5 z-20 rounded-md bg-white/75 backdrop-blur-sm p-1 text-ink/40 hover:text-brand-600 transition"
             aria-label="Merken" title="Merken">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>
     </button>
+{% endset %}
 
-    {# time / when #}
-    <div class="shrink-0 w-14 sm:w-[4.25rem] text-center pl-1.5">
-        {% if event.allDay %}
-            <div class="text-[11px] font-semibold uppercase tracking-wide text-brand-700 leading-tight mt-1">ganz&shy;tägig</div>
-        {% else %}
-            <div class="font-[family-name:var(--font-display)] text-lg sm:text-xl font-bold text-ink leading-none tabular-nums">{{ event.startsAt|date('H:i') }}</div>
-            <div class="text-[10px] uppercase tracking-wide text-ink/40 mt-0.5">Uhr</div>
-        {% endif %}
-        {% if multiDay %}<div class="text-[10px] text-ink/40 mt-1 leading-tight">bis {{ event.endsAt|de_date }}</div>{% endif %}
-    </div>
+{% set titleLink %}
+    <h3 class="font-[family-name:var(--font-display)] text-base sm:text-lg font-bold text-ink leading-snug line-clamp-2 group-hover:text-brand-700 transition">
+        <a href="{{ showUrl }}" class="before:absolute before:inset-0 before:z-0">{{ event.title }}</a>
+    </h3>
+{% endset %}
 
-    {# body #}
-    <div class="min-w-0 flex-1 pr-6">
-        <h3 class="font-[family-name:var(--font-display)] text-base sm:text-lg font-bold text-ink leading-snug line-clamp-2 group-hover:text-brand-700 transition">
-            <a href="{{ path('event_show', {id: event.id, slug: event.slug}|merge(filter.toQueryParams|default({}))) }}" class="before:absolute before:inset-0 before:z-0">{{ event.title }}</a>
-        </h3>
-        <div class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-ink/55">
-            {% if event.displayLocation %}
-                <span class="inline-flex items-center gap-1 min-w-0 max-w-full">
-                    <svg class="w-3.5 h-3.5 shrink-0 text-ink/35" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                    <span class="truncate">{{ event.displayLocation }}</span>
-                </span>
-            {% endif %}
-            {% if event.price %}<span class="text-ink/25">·</span><span class="whitespace-nowrap">{{ event.price }}</span>{% endif %}
-            {% if event.category %}<span class="text-ink/25">·</span><span class="font-medium whitespace-nowrap" style="color: {{ event.category.color }}">{{ event.category.name }}</span>{% endif %}
-        </div>
-    </div>
-
-    {# image thumbnail #}
-    {% if event.imageUrl %}
-        <div class="hidden sm:block shrink-0 w-28 h-[4.75rem] self-center rounded-xl overflow-hidden bg-black/5">
+{% if event.imageUrl %}
+    {# Media card #}
+    <article data-event-card="{{ event.id }}" class="group relative rounded-2xl border border-black/5 bg-white shadow-sm overflow-hidden transition hover:shadow-md hover:border-black/10">
+        <div class="relative bg-black/5">
             <img src="{{ event.imageUrl }}" alt="" loading="lazy" referrerpolicy="no-referrer"
-                 class="w-full h-full object-cover group-hover:scale-105 transition duration-300">
+                 class="w-full aspect-[16/9] object-cover group-hover:scale-[1.02] transition duration-300">
+            <div class="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/40 to-transparent"></div>
+            <span class="absolute left-2.5 bottom-2.5 rounded-md bg-black/55 px-2 py-0.5 text-xs font-semibold text-white backdrop-blur-sm">
+                {% if event.allDay %}ganztägig{% else %}{{ event.startsAt|date('H:i') }} Uhr{% endif %}{% if multiDay %} · bis {{ event.endsAt|de_date }}{% endif %}
+            </span>
+            {{ bookmark }}
         </div>
-    {% endif %}
-</article>
+        <div class="p-4">
+            {{ titleLink }}
+            <div class="mt-1.5">{{ card.meta(event) }}</div>
+        </div>
+    </article>
+{% else %}
+    {# Compact row #}
+    <article data-event-card="{{ event.id }}" class="group relative flex gap-3 sm:gap-4 rounded-2xl border border-black/5 bg-white p-4 shadow-sm transition hover:shadow-md hover:border-black/10">
+        {{ bookmark }}
+        <div class="shrink-0 w-14 sm:w-[4.25rem] text-center">
+            {% if event.allDay %}
+                <div class="text-[11px] font-semibold uppercase tracking-wide text-brand-700 leading-tight mt-1">ganz&shy;tägig</div>
+            {% else %}
+                <div class="font-[family-name:var(--font-display)] text-lg sm:text-xl font-bold text-ink leading-none tabular-nums">{{ event.startsAt|date('H:i') }}</div>
+                <div class="text-[10px] uppercase tracking-wide text-ink/40 mt-0.5">Uhr</div>
+            {% endif %}
+            {% if multiDay %}<div class="text-[10px] text-ink/40 mt-1 leading-tight">bis {{ event.endsAt|de_date }}</div>{% endif %}
+        </div>
+        <div class="min-w-0 flex-1 pr-6">
+            {{ titleLink }}
+            <div class="mt-1.5">{{ card.meta(event) }}</div>
+        </div>
+    </article>
+{% endif %}
