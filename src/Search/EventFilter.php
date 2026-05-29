@@ -29,6 +29,7 @@ final class EventFilter
 
     /**
      * @param list<string> $categorySlugs
+     * @param list<int>    $savedIds
      */
     public function __construct(
         public ?string $q = null,
@@ -37,6 +38,8 @@ final class EventFilter
         public ?string $period = null,
         public ?\DateTimeImmutable $from = null,
         public ?\DateTimeImmutable $to = null,
+        public bool $onlySaved = false,
+        public array $savedIds = [],
     ) {
     }
 
@@ -56,6 +59,15 @@ final class EventFilter
         }
         [$from, $to] = self::resolvePeriod($period);
 
+        $onlySaved = $request->query->get('meine') === '1';
+        $savedIds = [];
+        foreach (explode(',', (string) $request->query->get('ids')) as $id) {
+            $id = (int) trim($id);
+            if ($id > 0) {
+                $savedIds[] = $id;
+            }
+        }
+
         return new self(
             q: self::clean($request->query->get('q')),
             categorySlugs: array_values(array_unique($categories)),
@@ -63,6 +75,8 @@ final class EventFilter
             period: $period,
             from: $from,
             to: $to,
+            onlySaved: $onlySaved,
+            savedIds: array_values(array_unique($savedIds)),
         );
     }
 
@@ -118,17 +132,24 @@ final class EventFilter
         return $this->q !== null
             || $this->categorySlugs !== []
             || $this->city !== null
-            || $this->period !== null;
+            || $this->period !== null
+            || $this->onlySaved;
     }
 
     /** Query params for building links/canonical URLs, dropping empty values. */
     public function toQueryParams(): array
     {
-        return array_filter([
+        $params = [
             'q' => $this->q,
             'kategorie' => $this->categorySlugs,
             'ort' => $this->city,
             'zeitraum' => $this->period,
-        ], static fn ($v) => $v !== null && $v !== '' && $v !== []);
+        ];
+        if ($this->onlySaved) {
+            $params['meine'] = '1';
+            $params['ids'] = implode(',', $this->savedIds);
+        }
+
+        return array_filter($params, static fn ($v) => $v !== null && $v !== '' && $v !== []);
     }
 }

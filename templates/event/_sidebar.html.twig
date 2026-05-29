@@ -1,6 +1,21 @@
 {# Left filter sidebar: search + category checkboxes + place + period.
    Submits via GET to the current route; auto-submits on change. #}
 <form method="get" action="{{ app.request.pathInfo }}" data-autosubmit class="space-y-6">
+    {# "Meine Events" — show only what was bookmarked (client-side, localStorage). #}
+    <div>
+        <label class="flex items-center justify-between gap-2 rounded-xl border px-3 py-2.5 cursor-pointer transition {{ filter.onlySaved ? 'border-brand-400 bg-brand-50' : 'border-black/10 bg-white hover:border-brand-300' }}">
+            <span class="flex items-center gap-2 text-sm font-medium text-ink">
+                <svg class="w-4 h-4 text-brand-600" fill="{{ filter.onlySaved ? 'currentColor' : 'none' }}" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>
+                Nur meine Events
+            </span>
+            <span class="flex items-center gap-2">
+                <span data-save-count class="hidden min-w-5 h-5 px-1.5 inline-flex items-center justify-center rounded-full bg-brand-100 text-brand-800 text-xs font-semibold">0</span>
+                <input type="checkbox" name="meine" value="1" data-meine {{ filter.onlySaved ? 'checked' }} class="w-4 h-4 accent-brand-600">
+            </span>
+        </label>
+        <input type="hidden" name="ids" data-saved-ids-input value="{{ filter.savedIds|join(',') }}" {{ filter.onlySaved ? '' : 'disabled' }}>
+    </div>
+
     {# Search #}
     <div>
         <label class="block text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">Suche</label>
@@ -80,6 +95,8 @@
         var form = document.querySelector('form[data-autosubmit]');
         if (!form) return;
         form.addEventListener('change', function (e) {
+            // The "meine" toggle is handled in saved_events.js (needs to sync IDs first).
+            if (e.target.matches('[data-meine]')) return;
             if (e.target.matches('input[type=checkbox], input[type=radio], select')) {
                 form.requestSubmit();
             }

@@ -1,7 +1,7 @@
 {# A single event row/card. Expects `event`.
    Uses the "stretched link" pattern: the title link covers the whole card via
    a ::before overlay, so the bookmark button (higher z-index) stays clickable. #}
-<div class="group relative flex gap-4 rounded-2xl border border-black/5 bg-white p-4 shadow-sm hover:shadow-md hover:border-brand-200 transition">
+<div data-event-card="{{ event.id }}" class="group relative flex gap-4 rounded-2xl border border-black/5 bg-white p-4 shadow-sm hover:shadow-md hover:border-brand-200 transition">
 
     {# Merken (bookmark) — toggled client-side, see assets/app.js #}
     <button type="button" data-save-btn data-event-id="{{ event.id }}" aria-pressed="false"

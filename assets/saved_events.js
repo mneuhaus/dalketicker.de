@@ -1,9 +1,10 @@
 /*
- * "Events merken" — client-side bookmarks.
+ * "Meine Events" — client-side bookmarks.
  *
  * Saved event IDs live only in this browser's localStorage; nothing is sent to
- * the server, so there's no personal data processing and no consent needed
- * (the feature is user-requested functionality under § 25 TDDDG).
+ * the server except, on demand, the ID list used by the "Nur meine Events"
+ * filter. No personal data is processed and no consent is needed (user-
+ * requested functionality under § 25 TDDDG).
  */
 
 const KEY = 'dalketicker:saved';
@@ -21,10 +22,6 @@ function write(ids) {
     localStorage.setItem(KEY, JSON.stringify(ids));
 }
 
-function isSaved(id) {
-    return read().includes(String(id));
-}
-
 function toggle(id) {
     id = String(id);
     const ids = read();
@@ -35,69 +32,64 @@ function toggle(id) {
         ids.splice(i, 1);
     }
     write(ids);
-    return ids;
+    return i === -1; // true if now saved
 }
 
-/** Reflect saved state on all bookmark buttons + count badges currently in DOM. */
+function onlySavedActive() {
+    return new URLSearchParams(location.search).get('meine') === '1';
+}
+
+/** Reflect saved state on bookmark buttons, count badges and the hidden ID field. */
 function refresh() {
     const ids = read();
+
     document.querySelectorAll('[data-save-btn]').forEach((btn) => {
         const saved = ids.includes(String(btn.dataset.eventId));
         btn.setAttribute('aria-pressed', saved ? 'true' : 'false');
         btn.classList.toggle('is-saved', saved);
         btn.title = saved ? 'Gemerkt – zum Entfernen tippen' : 'Merken';
     });
+
     document.querySelectorAll('[data-save-count]').forEach((el) => {
         el.textContent = ids.length;
         el.classList.toggle('hidden', ids.length === 0);
     });
-}
 
-/** On the "Gemerkt" page: load the saved events as rendered cards. */
-async function renderSavedList() {
-    const list = document.querySelector('[data-saved-list]');
-    const empty = document.querySelector('[data-saved-empty]');
-    if (!list) return;
-
-    const ids = read();
-    if (ids.length === 0) {
-        if (empty) empty.classList.remove('hidden');
-        list.innerHTML = '';
-        return;
-    }
-
-    try {
-        const res = await fetch('/gemerkt/liste?ids=' + encodeURIComponent(ids.join(',')), {
-            headers: { 'X-Requested-With': 'fetch' },
-        });
-        const html = (await res.text()).trim();
-        if (html === '' || !html.includes('data-save-btn')) {
-            if (empty) empty.classList.remove('hidden');
-            list.innerHTML = '';
-        } else {
-            if (empty) empty.classList.add('hidden');
-            list.innerHTML = html;
-            refresh();
-        }
-    } catch (e) {
-        list.innerHTML = '<p class="text-ink/50">Konnte die gemerkten Veranstaltungen nicht laden.</p>';
+    // Keep the hidden IDs field (used by the "Nur meine Events" filter) in sync.
+    const meine = document.querySelector('[data-meine]');
+    const idsInput = document.querySelector('[data-saved-ids-input]');
+    if (idsInput) {
+        idsInput.value = ids.join(',');
+        idsInput.disabled = !(meine && meine.checked);
     }
 }
 
 function init() {
     refresh();
-    renderSavedList();
 
+    // The "Nur meine Events" toggle: sync IDs, then submit.
+    const meine = document.querySelector('[data-meine]');
+    if (meine) {
+        meine.addEventListener('change', () => {
+            refresh(); // updates the hidden IDs field + disabled state
+            meine.form.requestSubmit();
+        });
+    }
+
+    // Bookmark buttons (delegated; works for dynamically present cards too).
     document.addEventListener('click', (e) => {
         const btn = e.target.closest('[data-save-btn]');
         if (!btn) return;
         e.preventDefault();
         e.stopPropagation();
-        toggle(btn.dataset.eventId);
+        const nowSaved = toggle(btn.dataset.eventId);
         refresh();
-        // If we're on the bookmarks page, removing the last one should re-render.
-        if (document.querySelector('[data-saved-list]')) {
-            renderSavedList();
+
+        // When viewing the filtered "meine Events" list, an unsaved card should
+        // disappear right away.
+        if (!nowSaved && onlySavedActive()) {
+            const card = btn.closest('[data-event-card]');
+            if (card) card.remove();
         }
     });
 }

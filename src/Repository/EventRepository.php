@@ -79,34 +79,6 @@ class EventRepository extends ServiceEntityRepository
         return $this->findInRange($start, $start->modify('first day of next month'), $filter);
     }
 
-    /**
-     * Visible events for the given IDs, chronologically ordered. Used by the
-     * client-side "merken" (bookmarks) list, which passes the IDs it stored
-     * in localStorage.
-     *
-     * @param int[] $ids
-     * @return Event[]
-     */
-    public function findVisibleByIds(array $ids): array
-    {
-        $ids = array_values(array_filter(array_map('intval', $ids)));
-        if ($ids === []) {
-            return [];
-        }
-
-        return $this->createQueryBuilder('e')
-            ->leftJoin('e.venue', 'v')->addSelect('v')
-            ->leftJoin('e.category', 'c')->addSelect('c')
-            ->leftJoin('e.source', 's')->addSelect('s')
-            ->andWhere('e.id IN (:ids)')
-            ->andWhere('e.status = :published')
-            ->setParameter('ids', $ids)
-            ->setParameter('published', EventStatus::Published)
-            ->orderBy('e.startsAt', 'ASC')
-            ->getQuery()
-            ->getResult();
-    }
-
     public function findVisible(int $id): ?Event
     {
         return $this->createQueryBuilder('e')
@@ -189,6 +161,14 @@ class EventRepository extends ServiceEntityRepository
             $qb->andWhere('v.city = :city')->setParameter('city', $filter->city);
         }
 
+        if ($filter->onlySaved) {
+            if ($filter->savedIds === []) {
+                $qb->andWhere('1 = 0'); // "meine Events" active but nothing saved
+            } else {
+                $qb->andWhere('e.id IN (:savedIds)')->setParameter('savedIds', $filter->savedIds);
+            }
+        }
+
         return $qb;
     }
 
@@ -198,11 +178,11 @@ class EventRepository extends ServiceEntityRepository
         $now = new \DateTimeImmutable('now', $tz);
 
         // Default lower bound: things that haven't ended yet. An explicit
-        // "von" filter overrides the "ongoing/now" floor.
-        $from = $filter->from ?? $now->setTime(0, 0);
+        // "von" filter overrides the floor; "Meine Events" drops it entirely so
+        // saved past events still show up.
         if ($filter->from !== null) {
-            $qb->andWhere('e.startsAt >= :from')->setParameter('from', $from);
-        } else {
+            $qb->andWhere('e.startsAt >= :from')->setParameter('from', $filter->from);
+        } elseif (!$filter->onlySaved) {
             $qb->andWhere('COALESCE(e.endsAt, e.startsAt) >= :now')->setParameter('now', $now);
         }
 
