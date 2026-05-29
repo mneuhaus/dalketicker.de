@@ -183,7 +183,7 @@ final class CatalogSeeder
             ['stadtmuseum_gt', 'Stadtmuseum Gütersloh', SourceType::Html, 'https://www.stadtmuseum-guetersloh.de/termine', 'manual', 'Gütersloh'],
             ['erfolgskreis_gt', 'Erfolgskreis GT (kreisweit/Tourismus)', SourceType::Html, 'https://www.erfolgskreis-gt.de/veranstaltungen/', 'erfolgskreis_gt', 'Kreis Gütersloh'],
             ['radio_gt', 'Radio Gütersloh Veranstaltungstipps', SourceType::Html, 'https://www.radioguetersloh.de/service/veranstaltungstipps/126484', 'radio_gt', 'Kreis Gütersloh'],
-            ['anno_events', 'ANNO-EVENTS', SourceType::Rss, 'https://anno-events.de/feed/', 'rss', 'Gütersloh'],
+            ['anno_events', 'ANNO-EVENTS', SourceType::Html, 'https://anno-events.de/', 'anno_events', 'Gütersloh'],
             ['flora_westfalica', 'Flora Westfalica', SourceType::Rss, 'https://www.rheda-wiedenbrueck.de/terminerw/rss.xml', 'rss', 'Rheda-Wiedenbrück'],
             ['a2_forum', 'A2 Forum', SourceType::Html, 'https://a2-forum.de/?ical_download=902', 'manual', 'Rheda-Wiedenbrück'],
             ['kloster_wiedenbrueck', 'Kloster Wiedenbrück', SourceType::Html, 'https://kloster-wiedenbrueck.de/programm/', 'jsonld', 'Rheda-Wiedenbrück'],

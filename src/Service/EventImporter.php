@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Entity\Event;
+use App\Entity\ImportRun;
 use App\Entity\Source;
 use App\Enum\EventStatus;
 use App\Importer\ImportedEvent;
@@ -45,6 +46,7 @@ final class EventImporter
         $report = new ImportReport($source->getKey());
         $now = $this->clock->now();
         $this->newKeysThisRun = [];
+        $run = new ImportRun($source, $now, $dryRun);
 
         try {
             $importer = $this->registry->get($source);
@@ -68,7 +70,7 @@ final class EventImporter
                     'OK: %d gesehen, %d neu, %d aktualisiert, %d Duplikate, %d Fehler',
                     $report->seen, $report->created, $report->updated, $report->duplicates, $report->errors,
                 ));
-                $this->em->flush();
+                $this->recordRun($run, $report, null);
             }
         } catch (\Throwable $e) {
             $report->fatal = $e->getMessage();
@@ -77,11 +79,7 @@ final class EventImporter
                 $source->setLastRunAt($now);
                 $source->setLastStatus('FEHLER: '.substr($e->getMessage(), 0, 1024));
                 if (!$dryRun) {
-                    try {
-                        $this->em->flush();
-                    } catch (\Throwable) {
-                        // give up persisting the status rather than crash the run
-                    }
+                    $this->recordRun($run, $report, $e->getMessage());
                 }
             }
             $this->logger->error('Import for source {source} failed: {error}', [
@@ -91,6 +89,23 @@ final class EventImporter
         }
 
         return $report;
+    }
+
+    /** Persist the run record + everything pending in one flush. */
+    private function recordRun(ImportRun $run, ImportReport $report, ?string $fatal): void
+    {
+        $run->complete(
+            $this->clock->now(),
+            $report->seen, $report->created, $report->updated,
+            $report->unchanged, $report->duplicates, $report->errors,
+            $fatal,
+        );
+        try {
+            $this->em->persist($run);
+            $this->em->flush();
+        } catch (\Throwable) {
+            // Monitoring bookkeeping must never crash the import itself.
+        }
     }
 
     private function upsert(Source $source, ImportedEvent $dto, \DateTimeImmutable $now, bool $dryRun, ImportReport $report): void
