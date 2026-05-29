@@ -17,8 +17,13 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  *   2. a German date (and optional time) parsed from the title or description,
  *   3. the publication date (pubDate / atom:published) as a last resort.
  *
- * No remote images are taken over (legally safe); imageUrl stays null and the
- * item link is always used as the sourceUrl pointing to the original page.
+ * If the feed item carries an image in its already-loaded markup (Media RSS
+ * media:content / media:thumbnail, an image <enclosure>, or the first <img> in
+ * the content/description HTML), it is hotlinked as imageUrl (the original URL,
+ * never downloaded or re-hosted). Relative image URLs are resolved against the
+ * item link / feed URL. No extra detail requests are made; imageUrl stays null
+ * when the item has no usable image. The item link is always used as the
+ * sourceUrl pointing to the original page.
  *
  * Optional source config:
  *   - city:        default city for every event
@@ -76,7 +81,7 @@ final class RssImporter implements SourceImporter
 
         $config = $source->getConfig();
         foreach ($this->items($xml) as $item) {
-            $event = $this->mapItem($item, $config);
+            $event = $this->mapItem($item, $config, $url);
             if ($event !== null) {
                 yield $event;
             }
@@ -104,7 +109,7 @@ final class RssImporter implements SourceImporter
     /**
      * Normalizes RSS <item> and Atom <entry> into a flat field array.
      *
-     * @return iterable<array{title: string, link: string, description: string, categories: list<string>, published: ?string}>
+     * @return iterable<array{title: string, link: string, description: string, categories: list<string>, published: ?string, image: ?string}>
      */
     private function items(\SimpleXMLElement $xml): iterable
     {
@@ -120,7 +125,7 @@ final class RssImporter implements SourceImporter
     }
 
     /**
-     * @return array{title: string, link: string, description: string, categories: list<string>, published: ?string}
+     * @return array{title: string, link: string, description: string, categories: list<string>, published: ?string, image: ?string}
      */
     private function normalizeNode(\SimpleXMLElement $node): array
     {
@@ -157,7 +162,66 @@ final class RssImporter implements SourceImporter
             'description' => $body,
             'categories' => $categories,
             'published' => $published,
+            'image' => $this->extractImage($node, $body),
         ];
+    }
+
+    /**
+     * Pulls a single image URL from the item's already-loaded markup, in order
+     * of decreasing reliability: Media RSS media:content / media:thumbnail, an
+     * image <enclosure>, then the first <img src> in the content/description
+     * HTML. No extra HTTP requests are made. The returned URL may be relative;
+     * it is resolved against the item link / feed URL in {@see mapItem()}.
+     */
+    private function extractImage(\SimpleXMLElement $node, string $body): ?string
+    {
+        $media = $node->children('media', true);
+
+        // Media RSS <media:content url="..." medium="image" type="image/...">.
+        foreach ($media->content as $content) {
+            $medium = (string) $content['medium'];
+            $type = (string) $content['type'];
+            if ($medium === 'image' || str_starts_with($type, 'image/') || ($medium === '' && $type === '')) {
+                $url = trim((string) $content['url']);
+                if ($url !== '') {
+                    return $url;
+                }
+            }
+        }
+
+        // Media RSS <media:thumbnail url="...">.
+        foreach ($media->thumbnail as $thumb) {
+            $url = trim((string) $thumb['url']);
+            if ($url !== '') {
+                return $url;
+            }
+        }
+
+        // RSS <enclosure url="..." type="image/...">.
+        foreach ($node->enclosure as $enclosure) {
+            $type = (string) $enclosure['type'];
+            $url = trim((string) $enclosure['url']);
+            if ($url !== '' && ($type === '' ? $this->looksLikeImageUrl($url) : str_starts_with($type, 'image/'))) {
+                return $url;
+            }
+        }
+
+        // First <img src> inside the content/description HTML.
+        if ($body !== '' && preg_match('/<img\b[^>]*?\bsrc\s*=\s*["\']([^"\']+)["\']/i', $body, $m)) {
+            $url = trim(html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+            if ($url !== '') {
+                return $url;
+            }
+        }
+
+        return null;
+    }
+
+    private function looksLikeImageUrl(string $url): bool
+    {
+        $path = parse_url($url, PHP_URL_PATH);
+
+        return \is_string($path) && preg_match('/\.(jpe?g|png|gif|webp|avif)$/i', $path) === 1;
     }
 
     private function extractLink(\SimpleXMLElement $node): string
@@ -185,9 +249,9 @@ final class RssImporter implements SourceImporter
     }
 
     /**
-     * @param array{title: string, link: string, description: string, categories: list<string>, published: ?string} $item
+     * @param array{title: string, link: string, description: string, categories: list<string>, published: ?string, image: ?string} $item
      */
-    private function mapItem(array $item, array $config): ?ImportedEvent
+    private function mapItem(array $item, array $config, string $feedUrl): ?ImportedEvent
     {
         $title = $this->cleanTitle($item['title']);
         if ($title === '') {
@@ -220,7 +284,7 @@ final class RssImporter implements SourceImporter
             locationText: $this->deriveVenue($descriptionText),
             categorySlug: $this->mapCategory($item['categories'], $config),
             sourceUrl: $item['link'] !== '' ? $item['link'] : null,
-            imageUrl: null,
+            imageUrl: $this->resolveImage($item['image'], $item['link'], $feedUrl),
             externalId: $item['link'] !== '' ? $item['link'] : null,
             raw: [
                 'title' => $item['title'],
@@ -230,6 +294,78 @@ final class RssImporter implements SourceImporter
                 'derivedFromPubDate' => $usedFallback ? '1' : '0',
             ],
         );
+    }
+
+    /**
+     * Resolves the (possibly relative) image URL to an absolute hotlink URL.
+     * Already-absolute http(s) and protocol-relative URLs are passed through;
+     * relative ones are resolved against the item link, falling back to the
+     * feed URL. Returns null when no usable absolute URL can be formed.
+     */
+    private function resolveImage(?string $image, string $itemLink, string $feedUrl): ?string
+    {
+        $image = trim((string) $image);
+        if ($image === '') {
+            return null;
+        }
+
+        if (str_starts_with($image, '//')) {
+            $scheme = parse_url($itemLink !== '' ? $itemLink : $feedUrl, PHP_URL_SCHEME);
+
+            return (\is_string($scheme) && $scheme !== '' ? $scheme : 'https').':'.$image;
+        }
+
+        $scheme = parse_url($image, PHP_URL_SCHEME);
+        if ($scheme === 'http' || $scheme === 'https') {
+            return $image;
+        }
+        // Reject non-http schemes (data:, javascript:, ...).
+        if (\is_string($scheme) && $scheme !== '') {
+            return null;
+        }
+
+        $base = $itemLink !== '' ? $itemLink : $feedUrl;
+
+        return $this->resolveRelativeUrl($image, $base);
+    }
+
+    /** Resolves a relative URL against an absolute base URL (RFC 3986-ish). */
+    private function resolveRelativeUrl(string $relative, string $base): ?string
+    {
+        $parts = parse_url($base);
+        if ($parts === false || empty($parts['scheme']) || empty($parts['host'])) {
+            return null;
+        }
+
+        $origin = $parts['scheme'].'://'.$parts['host'].(isset($parts['port']) ? ':'.$parts['port'] : '');
+
+        if (str_starts_with($relative, '/')) {
+            return $origin.$relative;
+        }
+
+        $basePath = $parts['path'] ?? '/';
+        $dir = str_contains($basePath, '/') ? substr($basePath, 0, strrpos($basePath, '/') + 1) : '/';
+
+        return $origin.$this->normalizePath($dir.$relative);
+    }
+
+    /** Collapses "." and ".." segments in a path. */
+    private function normalizePath(string $path): string
+    {
+        $segments = explode('/', $path);
+        $out = [];
+        foreach ($segments as $segment) {
+            if ($segment === '' || $segment === '.') {
+                continue;
+            }
+            if ($segment === '..') {
+                array_pop($out);
+                continue;
+            }
+            $out[] = $segment;
+        }
+
+        return '/'.implode('/', $out);
     }
 
     /** Strips a trailing " - DD.MM.YY[YY], HH:MM" date suffix from the title. */

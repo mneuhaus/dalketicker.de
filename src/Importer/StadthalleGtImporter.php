@@ -23,7 +23,9 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  * carries the full date ("21. Oktober 2026"), time ("20.00 Uhr"), room, price,
  * organizer and a per-occurrence list (div.event-date-block) for series.
  *
- * No images are imported. sourceUrl always points at the detail page.
+ * The per-event hero image is taken from the detail page's og:image meta tag
+ * (already loaded while parsing, so no extra requests) and hotlinked as-is.
+ * sourceUrl always points at the detail page.
  */
 #[AutoconfigureTag('app.source_importer')]
 final class StadthalleGtImporter implements SourceImporter
@@ -226,6 +228,7 @@ final class StadthalleGtImporter implements SourceImporter
         }
 
         $description = $this->metaDescription($crawler);
+        $imageUrl = $this->ogImage($crawler);
 
         // Venue: room head + venue name ("Großer Saal" / "Stadthalle").
         $room = $this->firstText($crawler, '.event-location-head');
@@ -248,6 +251,7 @@ final class StadthalleGtImporter implements SourceImporter
             $title,
             $subtitle,
             $description,
+            $imageUrl,
             $venueName,
             $city,
             $organizer,
@@ -305,7 +309,7 @@ final class StadthalleGtImporter implements SourceImporter
                 locationText: $venueName,
                 categorySlug: $categorySlug,
                 sourceUrl: $url,
-                imageUrl: null,
+                imageUrl: $imageUrl,
                 price: $price,
                 organizer: $organizer,
                 externalId: 'stadthalle_gt:' . $slug . ':' . $start->format('Y-m-d-Hi'),
@@ -435,6 +439,32 @@ final class StadthalleGtImporter implements SourceImporter
                     return mb_substr($content, 0, 500);
                 }
             }
+        }
+
+        return null;
+    }
+
+    /**
+     * Returns the absolute og:image URL of a detail page (hotlinked, not
+     * downloaded), or null when none is present. The source occasionally emits
+     * a doubled slash after the host ("…de//fileadmin/…"), which we collapse.
+     */
+    private function ogImage(Crawler $crawler): ?string
+    {
+        foreach (['meta[property="og:image"]', 'meta[name="twitter:image"]'] as $sel) {
+            $node = $crawler->filter($sel);
+            if (!$node->count()) {
+                continue;
+            }
+            $content = trim($node->first()->attr('content') ?? '');
+            if ($content === '') {
+                continue;
+            }
+            $url = $this->absolute($content);
+            // Collapse a stray double slash in the path (but keep "https://").
+            $url = preg_replace('#([^:])//+#', '$1/', $url) ?? $url;
+
+            return $url;
         }
 
         return null;

@@ -58,14 +58,14 @@ final class BambiKinoImporter implements SourceImporter
         $events = $crawler->filter('.wp_theatre_event');
 
         foreach ($events as $node) {
-            $event = $this->mapEvent(new Crawler($node), $city, $venue);
+            $event = $this->mapEvent(new Crawler($node), $city, $venue, $url);
             if ($event !== null) {
                 yield $event;
             }
         }
     }
 
-    private function mapEvent(Crawler $node, string $city, string $venue): ?ImportedEvent
+    private function mapEvent(Crawler $node, string $city, string $venue, string $baseUrl): ?ImportedEvent
     {
         $titleLink = $node->filter('.wp_theatre_event_title a');
         if ($titleLink->count() === 0) {
@@ -91,7 +91,7 @@ final class BambiKinoImporter implements SourceImporter
             locationText: $venue.', '.$city,
             categorySlug: $this->mapCategory($node),
             sourceUrl: $href !== '' ? $href : null,
-            imageUrl: null,
+            imageUrl: $this->extractImage($node, $baseUrl), // hotlink to the poster, never hosted
             organizer: $venue,
             externalId: $this->externalId($href, $start),
             raw: [
@@ -161,6 +161,50 @@ final class BambiKinoImporter implements SourceImporter
 
         // A cinema screening that didn't match a specific theme.
         return 'sonstiges';
+    }
+
+    /**
+     * Each `.wp_theatre_event` block opens with a `<figure><img>` carrying the
+     * film poster (already absolute, but we still resolve to be safe). The
+     * `src` is the small list thumbnail; nothing to download, we just hotlink.
+     */
+    private function extractImage(Crawler $node, string $baseUrl): ?string
+    {
+        $img = $node->filter('figure img, img.wp-post-image, img');
+        if ($img->count() === 0) {
+            return null;
+        }
+        $src = trim($img->first()->attr('src') ?? '');
+        if ($src === '') {
+            return null;
+        }
+
+        return $this->absolutize($src, $baseUrl);
+    }
+
+    private function absolutize(string $href, string $baseUrl): ?string
+    {
+        $href = html_entity_decode($href, \ENT_QUOTES | \ENT_HTML5);
+        if (preg_match('#^https?://#i', $href)) {
+            return $href;
+        }
+        if (str_starts_with($href, '//')) {
+            $scheme = parse_url($baseUrl, PHP_URL_SCHEME);
+
+            return (\is_string($scheme) && $scheme !== '' ? $scheme : 'https').':'.$href;
+        }
+        $base = parse_url($baseUrl);
+        if ($base === false || !isset($base['scheme'], $base['host'])) {
+            return null;
+        }
+        $origin = $base['scheme'].'://'.$base['host'].(isset($base['port']) ? ':'.$base['port'] : '');
+        if (str_starts_with($href, '/')) {
+            return $origin.$href;
+        }
+        $path = $base['path'] ?? '/';
+        $dir = substr($path, 0, strrpos($path, '/') ?: 0);
+
+        return $origin.$dir.'/'.$href;
     }
 
     /** Per-screening id: film slug + start, so repeated screenings stay distinct. */

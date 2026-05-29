@@ -96,6 +96,11 @@ final class StadtGtImporter implements SourceImporter
             $seen[$dedup] = true;
             ++$count;
 
+            // The list entry already carries the event thumbnail (lazy-loaded:
+            // the real URL sits in data-src, src is a placeholder). Hotlink the
+            // original; no extra request needed.
+            $imageUrl = $this->imageFromListEntry($entry);
+
             $venueName = null;
             $locationText = null;
             $description = null;
@@ -125,7 +130,7 @@ final class StadtGtImporter implements SourceImporter
                 locationText: $locationText,
                 categorySlug: $this->mapCategory($title, $description),
                 sourceUrl: $detailUrl,
-                imageUrl: null, // never adopt foreign images
+                imageUrl: $imageUrl,
                 externalId: $externalId !== '' ? $externalId : null,
                 raw: [
                     'detailUrl' => $detailUrl,
@@ -253,6 +258,34 @@ final class StadtGtImporter implements SourceImporter
         }
 
         return [$start, $end];
+    }
+
+    /**
+     * Extract the event thumbnail from a list entry and return its absolute
+     * original URL (hotlink). Images are lazy-loaded, so the real source is in
+     * `data-src`; `src` only holds an inline placeholder SVG.
+     */
+    private function imageFromListEntry(Crawler $entry): ?string
+    {
+        $imgNodes = $entry->filter('.listEntryThumbnail img');
+        if ($imgNodes->count() === 0) {
+            $imgNodes = $entry->filter('img');
+            if ($imgNodes->count() === 0) {
+                return null;
+            }
+        }
+        $img = $imgNodes->first();
+
+        $src = $img->attr('data-src');
+        if (!is_string($src) || trim($src) === '' || str_starts_with($src, 'data:')) {
+            $src = $img->attr('src');
+        }
+        $src = is_string($src) ? trim($src) : '';
+        if ($src === '' || str_starts_with($src, 'data:')) {
+            return null;
+        }
+
+        return $this->absoluteUrl($src);
     }
 
     private function firstText(Crawler $scope, string $selector): string

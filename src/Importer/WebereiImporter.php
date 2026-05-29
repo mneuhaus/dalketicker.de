@@ -7,6 +7,7 @@ namespace App\Importer;
 use App\Entity\Source;
 use Symfony\Component\DependencyInjection\Attribute\AutoconfigureTag;
 use Symfony\Component\DomCrawler\Crawler;
+use Symfony\Component\DomCrawler\UriResolver;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
@@ -22,7 +23,8 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  *   - a date line (p.event-meta) in the form "DD.MM.YYYY | HH:MM Uhr"
  *
  * Tiles without an event-meta date (e.g. evergreen posts like vouchers) are
- * skipped. No images are imported; sourceUrl always points at the detail page.
+ * skipped. sourceUrl always points at the detail page; the tile's portfolio
+ * thumbnail (span.et_portfolio_image img) is hotlinked as imageUrl.
  */
 #[AutoconfigureTag('app.source_importer')]
 final class WebereiImporter implements SourceImporter
@@ -103,7 +105,7 @@ final class WebereiImporter implements SourceImporter
             locationText: $venue.', '.$city,
             categorySlug: $this->mapCategory($item),
             sourceUrl: $detailUrl,
-            imageUrl: null,
+            imageUrl: $this->imageUrl($item),
             externalId: $this->externalId($item, $detailUrl),
             raw: [
                 'dateText' => trim($dateNode->text('')),
@@ -126,6 +128,39 @@ final class WebereiImporter implements SourceImporter
         }
 
         return null;
+    }
+
+    /**
+     * Hotlink the tile's portfolio thumbnail. Divi already renders an absolute
+     * full-size src; we resolve it against the base URL defensively and ignore
+     * inline data: placeholders.
+     */
+    private function imageUrl(Crawler $item): ?string
+    {
+        $img = $item->filter('span.et_portfolio_image img');
+        if ($img->count() === 0) {
+            $img = $item->filter('img');
+        }
+        if ($img->count() === 0) {
+            return null;
+        }
+
+        $src = trim((string) $img->first()->attr('src'));
+        if ($src === '' || str_starts_with($src, 'data:')) {
+            return null;
+        }
+
+        if (preg_match('#^https?://#i', $src)) {
+            return $src;
+        }
+
+        // Resolve a relative src against the document base URL.
+        $base = $item->getUri();
+        if ($base === null) {
+            return null;
+        }
+
+        return UriResolver::resolve($src, $base);
     }
 
     /** Parse "29.05.2026 | 18:00 Uhr" (whitespace/newlines tolerated). */

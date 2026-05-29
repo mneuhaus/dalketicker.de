@@ -22,8 +22,9 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  *   - `.teaser-info-location` with the venue (Studiobühne, Theatersaal, ...).
  *   - `.teaser-info-label a` linking to a `/rubrik/<slug>` category.
  *   - `.teaser-detail h3` with the title, wrapped in `/veranstaltung/<slug>`.
+ *   - `.teaser-image img` with a processed thumbnail (relative `/fileadmin/...`).
  *
- * No images are imported; sourceUrl always points at the detail page.
+ * The processed thumbnail is hotlinked as-is; sourceUrl points at the detail page.
  */
 #[AutoconfigureTag('app.source_importer')]
 final class TheaterGtImporter implements SourceImporter
@@ -109,6 +110,10 @@ final class TheaterGtImporter implements SourceImporter
             $rubrikHref = $this->attr($teaser, '.teaser-info-label a', 'href');
             $rubrikLabel = $this->text($teaser, '.teaser-info-label a');
 
+            // Per-event thumbnail lives in `.teaser-image img`; scope tightly so
+            // the clock glyph `<img>` inside `.teaser-info-time` is never picked.
+            $imageUrl = $this->absolute($this->attr($teaser, '.teaser-image img', 'src'));
+
             yield new ImportedEvent(
                 title: $title,
                 startsAt: $start,
@@ -118,7 +123,7 @@ final class TheaterGtImporter implements SourceImporter
                 locationText: $venue,
                 categorySlug: $this->mapCategory($rubrikHref, $rubrikLabel),
                 sourceUrl: $sourceUrl,
-                imageUrl: null,
+                imageUrl: $imageUrl,
                 organizer: 'Theater Gütersloh',
                 externalId: $externalId,
                 raw: array_filter([

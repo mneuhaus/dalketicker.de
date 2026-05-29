@@ -20,8 +20,9 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  * link `/events/view/{ID}`, the title, optional subtitle, location and category
  * tags. We parse those directly, no per-event ICS fetch needed.
  *
- * Per the project rules we never copy foreign images (imageUrl stays null) and
- * always link back to the original detail page via sourceUrl.
+ * Each row also carries a `.g-thumb a.list-thumb img` thumbnail; we hotlink it
+ * (absolute URL, never downloaded) and always link back to the original detail
+ * page via sourceUrl.
  */
 #[AutoconfigureTag('app.source_importer')]
 final class AufSchluerImporter implements SourceImporter
@@ -126,7 +127,7 @@ final class AufSchluerImporter implements SourceImporter
             locationText: $locationText,
             categorySlug: $this->mapCategory($row),
             sourceUrl: $sourceUrl,
-            imageUrl: null,
+            imageUrl: $this->extractImageUrl($row),
             externalId: $externalId,
             raw: [
                 'href' => $href,
@@ -199,6 +200,22 @@ final class AufSchluerImporter implements SourceImporter
         }
 
         return null;
+    }
+
+    /** Per-row thumbnail, hotlinked as an absolute URL (never downloaded). */
+    private function extractImageUrl(Crawler $row): ?string
+    {
+        $img = $row->filter('div.g-thumb a.list-thumb img');
+        if ($img->count() === 0) {
+            return null;
+        }
+
+        $src = trim((string) $img->first()->attr('src'));
+        if ($src === '') {
+            return null;
+        }
+
+        return $this->absoluteUrl($src);
     }
 
     private function extractEventId(string $href): ?string

@@ -19,8 +19,9 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  * a bare listing. When the listing page carries no Event objects, the importer
  * discovers detail links from the HTML and fetches their JSON-LD (capped).
  *
- * Legally safe: never imports remote images (imageUrl stays null) and always
- * points sourceUrl at the original detail page.
+ * Images are hotlinked (never downloaded/hosted): the schema.org `image` of the
+ * event — already present in the loaded JSON-LD — is exposed as an absolute URL
+ * on imageUrl. sourceUrl always points at the original detail page.
  *
  * Optional source config:
  *   - city:        default city when the JSON-LD location has no place
@@ -245,7 +246,7 @@ final class JsonLdImporter implements SourceImporter
             locationText: $locationText,
             categorySlug: $config['category'] ?? null,
             sourceUrl: $sourceUrl,
-            imageUrl: null, // never import remote images
+            imageUrl: $this->mapImage($event['image'] ?? null, $fallbackUrl), // hotlink, never hosted
             price: $this->offerPrice($event['offers'] ?? null),
             organizer: $this->nameOf($event['organizer'] ?? null) ?: null,
             externalId: $sourceUrl !== $fallbackUrl ? $sourceUrl : ($sourceUrl.'#'.$start->format('Y-m-d')),
@@ -285,6 +286,32 @@ final class JsonLdImporter implements SourceImporter
         $locationText = trim(($name ?? '').($addressText !== '' ? ', '.$addressText : ''), ', ');
 
         return [$name, $city, $locationText !== '' ? $locationText : null];
+    }
+
+    /**
+     * Resolve the schema.org `image` of an event to a single absolute URL.
+     * Accepts a string URL, a list of those, or an ImageObject carrying
+     * `url`/`contentUrl`. Relative URLs are resolved against the page URL.
+     * No extra HTTP requests: the value is already part of the loaded JSON-LD.
+     */
+    private function mapImage(mixed $image, string $baseUrl): ?string
+    {
+        if (\is_array($image) && array_is_list($image)) {
+            $image = $image[0] ?? null;
+        }
+
+        $candidate = '';
+        if (\is_string($image)) {
+            $candidate = trim($image);
+        } elseif (\is_array($image)) {
+            $candidate = $this->str($image['url'] ?? '') ?: $this->str($image['contentUrl'] ?? '');
+        }
+
+        if ($candidate === '') {
+            return null;
+        }
+
+        return $this->absolutize($candidate, $baseUrl);
     }
 
     private function offerUrl(mixed $offers): string

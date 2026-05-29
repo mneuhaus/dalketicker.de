@@ -165,6 +165,7 @@ final class CatalogSeeder
             'jsonld', 'rss', 'stadt_gt', 'auf_schluer', 'theater_gt', 'stadthalle_gt',
             'weberei', 'bambi_kino', 'wapelbad', 'erfolgskreis_gt', 'radio_gt', 'wilhalm',
             'kgb_langenberg', 'stadtbib_gt', 'vhs_gt', 'vhs_re', 'ics', 'anno_events',
+            'dreiecksplatz', 'wolpertinger', 'flowl', 'marktcom', 'gtv1879', 'json',
         ];
 
         // [key => [name, type, url, importer, city]]
@@ -214,6 +215,11 @@ final class CatalogSeeder
             ['gem_langenberg', 'Gemeinde Langenberg Veranstaltungskalender', SourceType::Ics, 'https://www.langenberg.de/startseite/leben-in-langenberg/freizeit-sport-gastronomie-veranstaltungen/veranstaltungen/event.ics?weekends=false&tagMode=ALL', 'ics', 'Langenberg'],
             ['langenberg_app', 'Langenberg App', SourceType::Ics, 'https://www.langenberg-app.de/frontend-event/exporticalendar/{eventId}/{timestamp}', 'ics', 'Langenberg'],
             ['kgb_langenberg', 'KGB Langenberg', SourceType::Rss, 'https://kgb-langenberg.de/feed/', 'kgb_langenberg', 'Langenberg'],
+            ['dreiecksplatz', 'Dreiecksplatz Gütersloh – Freitag 18', SourceType::Html, 'https://www.dreiecksplatz-gt.de/events/freitag-18/2026/', 'dreiecksplatz', 'Gütersloh'],
+            ['wolpertinger', 'Wolpertinger – Der Spieleladen', SourceType::Html, 'https://wolpertinger-der-spieleladen.de/', 'wolpertinger', 'Gütersloh'],
+            ['flowl', 'flowl Flohmarktkalender (Kreis GT)', SourceType::Json, 'https://flowl.de/wp-json/tribe/events/v1/events?per_page=50&page=1&search=Gütersloh', 'flowl', 'Kreis Gütersloh'],
+            ['marktcom', 'marktcom Marktverzeichnis (Kreis GT)', SourceType::Html, 'https://www.marktcom.de/termine/verzeichnis?q[event_bundesland_matches]=Nordrhein-Westfalen&q[event_landkreis_matches]=Gütersloh', 'marktcom', 'Kreis Gütersloh'],
+            ['gtv1879', 'GTV 1879 – Termine', SourceType::Html, 'https://gtv1879.de/termine/', 'gtv1879', 'Gütersloh'],
         ];
 
         $out = [];

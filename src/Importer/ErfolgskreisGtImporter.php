@@ -25,6 +25,9 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  * Each REST item can carry several occurrences (timeIntervals); we emit one
  * {@see ImportedEvent} per occurrence so recurring events appear on each date.
  *
+ * The feed already exposes a per-event image in media_objects, so we hotlink
+ * that absolute (dam.destination.one) URL instead of fetching/rehosting it.
+ *
  * Optional source config:
  *   - experience:   override the et4 experience id (default: erfolgskreis-gt)
  *   - licensekey:   override/static fallback token (discouraged, expires)
@@ -210,6 +213,7 @@ final class ErfolgskreisGtImporter implements SourceImporter
         $description = $this->extractDescription($item);
         $price = $this->extractText($item, 'PRICE_INFO');
         $categorySlug = $this->mapCategory($item['categories'] ?? []);
+        $imageUrl = $this->extractImageUrl($item['media_objects'] ?? null);
 
         $address = (\is_array($item['addresses'] ?? null) && isset($item['addresses'][0]) && \is_array($item['addresses'][0]))
             ? $item['addresses'][0]
@@ -257,7 +261,7 @@ final class ErfolgskreisGtImporter implements SourceImporter
                 locationText: $locationText,
                 categorySlug: $categorySlug,
                 sourceUrl: $sourceUrl,
-                imageUrl: null,
+                imageUrl: $imageUrl,
                 price: $price,
                 organizer: $organizer,
                 externalId: $externalId,
@@ -359,6 +363,46 @@ final class ErfolgskreisGtImporter implements SourceImporter
         }
 
         return null;
+    }
+
+    /**
+     * Hotlink the original event image from the feed's media_objects (no
+     * extra request, no rehosting). Prefer the "default" relation, then the
+     * highest-priority image/* object; URLs are already absolute.
+     *
+     * @param mixed $mediaObjects
+     */
+    private function extractImageUrl($mediaObjects): ?string
+    {
+        if (!\is_array($mediaObjects)) {
+            return null;
+        }
+
+        $best = null;
+        $bestPrio = \PHP_INT_MIN;
+        foreach ($mediaObjects as $media) {
+            if (!\is_array($media)) {
+                continue;
+            }
+            $url = trim((string) ($media['url'] ?? ''));
+            if ($url === '' || !preg_match('#^https?://#i', $url)) {
+                continue;
+            }
+            $type = (string) ($media['type'] ?? '');
+            if ($type !== '' && !str_starts_with($type, 'image/')) {
+                continue;
+            }
+            if (($media['rel'] ?? null) === 'default') {
+                return $url;
+            }
+            $prio = (int) ($media['prio'] ?? 0);
+            if ($best === null || $prio > $bestPrio) {
+                $best = $url;
+                $bestPrio = $prio;
+            }
+        }
+
+        return $best;
     }
 
     /** @param mixed $value ISO-8601 string like 2026-09-18T18:30:00+02:00 */

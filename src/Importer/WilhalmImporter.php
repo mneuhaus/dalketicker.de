@@ -124,7 +124,7 @@ final class WilhalmImporter implements SourceImporter
             locationText: $location !== '' ? $location : null,
             categorySlug: $this->mapCategory($row),
             sourceUrl: $siteUrl,
-            imageUrl: null, // no foreign images, per policy
+            imageUrl: $this->resolveImageUrl($row, $siteUrl), // hotlink, never hosted
             organizer: $this->blank($row['contact_person'] ?? null) ? null : trim((string) $row['contact_person']),
             externalId: $externalId,
             raw: [
@@ -153,6 +153,61 @@ final class WilhalmImporter implements SourceImporter
         }
 
         return null;
+    }
+
+    /**
+     * Resolve the per-event image (already present in the loaded feed, no extra
+     * request) to a single absolute URL we can hotlink. Prefers image_url, falls
+     * back to thumbnail_url. Relative URLs are resolved against the site URL, and
+     * http:// links to the wilhalm host are upgraded to https:// (the same host
+     * serves the images over TLS) to avoid mixed-content warnings.
+     *
+     * @param array<string, mixed> $row
+     */
+    private function resolveImageUrl(array $row, string $siteUrl): ?string
+    {
+        foreach ([$row['image_url'] ?? null, $row['thumbnail_url'] ?? null] as $candidate) {
+            if ($this->blank($candidate)) {
+                continue;
+            }
+
+            $abs = $this->absolutize(trim((string) $candidate), $siteUrl);
+            if ($abs === null) {
+                continue;
+            }
+
+            // Upgrade insecure links to the wilhalm host; HTTPS is available there.
+            if (preg_match('#^http://(www\.)?wilhalm\.de/#i', $abs)) {
+                $abs = 'https://'.substr($abs, \strlen('http://'));
+            }
+
+            return $abs;
+        }
+
+        return null;
+    }
+
+    private function absolutize(string $href, string $baseUrl): ?string
+    {
+        $href = html_entity_decode($href, \ENT_QUOTES | \ENT_HTML5);
+        if (preg_match('#^https?://#i', $href)) {
+            return $href;
+        }
+
+        $base = parse_url($baseUrl);
+        if ($base === false || !isset($base['scheme'], $base['host'])) {
+            return null;
+        }
+
+        $origin = $base['scheme'].'://'.$base['host'].(isset($base['port']) ? ':'.$base['port'] : '');
+        if (str_starts_with($href, '/')) {
+            return $origin.$href;
+        }
+
+        $path = $base['path'] ?? '/';
+        $dir = substr($path, 0, strrpos($path, '/') ?: 0);
+
+        return $origin.$dir.'/'.$href;
     }
 
     private function parseDateTime(mixed $date, mixed $time): ?\DateTimeImmutable
