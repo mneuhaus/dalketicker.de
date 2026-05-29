@@ -1,0 +1,15 @@
+.git
+.gitignore
+var/
+vendor/
+node_modules/
+public/assets/
+assets/vendor/
+.env.local
+.env.*.local
+.docker-initialized
+docker-compose*.yml
+compose*.yaml
+*.md
+.idea/
+.vscode/

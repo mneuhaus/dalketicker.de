@@ -1,0 +1,43 @@
+# syntax=docker/dockerfile:1
+# Production image: FrankenPHP with the application code baked in, assets and
+# autoloader precompiled, running in Symfony's prod environment. TLS is
+# terminated by the host's Traefik, so Caddy just serves plain HTTP on :80.
+
+FROM dunglas/frankenphp:1-php8.4
+
+# PHP extensions for Symfony + PostgreSQL
+RUN install-php-extensions \
+    pdo_pgsql pgsql intl opcache zip gd apcu
+
+COPY docker/php.ini /usr/local/etc/php/conf.d/app.ini
+COPY docker/Caddyfile /etc/frankenphp/Caddyfile
+
+# Composer
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+WORKDIR /app
+
+ENV APP_ENV=prod \
+    APP_DEBUG=0 \
+    # Placeholder; overridden at runtime via compose env.
+    APP_SECRET=build-time-placeholder \
+    DATABASE_URL="postgresql://build:build@localhost:5432/build?serverVersion=16&charset=utf8"
+
+# Install PHP dependencies first for better layer caching.
+COPY composer.json composer.lock symfony.lock ./
+RUN composer install --no-dev --no-scripts --no-progress --prefer-dist --no-autoloader
+
+# Copy the application source.
+COPY . .
+
+# Finalize autoloader, run framework auto-scripts, fetch JS vendors,
+# build Tailwind and compile the asset map.
+RUN composer dump-autoload --no-dev --classmap-authoritative \
+ && composer run-script auto-scripts --no-dev \
+ && php bin/console importmap:install \
+ && php bin/console tailwind:build --minify \
+ && php bin/console asset-map:compile \
+ && php bin/console cache:clear \
+ && chown -R www-data:www-data var
+
+EXPOSE 80

@@ -1,0 +1,62 @@
+# Production deployment for dalketicker.neuhaus.nrw
+# Runs on the shared host behind Traefik (external network "web", certresolver "neuhaus").
+#   docker compose -f docker-compose.prod.yml up -d --build
+# Secrets (APP_SECRET, DB_PASSWORD) come from a sibling .env file (not committed).
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.prod
+    image: dalketicker-app:latest
+    container_name: dalketicker-app
+    restart: always
+    environment:
+      APP_ENV: prod
+      APP_DEBUG: 0
+      APP_SECRET: ${APP_SECRET}
+      TRUSTED_PROXIES: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+      DATABASE_URL: "postgresql://dalke:${DB_PASSWORD}@database:5432/dalketicker?serverVersion=16&charset=utf8"
+      MAILER_DSN: null://null
+      DEFAULT_URI: https://dalketicker.neuhaus.nrw
+    depends_on:
+      database:
+        condition: service_healthy
+    networks:
+      - web
+      - internal
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=web"
+      - "traefik.http.routers.dalketicker.entrypoints=web,websecure"
+      - "traefik.http.routers.dalketicker.tls=true"
+      - "traefik.http.routers.dalketicker.tls.certresolver=neuhaus"
+      - "traefik.http.routers.dalketicker.rule=Host(`dalketicker.neuhaus.nrw`)"
+      - "traefik.http.services.dalketicker.loadbalancer.server.port=80"
+      - "traefik.http.services.dalketicker.loadbalancer.passhostheader=true"
+
+  database:
+    image: postgres:16-alpine
+    container_name: dalketicker-db
+    restart: always
+    environment:
+      POSTGRES_DB: dalketicker
+      POSTGRES_USER: dalke
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - dalketicker-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-d", "dalketicker", "-U", "dalke"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks:
+      - internal
+
+networks:
+  web:
+    external: true
+  internal: {}
+
+volumes:
+  dalketicker-db-data:
