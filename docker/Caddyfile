@@ -1,0 +1,19 @@
+{
+	# Disable FrankenPHP's automatic HTTPS — Traefik terminates TLS for us.
+	frankenphp
+	auto_https off
+}
+
+# Serve plain HTTP on :80; Traefik handles the public HTTPS endpoint.
+:80 {
+	root * /app/public
+	encode zstd br gzip
+
+	# Symfony front controller
+	php_server
+
+	log {
+		output stdout
+		format console
+	}
+}

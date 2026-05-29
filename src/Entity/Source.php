@@ -1,0 +1,173 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Entity;
+
+use App\Enum\SourceType;
+use App\Repository\SourceRepository;
+use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\Mapping as ORM;
+
+/**
+ * An external place we pull events from (city calendar, club site, PDF, ...).
+ * The {@see SourceType} plus the importer key decide which importer reads it.
+ */
+#[ORM\Entity(repositoryClass: SourceRepository::class)]
+#[ORM\Table(name: 'source')]
+class Source
+{
+    #[ORM\Id]
+    #[ORM\GeneratedValue]
+    #[ORM\Column]
+    private ?int $id = null;
+
+    /** Stable machine key, e.g. "stadt_gt", "wapelbad", "gtv1879". */
+    #[ORM\Column(length: 64, unique: true)]
+    private string $key;
+
+    #[ORM\Column(length: 150)]
+    private string $name;
+
+    #[ORM\Column(length: 20, enumType: SourceType::class)]
+    private SourceType $type;
+
+    #[ORM\Column(length: 1024, nullable: true)]
+    private ?string $url = null;
+
+    /** Importer service key; defaults to the type when null. */
+    #[ORM\Column(length: 64, nullable: true)]
+    private ?string $importer = null;
+
+    #[ORM\Column]
+    private bool $enabled = true;
+
+    /** Free-form per-source importer configuration (selectors, mappings, ...). */
+    #[ORM\Column(type: Types::JSON)]
+    private array $config = [];
+
+    #[ORM\Column(type: Types::DATETIME_IMMUTABLE, nullable: true)]
+    private ?\DateTimeImmutable $lastRunAt = null;
+
+    #[ORM\Column(length: 1024, nullable: true)]
+    private ?string $lastStatus = null;
+
+    public function __construct(string $key, string $name, SourceType $type)
+    {
+        $this->key = $key;
+        $this->name = $name;
+        $this->type = $type;
+    }
+
+    public function getId(): ?int
+    {
+        return $this->id;
+    }
+
+    public function getKey(): string
+    {
+        return $this->key;
+    }
+
+    public function getName(): string
+    {
+        return $this->name;
+    }
+
+    public function setName(string $name): static
+    {
+        $this->name = $name;
+
+        return $this;
+    }
+
+    public function getType(): SourceType
+    {
+        return $this->type;
+    }
+
+    public function setType(SourceType $type): static
+    {
+        $this->type = $type;
+
+        return $this;
+    }
+
+    public function getUrl(): ?string
+    {
+        return $this->url;
+    }
+
+    public function setUrl(?string $url): static
+    {
+        $this->url = $url;
+
+        return $this;
+    }
+
+    /** Importer key to use, falling back to the source type's value. */
+    public function getImporter(): string
+    {
+        return $this->importer ?? $this->type->value;
+    }
+
+    public function setImporter(?string $importer): static
+    {
+        $this->importer = $importer;
+
+        return $this;
+    }
+
+    public function isEnabled(): bool
+    {
+        return $this->enabled;
+    }
+
+    public function setEnabled(bool $enabled): static
+    {
+        $this->enabled = $enabled;
+
+        return $this;
+    }
+
+    public function getConfig(): array
+    {
+        return $this->config;
+    }
+
+    public function setConfig(array $config): static
+    {
+        $this->config = $config;
+
+        return $this;
+    }
+
+    public function getLastRunAt(): ?\DateTimeImmutable
+    {
+        return $this->lastRunAt;
+    }
+
+    public function setLastRunAt(?\DateTimeImmutable $lastRunAt): static
+    {
+        $this->lastRunAt = $lastRunAt;
+
+        return $this;
+    }
+
+    public function getLastStatus(): ?string
+    {
+        return $this->lastStatus;
+    }
+
+    public function setLastStatus(?string $lastStatus): static
+    {
+        $this->lastStatus = $lastStatus !== null ? substr($lastStatus, 0, 1024) : null;
+
+        return $this;
+    }
+
+    public function __toString(): string
+    {
+        return $this->name;
+    }
+}

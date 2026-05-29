@@ -1,0 +1,49 @@
+{% extends 'base.html.twig' %}
+
+{% block body %}
+    <div class="mb-6">
+        <h1 class="font-[family-name:var(--font-display)] text-3xl sm:text-4xl font-extrabold tracking-tight text-ink">
+            Was läuft im Kreis Gütersloh?
+        </h1>
+        <p class="text-ink/50 mt-1">{{ total }} kommende Veranstaltung{{ total == 1 ? '' : 'en' }}{% if filter.hasAny %} (gefiltert){% endif %}.</p>
+    </div>
+
+    {{ include('event/_filters.html.twig') }}
+
+    {% if groups is empty %}
+        <div class="text-center py-20 text-ink/50">
+            <div class="text-5xl mb-3">🤷</div>
+            <p class="font-medium">Nichts gefunden.</p>
+            <p class="text-sm mt-1">Probier andere Filter oder schau in den <a href="{{ path('event_month', {year: 'now'|date('Y'), month: 'now'|date('n')}) }}" class="text-brand-700 underline">Kalender</a>.</p>
+        </div>
+    {% else %}
+        <div class="space-y-8">
+            {% for group in groups %}
+                <section>
+                    <div class="flex items-baseline gap-3 mb-3 sticky top-[68px] bg-paper/95 backdrop-blur py-1 z-10">
+                        <h2 class="font-[family-name:var(--font-display)] text-lg font-bold text-brand-800">{{ group.date|de_day_label }}</h2>
+                        <span class="text-xs text-ink/40">{{ group.events|length }} Termin{{ group.events|length == 1 ? '' : 'e' }}</span>
+                        <span class="flex-1 border-b border-dashed border-black/10"></span>
+                    </div>
+                    <div class="grid gap-3">
+                        {% for event in group.events %}
+                            {{ include('event/_card.html.twig', {event: event}) }}
+                        {% endfor %}
+                    </div>
+                </section>
+            {% endfor %}
+        </div>
+
+        {% if pages > 1 %}
+            <nav class="flex justify-center items-center gap-2 mt-10">
+                {% if page > 1 %}
+                    <a href="{{ path('event_index', filter.toQueryParams|merge({seite: page - 1})) }}" class="chip-muted">← Zurück</a>
+                {% endif %}
+                <span class="text-sm text-ink/50">Seite {{ page }} / {{ pages }}</span>
+                {% if page < pages %}
+                    <a href="{{ path('event_index', filter.toQueryParams|merge({seite: page + 1})) }}" class="chip-muted">Weiter →</a>
+                {% endif %}
+            </nav>
+        {% endif %}
+    {% endif %}
+{% endblock %}

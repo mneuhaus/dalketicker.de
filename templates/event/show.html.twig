@@ -1,0 +1,64 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}{{ event.title }} – {{ site_name }}{% endblock %}
+{% block meta_description %}{{ event.description ? event.description|striptags|slice(0, 160) : event.title }}{% endblock %}
+
+{% block body %}
+    <a href="{{ path('event_index') }}" class="text-sm text-ink/50 hover:text-brand-700 inline-flex items-center gap-1 mb-4">← Alle Veranstaltungen</a>
+
+    <article class="bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden">
+        {% if event.imageUrl %}
+            <img src="{{ event.imageUrl }}" alt="" class="w-full max-h-80 object-cover">
+        {% endif %}
+        <div class="p-6 sm:p-8">
+            {% if event.category %}
+                <span class="chip text-white text-xs mb-3" style="background-color: {{ event.category.color }}">
+                    {% if event.category.icon %}{{ event.category.icon }} {% endif %}{{ event.category.name }}
+                </span>
+            {% endif %}
+            <h1 class="font-[family-name:var(--font-display)] text-3xl sm:text-4xl font-extrabold tracking-tight text-ink leading-tight">{{ event.title }}</h1>
+
+            <div class="grid sm:grid-cols-2 gap-4 mt-6">
+                <div class="flex items-start gap-3">
+                    <div class="text-2xl">📅</div>
+                    <div>
+                        <div class="font-semibold text-ink">{{ event.startsAt|de_weekday(true) }}, {{ event.startsAt|de_date(true) }}</div>
+                        <div class="text-ink/60 text-sm">
+                            {% if event.allDay %}ganztägig{% else %}{{ event.startsAt|de_time }}{% if event.endsAt %} – {{ event.endsAt|date('H:i') }} Uhr{% endif %}{% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% if event.displayLocation %}
+                    <div class="flex items-start gap-3">
+                        <div class="text-2xl">📍</div>
+                        <div>
+                            <div class="font-semibold text-ink">{{ event.venue ? event.venue.name : event.locationText }}</div>
+                            {% if event.venue and event.venue.fullAddress %}
+                                <div class="text-ink/60 text-sm">{{ event.venue.fullAddress }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                {% endif %}
+                {% if event.price %}
+                    <div class="flex items-start gap-3"><div class="text-2xl">🎟️</div><div class="font-semibold text-ink">{{ event.price }}</div></div>
+                {% endif %}
+                {% if event.organizer %}
+                    <div class="flex items-start gap-3"><div class="text-2xl">👥</div><div><div class="text-ink/60 text-sm">Veranstalter</div><div class="font-semibold text-ink">{{ event.organizer }}</div></div></div>
+                {% endif %}
+            </div>
+
+            {% if event.description %}
+                <div class="prose prose-sm max-w-none mt-6 text-ink/80 whitespace-pre-line">{{ event.description|striptags("<br><p><a><strong><em><ul><ol><li>")|raw }}</div>
+            {% endif %}
+
+            <div class="mt-8 pt-6 border-t border-black/5 flex flex-wrap items-center gap-3 justify-between">
+                <span class="text-xs text-ink/40">Quelle: {{ event.source.name }}</span>
+                {% if event.sourceUrl %}
+                    <a href="{{ event.sourceUrl }}" target="_blank" rel="noopener" class="rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 transition">
+                        Zum Veranstalter ↗
+                    </a>
+                {% endif %}
+            </div>
+        </div>
+    </article>
+{% endblock %}

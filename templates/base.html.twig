@@ -1,24 +1,53 @@
 <!DOCTYPE html>
-<html>
-    <head>
-        <meta charset="UTF-8">
-        <title>{% block title %}Welcome!{% endblock %}</title>
-        <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 128 128%22><text y=%221.2em%22 font-size=%2296%22>⚫️</text><text y=%221.3em%22 x=%220.2em%22 font-size=%2276%22 fill=%22%23fff%22>sf</text></svg>">
-        {% block stylesheets %}
-        {% endblock %}
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}{{ site_name }} – {{ site_tagline }}{% endblock %}</title>
+    <meta name="description" content="{% block meta_description %}Alle Veranstaltungen im Kreis Gütersloh an einem Ort – Konzerte, Sport, Familie, Kultur und mehr. Endlich übersichtlich.{% endblock %}">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌊</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&display=swap" rel="stylesheet">
+    {% block stylesheets %}{% endblock %}
+    {% block javascripts %}
+        {% block importmap %}{{ importmap('app') }}{% endblock %}
+    {% endblock %}
+</head>
+<body class="min-h-screen flex flex-col">
+    <div class="river-rule h-1 w-full"></div>
 
-        {% block javascripts %}
-            {% block importmap %}{{ importmap('app') }}{% endblock %}
-        {% endblock %}
+    <header class="border-b border-black/5 bg-paper/90 backdrop-blur sticky top-0 z-30">
+        <div class="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between gap-4">
+            <a href="{{ path('event_index') }}" class="flex items-center gap-2 group">
+                <span class="text-2xl">🌊</span>
+                <span class="leading-tight">
+                    <span class="block font-[family-name:var(--font-display)] text-xl font-extrabold tracking-tight text-ink group-hover:text-brand-700 transition">{{ site_name }}</span>
+                    <span class="block text-xs text-ink/50 -mt-0.5">{{ site_tagline }}</span>
+                </span>
+            </a>
+            <nav class="flex items-center gap-1 text-sm font-medium">
+                <a href="{{ path('event_index') }}" class="px-3 py-2 rounded-lg transition {{ view|default('') == 'list' ? 'bg-brand-600 text-white' : 'text-ink/70 hover:bg-black/5' }}">Liste</a>
+                <a href="{{ path('event_month', {year: 'now'|date('Y'), month: 'now'|date('n')}) }}" class="px-3 py-2 rounded-lg transition {{ view|default('') == 'month' ? 'bg-brand-600 text-white' : 'text-ink/70 hover:bg-black/5' }}">Kalender</a>
+            </nav>
+        </div>
+    </header>
 
-        {% set frankenphpHotReload = app.request.server.get('FRANKENPHP_HOT_RELOAD') %}
-        {% if frankenphpHotReload %}
-        <meta name="frankenphp-hot-reload:url" content="{{ frankenphpHotReload }}">
-        <script src="https://cdn.jsdelivr.net/npm/idiomorph"></script>
-        <script src="https://cdn.jsdelivr.net/npm/frankenphp-hot-reload/+esm" type="module"></script>
-        {% endif %}
-    </head>
-    <body>
+    <main class="flex-1 mx-auto max-w-5xl w-full px-4 py-6">
         {% block body %}{% endblock %}
-    </body>
+    </main>
+
+    <footer class="border-t border-black/5 mt-10">
+        <div class="mx-auto max-w-5xl px-4 py-8 text-sm text-ink/50 flex flex-col sm:flex-row justify-between gap-4">
+            <p>
+                <strong class="text-ink/70">{{ site_name }}</strong> · aggregiert Veranstaltungen aus dem Kreis Gütersloh.<br>
+                Alle Angaben ohne Gewähr – maßgeblich ist immer der Veranstalter.
+            </p>
+            <p class="sm:text-right">
+                Ein Projekt aus Gütersloh.<br>
+                <span class="text-ink/40">Quellen werden automatisch zusammengetragen.</span>
+            </p>
+        </div>
+    </footer>
+</body>
 </html>

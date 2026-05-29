@@ -1,11 +1,47 @@
-
 services:
-###> doctrine/doctrine-bundle ###
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: ${HOSTNAME:-dalketicker}-app
+    working_dir: /app
+    environment:
+      APP_ENV: ${APP_ENV:-dev}
+      SERVER_NAME: :80
+      TRUSTED_PROXIES: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-!ChangeMe!}@database:5432/${POSTGRES_DB:-app}?serverVersion=16&charset=utf8"
+      MAILER_DSN: smtp://mailer:1025
+      # SSH agent forwarding (macOS) for git operations inside the container
+      SSH_AUTH_SOCK: /ssh-agent
+    volumes:
+      - ./:/app
+      - ${HOME}/.ssh:/root/.ssh:ro
+      - ${SSH_AUTH_SOCK:-/dev/null}:/ssh-agent:ro
+    depends_on:
+      database:
+        condition: service_healthy
+    networks:
+      - default
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik}"
+      # HTTP -> HTTPS redirect
+      - "traefik.http.routers.${HOSTNAME:-dalketicker}-http.rule=Host(`${APP_HOST:-${HOSTNAME:-dalketicker}.traefik.me}`)"
+      - "traefik.http.routers.${HOSTNAME:-dalketicker}-http.entrypoints=web"
+      - "traefik.http.routers.${HOSTNAME:-dalketicker}-http.middlewares=${HOSTNAME:-dalketicker}-redirect"
+      # HTTPS
+      - "traefik.http.routers.${HOSTNAME:-dalketicker}.rule=Host(`${APP_HOST:-${HOSTNAME:-dalketicker}.traefik.me}`)"
+      - "traefik.http.routers.${HOSTNAME:-dalketicker}.entrypoints=websecure"
+      - "traefik.http.routers.${HOSTNAME:-dalketicker}.tls=true"
+      - "traefik.http.middlewares.${HOSTNAME:-dalketicker}-redirect.redirectscheme.scheme=https"
+      - "traefik.http.services.${HOSTNAME:-dalketicker}.loadbalancer.server.port=80"
+
   database:
     image: postgres:${POSTGRES_VERSION:-16}-alpine
+    container_name: ${HOSTNAME:-dalketicker}-db
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-app}
-      # You should definitely change the password in production
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-!ChangeMe!}
       POSTGRES_USER: ${POSTGRES_USER:-app}
     healthcheck:
@@ -15,11 +51,32 @@ services:
       start_period: 60s
     volumes:
       - database_data:/var/lib/postgresql/data:rw
-      # You may use a bind-mounted host directory instead, so that it is harder to accidentally remove the volume and lose all your data!
-      # - ./docker/db/data:/var/lib/postgresql/data:rw
-###< doctrine/doctrine-bundle ###
+    ports:
+      - "5432"
+    networks:
+      - default
+
+  mailer:
+    image: axllent/mailpit
+    container_name: ${HOSTNAME:-dalketicker}-mailer
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    networks:
+      - default
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik}"
+      - "traefik.http.routers.${HOSTNAME:-dalketicker}-mail.rule=Host(`mail-${HOSTNAME:-dalketicker}.traefik.me`)"
+      - "traefik.http.routers.${HOSTNAME:-dalketicker}-mail.entrypoints=websecure"
+      - "traefik.http.routers.${HOSTNAME:-dalketicker}-mail.tls=true"
+      - "traefik.http.services.${HOSTNAME:-dalketicker}-mail.loadbalancer.server.port=8025"
 
 volumes:
-###> doctrine/doctrine-bundle ###
   database_data:
-###< doctrine/doctrine-bundle ###
+
+networks:
+  traefik:
+    external: true
+    name: ${TRAEFIK_NETWORK:-traefik}

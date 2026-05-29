@@ -1,5 +1,11 @@
 twig:
     file_name_pattern: '*.twig'
+    date:
+        timezone: Europe/Berlin
+        format: 'd.m.Y'
+    globals:
+        site_name: 'Dalketicker'
+        site_tagline: 'Was läuft im Kreis Gütersloh'
 
 when@test:
     twig:

@@ -1,3 +1,54 @@
-body {
-    background-color: skyblue;
+@import "tailwindcss";
+
+/* Make sure Tailwind scans our templates regardless of CWD. */
+@source "../../templates";
+@source "../../src";
+
+@theme {
+  /* Dalke — river teal as the brand accent on a warm paper background. */
+  --color-brand-50: #ecfeff;
+  --color-brand-100: #cffafe;
+  --color-brand-200: #a5f0fc;
+  --color-brand-300: #67e3f9;
+  --color-brand-400: #22ccde;
+  --color-brand-500: #06b0c4;
+  --color-brand-600: #0a8da3;
+  --color-brand-700: #117084;
+  --color-brand-800: #155b6c;
+  --color-brand-900: #164b5b;
+  --color-brand-950: #083240;
+
+  --color-paper: #faf9f6;
+  --color-ink: #1b1d1e;
+
+  --font-display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  /* Subtle "flowing river" top accent line. */
+  .river-rule {
+    background-image: linear-gradient(90deg, var(--color-brand-400), var(--color-brand-700));
+  }
+}
+
+@layer components {
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-medium transition;
+  }
+  .chip-muted {
+    @apply inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-medium transition bg-black/5 text-ink/70 hover:bg-black/10;
+  }
+  .chip-active {
+    @apply inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-medium transition bg-brand-600 text-white shadow-sm;
+  }
 }
