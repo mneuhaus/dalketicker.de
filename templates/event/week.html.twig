@@ -3,9 +3,9 @@
 {% block title %}Woche {{ monday|date('W') }} ({{ monday|de_date }} – {{ sunday|de_date(true) }}) – {{ site_name }}{% endblock %}
 
 {% block content %}
-    <div class="flex items-center justify-between mb-6 gap-4">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-3 sm:gap-4">
         <div>
-            <h1 class="font-[family-name:var(--font-display)] text-3xl font-extrabold tracking-tight text-ink">
+            <h1 class="font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-extrabold tracking-tight text-ink">
                 {{ monday|de_date }} – {{ sunday|de_date(true) }}
             </h1>
             <p class="text-ink/50 mt-1 text-sm">Kalenderwoche {{ monday|date('W') }}</p>

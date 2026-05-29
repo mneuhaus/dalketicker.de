@@ -3,8 +3,8 @@
 {% block title %}Kalender {{ monthDate.format('n')|de_month }} {{ monthDate|date('Y') }} – {{ site_name }}{% endblock %}
 
 {% block content %}
-    <div class="flex items-center justify-between mb-6 gap-4">
-        <h1 class="font-[family-name:var(--font-display)] text-3xl font-extrabold tracking-tight text-ink">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-3 sm:gap-4">
+        <h1 class="font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-extrabold tracking-tight text-ink">
             {{ monthDate.format('n')|de_month }} {{ monthDate|date('Y') }}
         </h1>
         <div class="flex items-center gap-2">
