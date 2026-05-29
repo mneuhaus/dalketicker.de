@@ -1,0 +1,346 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Importer;
+
+use App\Entity\Source;
+use Symfony\Component\DependencyInjection\Attribute\AutoconfigureTag;
+use Symfony\Component\DomCrawler\Crawler;
+use Symfony\Contracts\HttpClient\HttpClientInterface;
+
+/**
+ * HTML importer for VHS course catalogues running on the Kufer Software GmbH
+ * "KuferWEB" platform (TYPO3 + kuferweb extension). Several adult-education
+ * centres in the Kreis Gütersloh share this CMS, so this importer is written
+ * generically and reused across them.
+ *
+ * The course list at the source URL (e.g. https://www.vhs-re.de/programm) is
+ * rendered server-side: each course is a `div.row.kw-table-row` whose
+ * `a.kw-kurstitel` wraps the title, date ("Wann:"), place ("Wo:") and course
+ * number ("Nr.:"). Pagination is classic server-side via
+ * `?browse=forward&kathaupt=1&knr=<nr>&cHash=<hash>` links in
+ * `.kw-paginationleiste`.
+ *
+ * Optional source config:
+ *   - city:        default city (defaults to the source's commune)
+ *   - category:    default category slug
+ *   - maxPages:    pagination safety cap (default 30)
+ */
+#[AutoconfigureTag('app.source_importer')]
+final class KuferHtmlImporter implements SourceImporter
+{
+    private const USER_AGENT = 'Dalketicker/1.0 (+https://dalketicker.neuhaus.nrw)';
+    private const DEFAULT_MAX_PAGES = 30;
+
+    /** robots.txt requests Crawl-delay 5; be polite between page fetches. */
+    private const CRAWL_DELAY_SECONDS = 5;
+
+    public function __construct(private readonly HttpClientInterface $http)
+    {
+    }
+
+    public static function getKey(): string
+    {
+        return 'vhs_re';
+    }
+
+    public function import(Source $source): iterable
+    {
+        $startUrl = $source->getUrl();
+        if (!$startUrl) {
+            throw new \RuntimeException('vhs_re source has no URL.');
+        }
+
+        $config = $source->getConfig();
+        $base = $this->baseUrl($startUrl);
+        $maxPages = (int) ($config['maxPages'] ?? self::DEFAULT_MAX_PAGES);
+
+        $seenPageUrls = [];
+        $seenExternalIds = [];
+        $url = $startUrl;
+        $pages = 0;
+
+        while ($url !== null && $pages < $maxPages) {
+            if (isset($seenPageUrls[$url])) {
+                break;
+            }
+            $seenPageUrls[$url] = true;
+            ++$pages;
+
+            $html = $this->fetch($url);
+            if ($html === null) {
+                break;
+            }
+
+            $crawler = new Crawler($html, $url);
+
+            foreach ($crawler->filter('div.kw-table-row')->each(fn (Crawler $node) => $node) as $row) {
+                $event = $this->mapRow($row, $base, $config);
+                if ($event === null) {
+                    continue;
+                }
+                // Same course number can repeat across pages; skip duplicates.
+                if ($event->externalId !== null) {
+                    if (isset($seenExternalIds[$event->externalId])) {
+                        continue;
+                    }
+                    $seenExternalIds[$event->externalId] = true;
+                }
+                yield $event;
+            }
+
+            $next = $this->nextPageUrl($crawler, $base);
+            $url = ($next !== null && !isset($seenPageUrls[$next])) ? $next : null;
+
+            if ($url !== null) {
+                sleep(self::CRAWL_DELAY_SECONDS);
+            }
+        }
+    }
+
+    private function fetch(string $url): ?string
+    {
+        try {
+            $response = $this->http->request('GET', $url, [
+                'headers' => ['User-Agent' => self::USER_AGENT],
+                'timeout' => 30,
+            ]);
+
+            if ($response->getStatusCode() >= 400) {
+                return null;
+            }
+
+            return $response->getContent();
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    private function mapRow(Crawler $row, string $base, array $config): ?ImportedEvent
+    {
+        $link = $row->filter('a.kw-kurstitel');
+        if ($link->count() === 0) {
+            return null;
+        }
+
+        $href = $link->attr('href');
+        $sourceUrl = $this->absoluteUrl($href, $base);
+
+        // The title cell is the first column div inside the title anchor.
+        $title = '';
+        $titleCol = $link->filter('div')->first();
+        if ($titleCol->count() > 0) {
+            $title = $this->clean($titleCol->text(''));
+        }
+        if ($title === '') {
+            $title = $this->clean($link->text(''));
+        }
+        if ($title === '') {
+            return null;
+        }
+
+        // Labelled cells: "Wann:" (date), "Wo:" (place), "Nr.:" (course no.).
+        $whenText = $this->valueAfterLabel($link, 'Wann');
+        $whereText = $this->valueAfterLabel($link, 'Wo');
+        $courseNo = $this->valueAfterLabel($link, 'Nr');
+
+        $start = $whenText !== null ? $this->parseGermanDate($whenText) : null;
+        if ($start === null) {
+            return null;
+        }
+
+        $externalId = $courseNo !== null && $courseNo !== ''
+            ? $courseNo
+            : $this->idFromUrl($sourceUrl ?? $href);
+
+        $city = $config['city'] ?? null;
+        $venueName = ($whereText !== null && $whereText !== '') ? $whereText : null;
+
+        return new ImportedEvent(
+            title: $title,
+            startsAt: $start,
+            endsAt: null,
+            allDay: false,
+            description: null,
+            venueName: $venueName,
+            city: $city,
+            locationText: $venueName,
+            categorySlug: $this->mapCategory($title, $config),
+            sourceUrl: $sourceUrl,
+            imageUrl: null,
+            price: null,
+            organizer: null,
+            externalId: $externalId,
+            raw: [
+                'when' => $whenText ?? '',
+                'where' => $whereText ?? '',
+                'nr' => $courseNo ?? '',
+            ],
+        );
+    }
+
+    /**
+     * KuferWEB renders, per labelled field, two sibling divs: a label div
+     * (class `kw-table-label`, e.g. "Wann:") immediately followed by the value
+     * div. We locate the label by text and read the next div's content.
+     */
+    private function valueAfterLabel(Crawler $scope, string $label): ?string
+    {
+        $needle = mb_strtolower($label);
+
+        foreach ($scope->filter('div.kw-table-label')->each(fn (Crawler $n) => $n) as $labelNode) {
+            $text = mb_strtolower($this->clean($labelNode->text('')));
+            if (!str_starts_with($text, $needle)) {
+                continue;
+            }
+
+            $value = $labelNode->nextAll()->first();
+            if ($value->count() > 0) {
+                return $this->clean($value->text(''));
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Parse the KuferWEB date format, e.g. "Fr. 29.05.2026, 19.30 Uhr"
+     * (abbreviated weekday + DD.MM.YYYY + HH.MM with a dot separator). The
+     * weekday prefix and time are optional.
+     */
+    private function parseGermanDate(string $text): ?\DateTimeImmutable
+    {
+        $tz = new \DateTimeZone('Europe/Berlin');
+
+        if (!preg_match('/(\d{1,2})\.(\d{1,2})\.(\d{4})/', $text, $d)) {
+            return null;
+        }
+        $day = (int) $d[1];
+        $month = (int) $d[2];
+        $year = (int) $d[3];
+
+        $hour = 0;
+        $minute = 0;
+        $hasTime = false;
+        // Time follows the date: "19.30 Uhr" or "19:30 Uhr".
+        if (preg_match('/(\d{1,2})[.:](\d{2})\s*Uhr/u', $text, $t)) {
+            $hour = (int) $t[1];
+            $minute = (int) $t[2];
+            $hasTime = true;
+        }
+
+        if (!checkdate($month, $day, $year)) {
+            return null;
+        }
+
+        $date = (new \DateTimeImmutable('now', $tz))
+            ->setDate($year, $month, $day)
+            ->setTime($hour, $minute);
+
+        return $hasTime ? $date : $date->setTime(0, 0);
+    }
+
+    /**
+     * Best-effort mapping of a course title to one of the allowed category
+     * slugs. KuferWEB course nrs/titles do not carry a clean category, so we
+     * keyword-match and otherwise fall back to "bildung" (VHS courses) or the
+     * configured default.
+     */
+    private function mapCategory(string $title, array $config): ?string
+    {
+        $haystack = mb_strtolower($title);
+
+        $rules = [
+            'musik' => ['gitarre', 'gesang', 'chor', 'klavier', 'ukulele', 'musik', 'singen'],
+            'sport' => ['yoga', 'pilates', 'sup', 'paddl', 'kanu', 'fitness', 'wandern', 'gymnastik', 'rücken', 'lauf', 'schwimm', 'tanz'],
+            'kunst' => ['malen', 'zeichn', 'aquarell', 'fotografie', 'töpfer', 'toepfer', 'keramik', 'kreativ', 'nähen', 'naehen'],
+            'genuss' => ['kochen', 'kochkurs', 'backen', 'wein', 'kulinar', 'mediterran'],
+            'buehne' => ['theater', 'poetry slam', 'lesung', 'kabarett'],
+            'familie' => ['kinder', 'eltern', 'familie', 'junge vhs'],
+        ];
+
+        foreach ($rules as $slug => $keywords) {
+            foreach ($keywords as $kw) {
+                if (str_contains($haystack, $kw)) {
+                    return $slug;
+                }
+            }
+        }
+
+        return $config['category'] ?? 'bildung';
+    }
+
+    private function nextPageUrl(Crawler $crawler, string $base): ?string
+    {
+        $forward = $crawler->filter('.kw-paginationleiste .forward a');
+        if ($forward->count() === 0) {
+            return null;
+        }
+
+        $href = $forward->first()->attr('href');
+        if ($href === null || $href === '') {
+            return null;
+        }
+
+        return $this->absoluteUrl($href, $base);
+    }
+
+    private function idFromUrl(?string $url): ?string
+    {
+        if ($url === null) {
+            return null;
+        }
+        // .../kurs/<slug>/<courseNr>  or .../kurssuche/kurs/<courseNr>
+        if (preg_match('#/kurs/[^/]+/([^/#?]+)#', $url, $m)) {
+            return $m[1];
+        }
+        if (preg_match('#/kurs/([^/#?]+)#', $url, $m)) {
+            return $m[1];
+        }
+
+        return null;
+    }
+
+    private function clean(string $value): string
+    {
+        $value = html_entity_decode($value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $value = preg_replace('/\x{00a0}/u', ' ', $value) ?? $value;
+        $value = preg_replace('/\s+/u', ' ', $value) ?? $value;
+
+        return trim($value);
+    }
+
+    private function absoluteUrl(?string $href, string $base): ?string
+    {
+        if ($href === null || $href === '') {
+            return null;
+        }
+        $href = html_entity_decode($href, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        // Strip in-page anchor.
+        $href = preg_replace('/#.*$/', '', $href) ?? $href;
+
+        if (str_starts_with($href, 'http://') || str_starts_with($href, 'https://')) {
+            return $href;
+        }
+        if (str_starts_with($href, '/')) {
+            return $base.$href;
+        }
+
+        return $base.'/'.$href;
+    }
+
+    private function baseUrl(string $url): string
+    {
+        $parts = parse_url($url);
+        if ($parts === false || !isset($parts['scheme'], $parts['host'])) {
+            return rtrim($url, '/');
+        }
+        $base = $parts['scheme'].'://'.$parts['host'];
+        if (isset($parts['port'])) {
+            $base .= ':'.$parts['port'];
+        }
+
+        return $base;
+    }
+}

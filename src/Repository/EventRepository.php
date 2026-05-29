@@ -32,8 +32,16 @@ class EventRepository extends ServiceEntityRepository
         $qb = $this->visibleQueryBuilder($filter);
         $this->applyUpcomingWindow($qb, $filter);
 
+        // Sort by an "effective" start: events already running (started before
+        // today but not yet ended, e.g. exhibitions) sort as if they start
+        // today, so long-runners don't dominate the top with old start dates.
+        $todayStart = (new \DateTimeImmutable('today', new \DateTimeZone('Europe/Berlin')));
+
         return $qb
-            ->orderBy('e.startsAt', 'ASC')
+            ->addSelect('CASE WHEN e.startsAt < :todayStart THEN :todayStart ELSE e.startsAt END AS HIDDEN effStart')
+            ->setParameter('todayStart', $todayStart)
+            ->orderBy('effStart', 'ASC')
+            ->addOrderBy('e.startsAt', 'ASC')
             ->setMaxResults($limit)
             ->setFirstResult($offset)
             ->getQuery()

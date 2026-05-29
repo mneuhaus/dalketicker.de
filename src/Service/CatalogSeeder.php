@@ -49,11 +49,21 @@ final class CatalogSeeder
             $this->categories[$slug] = $category;
         }
 
-        foreach ($this->sourceDefs() as $key => [$name, $type, $url, $enabled]) {
-            $source = $this->sourceRepo->findByKey($key) ?? new Source($key, $name, $type);
-            $source->setName($name)->setType($type)->setUrl($url);
+        foreach ($this->sourceDefs() as $key => [$name, $type, $url, $importer, $city, $enabled]) {
+            $isNew = false;
+            $source = $this->sourceRepo->findByKey($key);
+            if ($source === null) {
+                $source = new Source($key, $name, $type);
+                $isNew = true;
+            }
+            $source->setName($name)->setType($type)->setUrl($url)->setImporter($importer);
+            if ($city !== null) {
+                $config = $source->getConfig();
+                $config['city'] = $city;
+                $source->setConfig($config);
+            }
             // Don't override an operator's enable/disable choice on re-seed:
-            if ($source->getId() === null) {
+            if ($isNew) {
                 $source->setEnabled($enabled);
             }
             $this->em->persist($source);
@@ -140,24 +150,95 @@ final class CatalogSeeder
         return $out;
     }
 
-    /** @return array<string, array{0:string,1:SourceType,2:?string,3:bool}> */
+    /**
+     * Full source catalogue. enabled is the *initial* state used only when a
+     * source is first created; operators may flip it later and re-seeds keep
+     * their choice. We enable a source out of the box only when a working
+     * importer exists for it (one of the built keys plus the generic "ics").
+     *
+     * @return array<string, array{0:string,1:SourceType,2:?string,3:?string,4:?string,5:bool}>
+     */
     private function sourceDefs(): array
     {
-        return [
-            'stadt_gt' => ['Stadt Gütersloh – Veranstaltungskalender', SourceType::Html, 'https://www.guetersloh.de/de/veranstaltungen/', false],
-            'veranstaltungen_gt' => ['veranstaltungen-gt.de', SourceType::Html, 'https://veranstaltungen-gt.de/', false],
-            'wapelbad' => ['Wapelbad', SourceType::Html, 'https://www.wapelbad.de/about-1', false],
-            'radio_gt' => ['Radio Gütersloh – Veranstaltungstipps', SourceType::Html, 'https://www.radioguetersloh.de/service/veranstaltungstipps.html', false],
-            'erfolgskreis_gt' => ['Erfolgskreis GT', SourceType::Html, 'https://www.erfolgskreis-gt.de/veranstaltungen', false],
-            'nw' => ['Neue Westfälische – Kreis Gütersloh', SourceType::Html, 'https://www.nw.de/themen/lokal/kreis_guetersloh/veranstaltungen-im-kreis-guetersloh', false],
-            'gtv1879' => ['GTV 1879 – Termine', SourceType::Html, 'https://gtv1879.de/termine/', false],
-            'spexard' => ['Spexard – Termine', SourceType::Pdf, 'https://www.spexard.de/termine', false],
-            'anno_events' => ['Anno Events', SourceType::Html, 'https://anno-events.de/', false],
-            'wolpertinger' => ['Wolpertinger – Der Spieleladen', SourceType::Html, 'https://wolpertinger-der-spieleladen.de/', false],
-            'stadtbibliothek' => ['Stadtbibliothek Gütersloh', SourceType::Html, null, false],
-            'facebook' => ['Facebook Events (Umgebung)', SourceType::Facebook, 'https://www.facebook.com/events', false],
-            'demo' => ['Dalketicker (Demo-Daten)', SourceType::Manual, null, true],
+        // Importer keys with a verified working implementation (+ generic ics).
+        $ready = [
+            'jsonld', 'rss', 'stadt_gt', 'auf_schluer', 'theater_gt', 'stadthalle_gt',
+            'weberei', 'bambi_kino', 'wapelbad', 'erfolgskreis_gt', 'radio_gt', 'wilhalm',
+            'kgb_langenberg', 'stadtbib_gt', 'vhs_gt', 'vhs_re', 'ics',
         ];
+
+        // [key => [name, type, url, importer, city]]
+        $catalog = [
+            ['stadt_gt', 'Stadt Gütersloh Veranstaltungskalender', SourceType::Html, 'https://www.guetersloh.de/de/veranstaltungen/?from=2026-05-29%2000:00:00&to=2026-06-30%2023:59:59', 'stadt_gt', 'Gütersloh'],
+            ['auf_schluer', 'Auf Schlür / veranstaltungen-gt.de (GTM)', SourceType::Html, 'https://veranstaltungen-gt.de/times?type=what', 'auf_schluer', 'Gütersloh'],
+            ['theater_gt', 'Theater Gütersloh', SourceType::Html, 'https://www.theater-gt.de/spielplan', 'theater_gt', 'Gütersloh'],
+            ['stadthalle_gt', 'Stadthalle Gütersloh', SourceType::Html, 'https://www.stadthalle-gt.de/', 'stadthalle_gt', 'Gütersloh'],
+            ['weberei', 'Die Weberei', SourceType::Html, 'https://www.die-weberei.de/', 'weberei', 'Gütersloh'],
+            ['bambi_kino', 'Bambi & Löwenherz Kino', SourceType::Html, 'https://www.bambikino.de/programm/', 'bambi_kino', 'Gütersloh'],
+            ['filmwerk_gt', 'Filmwerk Gütersloh', SourceType::Html, 'https://web.filmwerk-gt.de/', 'manual', 'Gütersloh'],
+            ['stadtbib_gt', 'Stadtbibliothek Gütersloh', SourceType::Html, 'https://stadtbibliothek-guetersloh.easy2book.de/veranstaltungen/', 'stadtbib_gt', 'Gütersloh'],
+            ['vhs_gt', 'VHS Gütersloh', SourceType::Html, 'https://www.vhs-gt.de/kurssuche/liste', 'vhs_gt', 'Gütersloh'],
+            ['musikschule_gt', 'Musikschule für den Kreis Gütersloh', SourceType::Html, 'https://www.musikschule-guetersloh.de/veranstaltungen', 'manual', 'Gütersloh'],
+            ['wapelbad', 'Wapelbad', SourceType::Html, 'https://www.wapelbad.de/about-1', 'wapelbad', 'Gütersloh'],
+            ['stadtmuseum_gt', 'Stadtmuseum Gütersloh', SourceType::Html, 'https://www.stadtmuseum-guetersloh.de/termine', 'manual', 'Gütersloh'],
+            ['erfolgskreis_gt', 'Erfolgskreis GT (kreisweit/Tourismus)', SourceType::Html, 'https://www.erfolgskreis-gt.de/veranstaltungen/', 'erfolgskreis_gt', 'Kreis Gütersloh'],
+            ['radio_gt', 'Radio Gütersloh Veranstaltungstipps', SourceType::Html, 'https://www.radioguetersloh.de/service/veranstaltungstipps/126484', 'radio_gt', 'Kreis Gütersloh'],
+            ['anno_events', 'ANNO-EVENTS', SourceType::Html, 'https://anno-events.de/feed/', 'manual', 'Gütersloh'],
+            ['flora_westfalica', 'Flora Westfalica', SourceType::Rss, 'https://www.rheda-wiedenbrueck.de/terminerw/rss.xml', 'rss', 'Rheda-Wiedenbrück'],
+            ['a2_forum', 'A2 Forum', SourceType::Html, 'https://a2-forum.de/?ical_download=902', 'manual', 'Rheda-Wiedenbrück'],
+            ['kloster_wiedenbrueck', 'Kloster Wiedenbrück', SourceType::Html, 'https://kloster-wiedenbrueck.de/programm/', 'jsonld', 'Rheda-Wiedenbrück'],
+            ['vhs_re', 'VHS Reckenberg-Ems', SourceType::Html, 'https://www.vhs-re.de/programm', 'vhs_re', 'Rheda-Wiedenbrück'],
+            ['stadt_rietberg', 'Stadt Rietberg Veranstaltungskalender', SourceType::Html, 'https://www.rietberg.de/tourismus/freizeitangebote/veranstaltungen/uebersicht.html', 'manual', 'Rietberg'],
+            ['gartenschaupark', 'Gartenschaupark Rietberg', SourceType::Html, 'https://www.gartenschaupark-rietberg.de/veranstaltungen/veranstaltungen-konzerte-feste-etc.html', 'manual', 'Rietberg'],
+            ['kulturig', 'kulturig e.V.', SourceType::Html, 'https://www.kulturig.de/events-tickets/eventkalender.html', 'jsonld', 'Rietberg'],
+            ['stadtbib_rietberg', 'Stadtbibliothek Rietberg', SourceType::Html, 'https://www.rietberg.de/tourismus/freizeitangebote/veranstaltungen/veranstaltungsort/stadtbibliothek-rietberg-394.html', 'manual', 'Rietberg'],
+            ['stadt_harsewinkel', 'Stadt Harsewinkel Veranstaltungskalender', SourceType::Ics, 'https://www.harsewinkel.de/veranstaltungen/veranstaltungen.ical?zeitauswahl=1&auswahl_woche_tage=730&onlyMonat_select=0&selected_kommune=34050', 'ics', 'Harsewinkel'],
+            ['wilhalm', 'Kulturort Wilhalm', SourceType::Html, 'https://www.wilhalm.de/api/events.php', 'wilhalm', 'Harsewinkel'],
+            ['stadt_shs', 'Stadt Schloß Holte-Stukenbrock Veranstaltungskalender', SourceType::Html, 'https://www.teutonavigator.de/de/schlossholtestukenbrock/wlan/portal', 'manual', 'Schloß Holte-Stukenbrock'],
+            ['glanzlichter', 'GLANZLICHTER', SourceType::Html, 'https://glanzlichter-openair.de/', 'manual', 'Schloß Holte-Stukenbrock'],
+            ['heimatverein_shs', 'Heimatverein SHS', SourceType::Rss, 'https://www.heimatverein-shs.de/feed/', 'rss', 'Schloß Holte-Stukenbrock'],
+            ['stadt_verl', 'Stadt Verl', SourceType::Html, 'https://www.verl.de/freizeit-kultur/veranstaltungskalender.html', 'manual', 'Verl'],
+            ['bib_verl', 'Bibliothek Verl', SourceType::Html, 'https://bibliothek.verl.de/de/aktuelles/index-vorlesetermine.php', 'manual', 'Verl'],
+            ['owl_arena', 'OWL ARENA', SourceType::Html, 'https://www.heristo-arena.nrw/tickets-events/', 'manual', 'Halle (Westf.)'],
+            ['stadtbuecherei_halle', 'Stadtbücherei Halle (Westf.)', SourceType::Html, 'https://open.stadtbuecherei-halle.de/Veranstaltungen', 'manual', 'Halle (Westf.)'],
+            ['vhs_ravensberg', 'VHS Ravensberg', SourceType::Ics, 'https://www.vhs-ravensberg.de/kurs?tx_itemkgconnect_coursedetails%5Baction%5D=iCal&tx_itemkgconnect_coursedetails%5Bcontroller%5D=Course&tx_itemkgconnect_coursedetails%5Bcourse%5D=786-C-261-31045&cHash=17bb7e7b6f426e5949dae4732c586643', 'ics', 'Halle (Westf.)'],
+            ['stadt_werther', 'Stadt Werther Veranstaltungen', SourceType::Html, 'https://www.stadt-werther.de/entdecken/veranstaltungskalender', 'manual', 'Werther (Westf.)'],
+            ['stadtbib_werther', 'Stadtbibliothek Werther', SourceType::Html, 'https://werther.bibliotheca-open.de/', 'manual', 'Werther (Westf.)'],
+            ['museum_pab', 'Museum Peter August Böckstiegel', SourceType::Html, 'https://www.museumpab.de/kunstvermittlung/veranstaltungen/', 'manual', 'Werther (Westf.)'],
+            ['gem_steinhagen', 'Gemeinde Steinhagen', SourceType::Html, 'https://www.steinhagen-app.de/veranstaltungen', 'manual', 'Steinhagen'],
+            ['bib_steinhagen', 'Gemeindebibliothek Steinhagen', SourceType::Html, 'https://steinhagen.bibliotheca-open.de/Veranstaltungen/Mach-mit', 'manual', 'Steinhagen'],
+            ['burg_ravensberg', 'Burg Ravensberg', SourceType::Html, 'https://burg-ravensberg.de/veranstaltungskalender/', 'manual', 'Borgholzhausen'],
+            ['bib_borgholzhausen', 'Bibliothek Borgholzhausen', SourceType::Html, 'https://meta.et4.de/rest.ashx/search/?experience=borgholzhausen&type=Event&template=ET2014A.json&q=city%3A%22borgholzhausen%22', 'manual', 'Borgholzhausen'],
+            ['stadt_versmold', 'Stadt Versmold Veranstaltungskalender', SourceType::Html, 'https://www.versmold.de/de/veranstaltungen/', 'manual', 'Versmold'],
+            ['gem_herzebrock', 'Gemeinde Herzebrock-Clarholz Veranstaltungskalender', SourceType::Html, 'https://www.herzebrock-clarholz.de/veranstaltungskalender/', 'manual', 'Herzebrock-Clarholz'],
+            ['gem_langenberg', 'Gemeinde Langenberg Veranstaltungskalender', SourceType::Ics, 'https://www.langenberg.de/startseite/leben-in-langenberg/freizeit-sport-gastronomie-veranstaltungen/veranstaltungen/event.ics?weekends=false&tagMode=ALL', 'ics', 'Langenberg'],
+            ['langenberg_app', 'Langenberg App', SourceType::Ics, 'https://www.langenberg-app.de/frontend-event/exporticalendar/{eventId}/{timestamp}', 'ics', 'Langenberg'],
+            ['kgb_langenberg', 'KGB Langenberg', SourceType::Rss, 'https://kgb-langenberg.de/feed/', 'kgb_langenberg', 'Langenberg'],
+        ];
+
+        $out = [];
+        foreach ($catalog as [$key, $name, $type, $url, $importer, $city]) {
+            $out[$key] = [$name, $type, $url, $importer, $city, \in_array($importer, $ready, true)];
+        }
+
+        // Throwaway demo source for the optional demo-event batch.
+        $out['demo'] = ['Dalketicker (Demo-Daten)', SourceType::Manual, null, null, null, true];
+
+        // Legacy demo-event sources kept (disabled) so seedDemoEvents() still works.
+        $demoSources = [
+            'veranstaltungen_gt' => ['veranstaltungen-gt.de (Demo)', SourceType::Html, 'https://veranstaltungen-gt.de/'],
+            'gtv1879' => ['GTV 1879 – Termine (Demo)', SourceType::Html, 'https://gtv1879.de/termine/'],
+            'spexard' => ['Spexard – Termine (Demo)', SourceType::Pdf, 'https://www.spexard.de/termine'],
+            'wolpertinger' => ['Wolpertinger – Der Spieleladen (Demo)', SourceType::Html, 'https://wolpertinger-der-spieleladen.de/'],
+            'stadtbibliothek' => ['Stadtbibliothek Gütersloh (Demo)', SourceType::Html, null],
+        ];
+        foreach ($demoSources as $key => [$name, $type, $url]) {
+            if (!isset($out[$key])) {
+                $out[$key] = [$name, $type, $url, 'manual', 'Gütersloh', false];
+            }
+        }
+
+        return $out;
     }
 
     /** @return array<string, array{0:string,1:string,2:string}> */

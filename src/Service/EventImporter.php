@@ -24,6 +24,10 @@ use Symfony\Component\String\Slugger\SluggerInterface;
  */
 final class EventImporter
 {
+    /** Keys (source:externalId) of NEW events persisted in the current run,
+     * to avoid inserting two rows that collide on the unique (source, externalId). */
+    private array $newKeysThisRun = [];
+
     public function __construct(
         private readonly ImporterRegistry $registry,
         private readonly EntityManagerInterface $em,
@@ -40,6 +44,7 @@ final class EventImporter
     {
         $report = new ImportReport($source->getKey());
         $now = $this->clock->now();
+        $this->newKeysThisRun = [];
 
         try {
             $importer = $this->registry->get($source);
@@ -67,10 +72,17 @@ final class EventImporter
             }
         } catch (\Throwable $e) {
             $report->fatal = $e->getMessage();
-            $source->setLastRunAt($now);
-            $source->setLastStatus('FEHLER: '.$e->getMessage());
-            if (!$dryRun) {
-                $this->em->flush();
+            // A failed flush closes the EM; only touch it if it's still open.
+            if ($this->em->isOpen()) {
+                $source->setLastRunAt($now);
+                $source->setLastStatus('FEHLER: '.substr($e->getMessage(), 0, 1024));
+                if (!$dryRun) {
+                    try {
+                        $this->em->flush();
+                    } catch (\Throwable) {
+                        // give up persisting the status rather than crash the run
+                    }
+                }
             }
             $this->logger->error('Import for source {source} failed: {error}', [
                 'source' => $source->getKey(),
@@ -84,6 +96,18 @@ final class EventImporter
     private function upsert(Source $source, ImportedEvent $dto, \DateTimeImmutable $now, bool $dryRun, ImportReport $report): void
     {
         if ($dto->title === '') {
+            return;
+        }
+
+        // Skip a second occurrence of the same externalId within this run —
+        // the first persist isn't flushed yet, so a DB lookup wouldn't see it
+        // and we'd violate the unique (source, externalId) constraint.
+        $runKey = $dto->externalId !== null && $dto->externalId !== ''
+            ? $source->getId().':'.$dto->externalId
+            : null;
+        if ($runKey !== null && isset($this->newKeysThisRun[$runKey])) {
+            $report->unchanged++;
+
             return;
         }
 
@@ -108,18 +132,18 @@ final class EventImporter
         $event = $existing ?? new Event($dto->title, $dto->startsAt, $source);
         $isNew = $existing === null;
 
-        $event->setTitle($dto->title);
+        $event->setTitle(mb_substr($dto->title, 0, 300));
         $event->setStartsAt($dto->startsAt);
         $event->setEndsAt($dto->endsAt);
         $event->setAllDay($dto->allDay);
         $event->setDescription($dto->description);
-        $event->setLocationText($dto->locationText);
+        $event->setLocationText($dto->locationText !== null ? mb_substr($dto->locationText, 0, 255) : null);
         $event->setVenue($this->venues->findOrCreate($dto->venueName, $dto->city));
         $event->setCategory($dto->categorySlug ? $this->categories->findBySlug($dto->categorySlug) : null);
-        $event->setSourceUrl($dto->sourceUrl);
-        $event->setImageUrl($dto->imageUrl);
-        $event->setPrice($dto->price);
-        $event->setOrganizer($dto->organizer);
+        $event->setSourceUrl($dto->sourceUrl !== null ? substr($dto->sourceUrl, 0, 1024) : null);
+        $event->setImageUrl($dto->imageUrl !== null ? substr($dto->imageUrl, 0, 1024) : null);
+        $event->setPrice($dto->price !== null ? mb_substr($dto->price, 0, 120) : null);
+        $event->setOrganizer($dto->organizer !== null ? mb_substr($dto->organizer, 0, 200) : null);
         $event->setExternalId($dto->externalId);
         $event->setContentHash($hash);
         $event->setDedupKey($dedupKey);
@@ -139,6 +163,9 @@ final class EventImporter
                 $report->created++;
             }
             $this->em->persist($event);
+            if ($runKey !== null) {
+                $this->newKeysThisRun[$runKey] = true;
+            }
         } else {
             $report->updated++;
         }

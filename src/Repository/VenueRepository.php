@@ -13,6 +13,16 @@ use Doctrine\Persistence\ManagerRegistry;
  */
 class VenueRepository extends ServiceEntityRepository
 {
+    /**
+     * In-memory identity map for venues created (but not yet flushed) during the
+     * current request. Without it, several events referencing the same brand-new
+     * venue would each persist a separate Venue with the same dedup key and
+     * violate the unique constraint on flush.
+     *
+     * @var array<string, Venue>
+     */
+    private array $createdThisRun = [];
+
     public function __construct(ManagerRegistry $registry)
     {
         parent::__construct($registry, Venue::class);
@@ -36,13 +46,17 @@ class VenueRepository extends ServiceEntityRepository
         }
 
         $dedupKey = Venue::buildDedupKey($name, $city);
+        if (isset($this->createdThisRun[$dedupKey])) {
+            return $this->createdThisRun[$dedupKey];
+        }
+
         $venue = $this->findByDedupKey($dedupKey);
         if ($venue === null) {
             $venue = new Venue($name, $city);
             $this->getEntityManager()->persist($venue);
         }
 
-        return $venue;
+        return $this->createdThisRun[$dedupKey] = $venue;
     }
 
     /** @return Venue[] */

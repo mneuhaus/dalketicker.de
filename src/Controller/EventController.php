@@ -35,9 +35,10 @@ final class EventController extends AbstractController
 
         $events = $this->events->findUpcoming($filter, self::PER_PAGE, $offset);
         $total = $this->events->countUpcoming($filter);
+        $today = $this->clock->now()->setTimezone(new \DateTimeZone('Europe/Berlin'));
 
         return $this->render('event/index.html.twig', [
-            'groups' => $this->groupByDay($events),
+            'groups' => $this->groupByDay($events, $filter->onlySaved ? null : $today),
             'total' => $total,
             'page' => $page,
             'pages' => max(1, (int) ceil($total / self::PER_PAGE)),

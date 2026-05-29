@@ -55,24 +55,29 @@ function refresh() {
         el.classList.toggle('hidden', ids.length === 0);
     });
 
-    // Keep the hidden IDs field (used by the "Nur meine Events" filter) in sync.
-    const meine = document.querySelector('[data-meine]');
+    // Keep the hidden IDs field (used by the "meine Events" filter) in sync; it
+    // only submits while the "meine" view is active.
     const idsInput = document.querySelector('[data-saved-ids-input]');
     if (idsInput) {
         idsInput.value = ids.join(',');
-        idsInput.disabled = !(meine && meine.checked);
+        idsInput.disabled = !onlySavedActive();
     }
 }
 
 function init() {
     refresh();
 
-    // The "Nur meine Events" toggle: sync IDs, then submit.
-    const meine = document.querySelector('[data-meine]');
-    if (meine) {
-        meine.addEventListener('change', () => {
-            refresh(); // updates the hidden IDs field + disabled state
-            meine.form.requestSubmit();
+    // Navbar "Meine Events": toggle the saved-only view, injecting the stored IDs.
+    const meineNav = document.querySelector('[data-meine-nav]');
+    if (meineNav) {
+        meineNav.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (onlySavedActive()) {
+                window.location.href = '/';
+                return;
+            }
+            const ids = read();
+            window.location.href = '/?meine=1' + (ids.length ? '&ids=' + encodeURIComponent(ids.join(',')) : '');
         });
     }
 

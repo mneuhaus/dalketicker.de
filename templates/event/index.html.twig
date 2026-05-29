@@ -1,13 +1,6 @@
 {% extends 'layout_with_sidebar.html.twig' %}
 
 {% block content %}
-    <div class="mb-6">
-        <h1 class="font-[family-name:var(--font-display)] text-3xl sm:text-4xl font-extrabold tracking-tight text-ink">
-            Was läuft im Kreis Gütersloh?
-        </h1>
-        <p class="text-ink/50 mt-1">{{ total }} kommende Veranstaltung{{ total == 1 ? '' : 'en' }}{% if filter.hasAny %} (gefiltert){% endif %}.</p>
-    </div>
-
     {% if groups is empty %}
         <div class="text-center py-20 text-ink/50 border border-dashed border-black/10 rounded-2xl">
             <p class="font-medium text-ink/70">Nichts gefunden.</p>
