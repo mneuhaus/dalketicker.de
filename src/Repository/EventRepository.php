@@ -49,24 +49,34 @@ class EventRepository extends ServiceEntityRepository
     }
 
     /**
-     * Visible events overlapping a given calendar month, for the grid view.
+     * Visible events overlapping the half-open range [$start, $end), ordered
+     * chronologically. Multi-day events that straddle the bounds are included.
+     *
+     * @return Event[]
+     */
+    public function findInRange(\DateTimeImmutable $start, \DateTimeImmutable $end, EventFilter $filter): array
+    {
+        return $this->visibleQueryBuilder($filter)
+            ->andWhere('e.startsAt < :end')
+            ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :start')
+            ->setParameter('start', $start)
+            ->setParameter('end', $end)
+            ->orderBy('e.startsAt', 'ASC')
+            ->getQuery()
+            ->getResult();
+    }
+
+    /**
+     * Visible events overlapping a given calendar month.
      *
      * @return Event[]
      */
     public function findForMonth(int $year, int $month, EventFilter $filter): array
     {
         $tz = new \DateTimeZone('Europe/Berlin');
-        $start = (new \DateTimeImmutable(sprintf('%04d-%02d-01 00:00:00', $year, $month), $tz));
-        $end = $start->modify('first day of next month');
+        $start = new \DateTimeImmutable(sprintf('%04d-%02d-01 00:00:00', $year, $month), $tz);
 
-        $qb = $this->visibleQueryBuilder($filter)
-            ->andWhere('e.startsAt < :end')
-            ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :start')
-            ->setParameter('start', $start)
-            ->setParameter('end', $end)
-            ->orderBy('e.startsAt', 'ASC');
-
-        return $qb->getQuery()->getResult();
+        return $this->findInRange($start, $start->modify('first day of next month'), $filter);
     }
 
     public function findVisible(int $id): ?Event

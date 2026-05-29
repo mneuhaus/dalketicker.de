@@ -2,6 +2,13 @@
 framework:
     secret: '%env(APP_SECRET)%'
 
+    # Behind Traefik (or any reverse proxy): trust the forwarded headers so the
+    # app knows the original request was HTTPS and generates correct absolute
+    # URLs. Without this, links/redirects/debug-toolbar use http:// and the
+    # browser blocks them as mixed content.
+    trusted_proxies: '%env(TRUSTED_PROXIES)%'
+    trusted_headers: ['x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'x-forwarded-port', 'x-forwarded-prefix']
+
     # Note that the session will be started ONLY if you read or write from it.
     session: true
 

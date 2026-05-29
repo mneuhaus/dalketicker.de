@@ -48,16 +48,24 @@
         </select>
     </div>
 
-    {# Period #}
-    <div>
-        <label class="block text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">Zeitraum</label>
-        <div class="grid grid-cols-2 gap-2">
-            <input type="date" name="von" value="{{ filter.from ? filter.from|date('Y-m-d') }}" aria-label="von"
-                   class="rounded-xl border border-black/10 bg-white px-2.5 py-2 text-sm focus:border-brand-500 outline-none">
-            <input type="date" name="bis" value="{{ filter.to ? filter.to|date('Y-m-d') }}" aria-label="bis"
-                   class="rounded-xl border border-black/10 bg-white px-2.5 py-2 text-sm focus:border-brand-500 outline-none">
+    {# Period — quick presets instead of a date picker (list view only). #}
+    {% if view|default('list') == 'list' %}
+        <div>
+            <label class="block text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">Zeitraum</label>
+            <div class="flex flex-wrap gap-2">
+                {% for key, label in constant('App\\Search\\EventFilter::PERIODS') %}
+                    {% set active = filter.period == key %}
+                    <label class="cursor-pointer {{ active ? 'chip-active' : 'chip-muted' }}">
+                        <input type="radio" name="zeitraum" value="{{ key }}" {{ active ? 'checked' }} class="sr-only">
+                        {{ label }}
+                    </label>
+                {% endfor %}
+                {% if filter.period %}
+                    <a href="{{ path('event_index', filter.toQueryParams|filter((v, k) => k != 'zeitraum')) }}" class="chip-muted">Alle</a>
+                {% endif %}
+            </div>
         </div>
-    </div>
+    {% endif %}
 
     <div class="flex items-center gap-3">
         <button type="submit" class="flex-1 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 transition">Anwenden</button>
@@ -72,7 +80,7 @@
         var form = document.querySelector('form[data-autosubmit]');
         if (!form) return;
         form.addEventListener('change', function (e) {
-            if (e.target.matches('input[type=checkbox], select, input[type=date]')) {
+            if (e.target.matches('input[type=checkbox], input[type=radio], select')) {
                 form.requestSubmit();
             }
         });

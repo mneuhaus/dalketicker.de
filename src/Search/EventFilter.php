@@ -12,9 +12,21 @@ use Symfony\Component\HttpFoundation\Request;
  *
  * Categories are multi-select: an empty set means "show everything"; otherwise
  * only the selected categories are shown (uncheck a box to hide that category).
+ *
+ * The time range is chosen via named presets ({@see PERIODS}) rather than a
+ * date picker; the preset is resolved to a concrete from/to window here.
  */
 final class EventFilter
 {
+    /** Preset key => human label, in display order. */
+    public const PERIODS = [
+        'heute' => 'Heute',
+        'morgen' => 'Morgen',
+        'wochenende' => 'Wochenende',
+        'woche' => 'Diese Woche',
+        '7tage' => 'Nächste 7 Tage',
+    ];
+
     /**
      * @param list<string> $categorySlugs
      */
@@ -22,6 +34,7 @@ final class EventFilter
         public ?string $q = null,
         public array $categorySlugs = [],
         public ?string $city = null,
+        public ?string $period = null,
         public ?\DateTimeImmutable $from = null,
         public ?\DateTimeImmutable $to = null,
     ) {
@@ -29,15 +42,6 @@ final class EventFilter
 
     public static function fromRequest(Request $request): self
     {
-        $parseDate = static function (?string $value): ?\DateTimeImmutable {
-            if (!$value) {
-                return null;
-            }
-            $date = \DateTimeImmutable::createFromFormat('!Y-m-d', $value, new \DateTimeZone('Europe/Berlin'));
-
-            return $date ?: null;
-        };
-
         $categories = [];
         foreach ((array) $request->query->all('kategorie') as $slug) {
             $slug = is_string($slug) ? trim($slug) : '';
@@ -46,13 +50,52 @@ final class EventFilter
             }
         }
 
+        $period = self::clean($request->query->get('zeitraum'));
+        if ($period !== null && !isset(self::PERIODS[$period])) {
+            $period = null;
+        }
+        [$from, $to] = self::resolvePeriod($period);
+
         return new self(
             q: self::clean($request->query->get('q')),
             categorySlugs: array_values(array_unique($categories)),
             city: self::clean($request->query->get('ort')),
-            from: $parseDate(self::clean($request->query->get('von'))),
-            to: $parseDate(self::clean($request->query->get('bis'))),
+            period: $period,
+            from: $from,
+            to: $to,
         );
+    }
+
+    /**
+     * Turn a preset key into an inclusive [from, to] day window (or [null, null]
+     * for "no time filter"). Both bounds are at 00:00 Europe/Berlin; the repo
+     * treats `to` as the last day to include.
+     *
+     * @return array{0: ?\DateTimeImmutable, 1: ?\DateTimeImmutable}
+     */
+    private static function resolvePeriod(?string $period): array
+    {
+        if ($period === null) {
+            return [null, null];
+        }
+
+        $today = new \DateTimeImmutable('today', new \DateTimeZone('Europe/Berlin'));
+        $dow = (int) $today->format('N'); // 1 = Mon … 7 = Sun
+
+        return match ($period) {
+            'heute' => [$today, $today],
+            'morgen' => [$today->modify('+1 day'), $today->modify('+1 day')],
+            '7tage' => [$today, $today->modify('+6 days')],
+            // Rest of the current ISO week (today … Sunday).
+            'woche' => [$today, $today->modify('+'.(7 - $dow).' days')],
+            // The coming weekend (Sat+Sun); on Sat/Sun it's the current one.
+            'wochenende' => match ($dow) {
+                6 => [$today, $today->modify('+1 day')],      // Saturday
+                7 => [$today, $today],                         // Sunday
+                default => [$today->modify('+'.(6 - $dow).' days'), $today->modify('+'.(7 - $dow).' days')],
+            },
+            default => [null, null],
+        };
     }
 
     private static function clean(mixed $value): ?string
@@ -75,8 +118,7 @@ final class EventFilter
         return $this->q !== null
             || $this->categorySlugs !== []
             || $this->city !== null
-            || $this->from !== null
-            || $this->to !== null;
+            || $this->period !== null;
     }
 
     /** Query params for building links/canonical URLs, dropping empty values. */
@@ -86,8 +128,7 @@ final class EventFilter
             'q' => $this->q,
             'kategorie' => $this->categorySlugs,
             'ort' => $this->city,
-            'von' => $this->from?->format('Y-m-d'),
-            'bis' => $this->to?->format('Y-m-d'),
+            'zeitraum' => $this->period,
         ], static fn ($v) => $v !== null && $v !== '' && $v !== []);
     }
 }

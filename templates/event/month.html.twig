@@ -14,38 +14,27 @@
         </div>
     </div>
 
-    <div class="bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden">
-        <div class="grid grid-cols-7 text-center text-xs font-semibold text-ink/50 border-b border-black/5">
-            {% for d in ['Mo','Di','Mi','Do','Fr','Sa','So'] %}
-                <div class="py-2">{{ d }}</div>
-            {% endfor %}
+    {% if groups is empty %}
+        <div class="text-center py-20 text-ink/50 border border-dashed border-black/10 rounded-2xl">
+            <p class="font-medium text-ink/70">In diesem Monat ist (noch) nichts eingetragen.</p>
+            <p class="text-sm mt-1">Blättere zu einem anderen Monat oder pass die Filter an.</p>
         </div>
-        <div class="grid grid-cols-7">
-            {% for week in weeks %}
-                {% for cell in week %}
-                    {% set isToday = cell.date|date('Y-m-d') == today|date('Y-m-d') %}
-                    <div class="min-h-[7rem] border-b border-r border-black/5 p-1.5 {{ cell.inMonth ? '' : 'bg-black/[0.02]' }} {{ loop.last ? 'border-r-0' }}">
-                        <div class="text-xs font-semibold mb-1 flex justify-end">
-                            <span class="{{ isToday ? 'bg-brand-600 text-white rounded-full w-5 h-5 inline-flex items-center justify-center' : (cell.inMonth ? 'text-ink/60' : 'text-ink/25') }}">
-                                {{ cell.date|date('j') }}
-                            </span>
-                        </div>
-                        <div class="space-y-1">
-                            {% for event in cell.events|slice(0, 4) %}
-                                <a href="{{ path('event_show', {id: event.id, slug: event.slug}) }}"
-                                   class="block text-[11px] leading-tight rounded px-1.5 py-1 truncate hover:opacity-80 transition"
-                                   style="background-color: {{ event.category ? event.category.color ~ '22' : 'rgba(0,0,0,0.05)' }}; border-left: 3px solid {{ event.category ? event.category.color : 'var(--color-brand-500)' }}"
-                                   title="{{ event.title }}{% if not event.allDay %} · {{ event.startsAt|date('H:i') }} Uhr{% endif %}">
-                                    {% if not event.allDay %}<span class="font-semibold">{{ event.startsAt|date('H:i') }}</span> {% endif %}{{ event.title }}
-                                </a>
-                            {% endfor %}
-                            {% if cell.events|length > 4 %}
-                                <div class="text-[10px] text-ink/40 px-1">+{{ cell.events|length - 4 }} mehr</div>
-                            {% endif %}
-                        </div>
+    {% else %}
+        <div class="space-y-8">
+            {% for group in groups %}
+                <section>
+                    <div class="flex items-baseline gap-3 mb-3 sticky top-16 bg-paper/95 backdrop-blur py-1 z-10">
+                        <h2 class="font-[family-name:var(--font-display)] text-lg font-bold text-brand-800">{{ group.date|de_day_label }}</h2>
+                        <span class="text-xs text-ink/40">{{ group.events|length }} Termin{{ group.events|length == 1 ? '' : 'e' }}</span>
+                        <span class="flex-1 border-b border-dashed border-black/10"></span>
                     </div>
-                {% endfor %}
+                    <div class="grid gap-3">
+                        {% for event in group.events %}
+                            {{ include('event/_card.html.twig', {event: event}) }}
+                        {% endfor %}
+                    </div>
+                </section>
             {% endfor %}
         </div>
-    </div>
+    {% endif %}
 {% endblock %}

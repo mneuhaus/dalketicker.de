@@ -28,7 +28,8 @@
             </a>
             <nav class="flex items-center gap-1 text-sm font-medium">
                 <a href="{{ path('event_index') }}" class="px-3 py-2 rounded-lg transition {{ view|default('') == 'list' ? 'bg-brand-600 text-white' : 'text-ink/70 hover:bg-black/5' }}">Liste</a>
-                <a href="{{ path('event_month', {year: 'now'|date('Y'), month: 'now'|date('n')}) }}" class="px-3 py-2 rounded-lg transition {{ view|default('') == 'month' ? 'bg-brand-600 text-white' : 'text-ink/70 hover:bg-black/5' }}">Kalender</a>
+                <a href="{{ path('event_week', {year: 'now'|date('o'), week: 'now'|date('W')}) }}" class="px-3 py-2 rounded-lg transition {{ view|default('') == 'week' ? 'bg-brand-600 text-white' : 'text-ink/70 hover:bg-black/5' }}">Woche</a>
+                <a href="{{ path('event_month', {year: 'now'|date('Y'), month: 'now'|date('n')}) }}" class="px-3 py-2 rounded-lg transition {{ view|default('') == 'month' ? 'bg-brand-600 text-white' : 'text-ink/70 hover:bg-black/5' }}">Monat</a>
             </nav>
         </div>
     </header>

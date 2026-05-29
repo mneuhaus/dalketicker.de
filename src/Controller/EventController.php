@@ -66,13 +66,45 @@ final class EventController extends AbstractController
         $next = $first->modify('+1 month');
 
         return $this->render('event/month.html.twig', [
-            'weeks' => $this->buildMonthGrid($first, $events),
+            'groups' => $this->groupByDay($events, $first),
             'monthDate' => $first,
             'prev' => $prev,
             'next' => $next,
             'today' => $now->setTime(0, 0),
             'filter' => $filter,
             'view' => 'month',
+        ] + $this->filterData());
+    }
+
+    /** Week view: a single ISO week, navigable week by week. */
+    #[Route('/woche/{year}/{week}', name: 'event_week', requirements: ['year' => '\d{4}', 'week' => '\d{1,2}'], methods: ['GET'])]
+    public function week(Request $request, ?int $year = null, ?int $week = null): Response
+    {
+        $tz = new \DateTimeZone('Europe/Berlin');
+        $now = $this->clock->now()->setTimezone($tz);
+        $year ??= (int) $now->format('o'); // ISO year
+        $week ??= (int) $now->format('W'); // ISO week
+        if ($week < 1 || $week > 53) {
+            return $this->redirectToRoute('event_week', ['year' => (int) $now->format('o'), 'week' => (int) $now->format('W')]);
+        }
+
+        $monday = $now->setISODate($year, $week)->setTime(0, 0);
+        $nextMonday = $monday->modify('+7 days');
+
+        $filter = EventFilter::fromRequest($request);
+        $events = $this->events->findInRange($monday, $nextMonday, $filter);
+        $prev = $monday->modify('-7 days');
+        $next = $nextMonday;
+
+        return $this->render('event/week.html.twig', [
+            'days' => $this->buildWeekDays($monday, $events),
+            'monday' => $monday,
+            'sunday' => $monday->modify('+6 days'),
+            'prevWeek' => ['year' => (int) $prev->format('o'), 'week' => (int) $prev->format('W')],
+            'nextWeek' => ['year' => (int) $next->format('o'), 'week' => (int) $next->format('W')],
+            'today' => $now->setTime(0, 0),
+            'filter' => $filter,
+            'view' => 'week',
         ] + $this->filterData());
     }
 
@@ -94,70 +126,57 @@ final class EventController extends AbstractController
 
     /**
      * Group a chronologically-ordered list of events into day buckets.
+     * When $clampFrom is given, events that started earlier are bucketed under
+     * that day (so a multi-day event running into the month shows on day 1).
      *
      * @param Event[] $events
      * @return array<int, array{date: \DateTimeImmutable, events: Event[]}>
      */
-    private function groupByDay(array $events): array
+    private function groupByDay(array $events, ?\DateTimeImmutable $clampFrom = null): array
     {
         $tz = new \DateTimeZone('Europe/Berlin');
+        $floor = $clampFrom?->setTimezone($tz)->setTime(0, 0);
         $groups = [];
         foreach ($events as $event) {
-            $day = $event->getStartsAt()->setTimezone($tz)->format('Y-m-d');
+            $start = $event->getStartsAt()->setTimezone($tz)->setTime(0, 0);
+            if ($floor !== null && $start < $floor) {
+                $start = $floor;
+            }
+            $day = $start->format('Y-m-d');
             $groups[$day]['date'] ??= new \DateTimeImmutable($day, $tz);
             $groups[$day]['events'][] = $event;
         }
+        ksort($groups);
 
         return array_values($groups);
     }
 
     /**
-     * Build a Monday-first calendar grid for the month containing $first.
+     * Build all seven days of the week starting at $monday, each with the
+     * events that fall on it (empty days included for a full weekly overview).
      *
      * @param Event[] $events
-     * @return array<int, array<int, array{date: \DateTimeImmutable, inMonth: bool, events: Event[]}>>
+     * @return array<int, array{date: \DateTimeImmutable, events: Event[]}>
      */
-    private function buildMonthGrid(\DateTimeImmutable $first, array $events): array
+    private function buildWeekDays(\DateTimeImmutable $monday, array $events): array
     {
-        $tz = $first->getTimezone();
-        // Bucket events by each day they cover (multi-day events span cells).
+        $tz = $monday->getTimezone();
         $byDay = [];
         foreach ($events as $event) {
             $start = $event->getStartsAt()->setTimezone($tz)->setTime(0, 0);
-            $end = ($event->getEndsAt() ?? $event->getStartsAt())->setTimezone($tz)->setTime(0, 0);
-            $cursor = $start;
-            $guard = 0;
-            while ($cursor <= $end && $guard++ < 60) {
-                $byDay[$cursor->format('Y-m-d')][] = $event;
-                $cursor = $cursor->modify('+1 day');
+            if ($start < $monday) {
+                $start = $monday;
             }
+            $byDay[$start->format('Y-m-d')][] = $event;
         }
 
-        $monthNum = (int) $first->format('n');
-        // Back up to the Monday on or before the 1st (N: 1=Mon .. 7=Sun).
-        $gridStart = $first->modify('-'.((int) $first->format('N') - 1).' days');
-
-        $weeks = [];
-        $cursor = $gridStart;
-        for ($w = 0; $w < 6; $w++) {
-            $week = [];
-            for ($d = 0; $d < 7; $d++) {
-                $key = $cursor->format('Y-m-d');
-                $week[] = [
-                    'date' => $cursor,
-                    'inMonth' => (int) $cursor->format('n') === $monthNum,
-                    'events' => $byDay[$key] ?? [],
-                ];
-                $cursor = $cursor->modify('+1 day');
-            }
-            $weeks[] = $week;
-            // Stop after we've passed the month and completed a week.
-            if ((int) $cursor->format('n') !== $monthNum && $cursor > $first->modify('last day of this month')) {
-                break;
-            }
+        $days = [];
+        for ($i = 0; $i < 7; $i++) {
+            $date = $monday->modify('+'.$i.' days');
+            $days[] = ['date' => $date, 'events' => $byDay[$date->format('Y-m-d')] ?? []];
         }
 
-        return $weeks;
+        return $days;
     }
 
     /** Shared sidebar filter data. */

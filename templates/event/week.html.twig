@@ -1,0 +1,43 @@
+{% extends 'layout_with_sidebar.html.twig' %}
+
+{% block title %}Woche {{ monday|date('W') }} ({{ monday|de_date }} – {{ sunday|de_date(true) }}) – {{ site_name }}{% endblock %}
+
+{% block content %}
+    <div class="flex items-center justify-between mb-6 gap-4">
+        <div>
+            <h1 class="font-[family-name:var(--font-display)] text-3xl font-extrabold tracking-tight text-ink">
+                {{ monday|de_date }} – {{ sunday|de_date(true) }}
+            </h1>
+            <p class="text-ink/50 mt-1 text-sm">Kalenderwoche {{ monday|date('W') }}</p>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+            <a href="{{ path('event_week', prevWeek) }}" class="chip-muted" aria-label="Vorherige Woche">←</a>
+            <a href="{{ path('event_week', {year: 'now'|date('o'), week: 'now'|date('W')}) }}" class="chip-muted">Diese Woche</a>
+            <a href="{{ path('event_week', nextWeek) }}" class="chip-muted" aria-label="Nächste Woche">→</a>
+        </div>
+    </div>
+
+    <div class="space-y-6">
+        {% for day in days %}
+            {% set isToday = day.date|date('Y-m-d') == today|date('Y-m-d') %}
+            <section>
+                <div class="flex items-baseline gap-3 mb-3">
+                    <h2 class="font-[family-name:var(--font-display)] text-lg font-bold {{ isToday ? 'text-brand-600' : 'text-brand-800' }}">
+                        {{ day.date|de_day_label }}{% if isToday %} <span class="text-xs font-medium text-brand-600">· heute</span>{% endif %}
+                    </h2>
+                    <span class="text-xs text-ink/40">{{ day.events|length }} Termin{{ day.events|length == 1 ? '' : 'e' }}</span>
+                    <span class="flex-1 border-b border-dashed border-black/10"></span>
+                </div>
+                {% if day.events is empty %}
+                    <p class="text-sm text-ink/30 pl-1">Keine Termine.</p>
+                {% else %}
+                    <div class="grid gap-3">
+                        {% for event in day.events %}
+                            {{ include('event/_card.html.twig', {event: event}) }}
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </section>
+        {% endfor %}
+    </div>
+{% endblock %}
