@@ -66,6 +66,7 @@ final class EventController extends AbstractController
         $next = $first->modify('+1 month');
 
         return $this->render('event/month.html.twig', [
+            'weeks' => $this->buildMonthGrid($first, $events),
             'groups' => $this->groupByDay($events, $first),
             'monthDate' => $first,
             'prev' => $prev,
@@ -177,6 +178,53 @@ final class EventController extends AbstractController
         }
 
         return $days;
+    }
+
+    /**
+     * Build a Monday-first calendar grid for the month containing $first.
+     * Multi-day events appear in every cell they cover.
+     *
+     * @param Event[] $events
+     * @return array<int, array<int, array{date: \DateTimeImmutable, inMonth: bool, events: Event[]}>>
+     */
+    private function buildMonthGrid(\DateTimeImmutable $first, array $events): array
+    {
+        $tz = $first->getTimezone();
+        $byDay = [];
+        foreach ($events as $event) {
+            $start = $event->getStartsAt()->setTimezone($tz)->setTime(0, 0);
+            $end = ($event->getEndsAt() ?? $event->getStartsAt())->setTimezone($tz)->setTime(0, 0);
+            $cursor = $start;
+            $guard = 0;
+            while ($cursor <= $end && $guard++ < 60) {
+                $byDay[$cursor->format('Y-m-d')][] = $event;
+                $cursor = $cursor->modify('+1 day');
+            }
+        }
+
+        $monthNum = (int) $first->format('n');
+        $cursor = $first->modify('-'.((int) $first->format('N') - 1).' days'); // back to Monday
+        $lastDay = $first->modify('last day of this month');
+
+        $weeks = [];
+        for ($w = 0; $w < 6; $w++) {
+            $week = [];
+            for ($d = 0; $d < 7; $d++) {
+                $key = $cursor->format('Y-m-d');
+                $week[] = [
+                    'date' => $cursor,
+                    'inMonth' => (int) $cursor->format('n') === $monthNum,
+                    'events' => $byDay[$key] ?? [],
+                ];
+                $cursor = $cursor->modify('+1 day');
+            }
+            $weeks[] = $week;
+            if ($cursor > $lastDay) {
+                break; // stop once we've passed the month end and finished the week
+            }
+        }
+
+        return $weeks;
     }
 
     /** Shared sidebar filter data. */
