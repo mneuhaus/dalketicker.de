@@ -26,11 +26,18 @@ function initFilterMemory() {
     const hasMeine = params.get('meine') === '1';
     const current = filterSlice(params).toString();
 
+    const APPLIED = 'dalketicker:filtersApplied';
+
     if (current) {
-        // A filter is active in the URL → remember it.
+        // A filter is active in the URL → remember it (and mark this session
+        // as "already filtering" so we don't fight later changes).
         localStorage.setItem(KEY, current);
-    } else if (!hasMeine) {
-        // No filter in the URL → re-apply the last remembered one.
+        sessionStorage.setItem(APPLIED, '1');
+    } else if (!hasMeine && !sessionStorage.getItem(APPLIED)) {
+        // First arrival this session with no filter → re-apply the last
+        // remembered one. After that we leave the user's choices alone, so
+        // deselecting the last filter actually clears the view.
+        sessionStorage.setItem(APPLIED, '1');
         const saved = localStorage.getItem(KEY);
         if (saved) {
             window.location.replace(window.location.pathname + '?' + saved);

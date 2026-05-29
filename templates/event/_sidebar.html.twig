@@ -121,5 +121,19 @@
                 datePanel.classList.toggle('hidden');
             });
         }
+
+        // Clicking an already-active single-select chip (Ort/Zeitraum radio)
+        // deselects it and re-filters.
+        form.querySelectorAll('label > input[type=radio]').forEach(function (radio) {
+            var label = radio.closest('label');
+            label.addEventListener('mousedown', function () { radio._was = radio.checked; });
+            label.addEventListener('click', function (e) {
+                if (radio._was) {
+                    e.preventDefault();
+                    radio.checked = false;
+                    form.requestSubmit();
+                }
+            });
+        });
     })();
 </script>
