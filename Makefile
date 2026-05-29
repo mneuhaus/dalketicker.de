@@ -147,3 +147,35 @@ import: ## Run all source importers
 
 import/dry: ## Run importers without writing (dry run)
 	@$(CONSOLE) dalketicker:import --all --dry-run
+
+# ======================================================================#
+# Deployment (dalketicker.neuhaus.nrw)                                  #
+# ======================================================================#
+# Server keeps its own .env with the generated secrets — NEVER rsync it,
+# or the Postgres credentials break.
+
+DEPLOY_HOST = root@neuhaus.nrw
+DEPLOY_PATH = /opt/dalketicker.neuhaus.nrw
+PROD = docker compose -f docker-compose.prod.yml
+
+.PHONY: deploy deploy/sync deploy/build deploy/migrate
+
+deploy: deploy/sync deploy/build deploy/migrate ## Sync, rebuild and migrate on the server
+	@echo "Deployed -> https://dalketicker.neuhaus.nrw"
+
+deploy/sync: ## rsync code to the server (excludes .env and build artifacts)
+	rsync -az --delete \
+	  --exclude '.git/' --exclude 'var/' --exclude 'vendor/' --exclude 'node_modules/' \
+	  --exclude 'public/assets/' --exclude 'assets/vendor/' --exclude '.docker-initialized' \
+	  --exclude '.env' --exclude '.env.local' --exclude '.env.*.local' \
+	  -e 'ssh -o BatchMode=yes' \
+	  ./ $(DEPLOY_HOST):$(DEPLOY_PATH)/
+
+deploy/build: ## Rebuild and (re)start the prod containers on the server
+	ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && $(PROD) up -d --build'
+
+deploy/migrate: ## Run migrations on the server
+	ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && $(PROD) exec -T app php bin/console doctrine:migrations:migrate --no-interaction'
+
+deploy/import: ## Run importers on the server
+	ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && $(PROD) exec -T app php bin/console dalketicker:import --all'
