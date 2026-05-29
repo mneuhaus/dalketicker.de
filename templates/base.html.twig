@@ -30,6 +30,10 @@
                 <a href="{{ path('event_index') }}" class="px-3 py-2 rounded-lg transition {{ view|default('') == 'list' ? 'bg-brand-600 text-white' : 'text-ink/70 hover:bg-black/5' }}">Liste</a>
                 <a href="{{ path('event_week', {year: 'now'|date('o'), week: 'now'|date('W')}) }}" class="px-3 py-2 rounded-lg transition {{ view|default('') == 'week' ? 'bg-brand-600 text-white' : 'text-ink/70 hover:bg-black/5' }}">Woche</a>
                 <a href="{{ path('event_month', {year: 'now'|date('Y'), month: 'now'|date('n')}) }}" class="px-3 py-2 rounded-lg transition {{ view|default('') == 'month' ? 'bg-brand-600 text-white' : 'text-ink/70 hover:bg-black/5' }}">Monat</a>
+                <a href="{{ path('event_gemerkt') }}" class="px-3 py-2 rounded-lg transition flex items-center gap-1.5 {{ view|default('') == 'gemerkt' ? 'bg-brand-600 text-white' : 'text-ink/70 hover:bg-black/5' }}">
+                    Gemerkt
+                    <span data-save-count class="hidden min-w-5 h-5 px-1.5 inline-flex items-center justify-center rounded-full bg-brand-100 text-brand-800 text-xs font-semibold">0</span>
+                </a>
             </nav>
         </div>
     </header>
@@ -47,7 +51,6 @@
             <nav class="flex flex-col gap-1 sm:text-right">
                 <a href="{{ path('page_quellen') }}" class="hover:text-brand-700">Quellen &amp; Hinweise</a>
                 <a href="{{ path('page_impressum') }}" class="hover:text-brand-700">Impressum</a>
-                <span class="text-ink/40">Ein Projekt aus Gütersloh.</span>
             </nav>
         </div>
     </footer>

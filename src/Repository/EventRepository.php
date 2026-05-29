@@ -79,6 +79,34 @@ class EventRepository extends ServiceEntityRepository
         return $this->findInRange($start, $start->modify('first day of next month'), $filter);
     }
 
+    /**
+     * Visible events for the given IDs, chronologically ordered. Used by the
+     * client-side "merken" (bookmarks) list, which passes the IDs it stored
+     * in localStorage.
+     *
+     * @param int[] $ids
+     * @return Event[]
+     */
+    public function findVisibleByIds(array $ids): array
+    {
+        $ids = array_values(array_filter(array_map('intval', $ids)));
+        if ($ids === []) {
+            return [];
+        }
+
+        return $this->createQueryBuilder('e')
+            ->leftJoin('e.venue', 'v')->addSelect('v')
+            ->leftJoin('e.category', 'c')->addSelect('c')
+            ->leftJoin('e.source', 's')->addSelect('s')
+            ->andWhere('e.id IN (:ids)')
+            ->andWhere('e.status = :published')
+            ->setParameter('ids', $ids)
+            ->setParameter('published', EventStatus::Published)
+            ->orderBy('e.startsAt', 'ASC')
+            ->getQuery()
+            ->getResult();
+    }
+
     public function findVisible(int $id): ?Event
     {
         return $this->createQueryBuilder('e')

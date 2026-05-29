@@ -109,6 +109,25 @@ final class EventController extends AbstractController
         ] + $this->filterData());
     }
 
+    /** Bookmarks page; the saved event IDs live in the browser (localStorage). */
+    #[Route('/gemerkt', name: 'event_gemerkt', methods: ['GET'])]
+    public function gemerkt(): Response
+    {
+        return $this->render('event/gemerkt.html.twig', ['view' => 'gemerkt']);
+    }
+
+    /** Fragment: renders the grouped cards for the given (saved) event IDs. */
+    #[Route('/gemerkt/liste', name: 'event_gemerkt_liste', methods: ['GET'])]
+    public function gemerktListe(Request $request): Response
+    {
+        $ids = array_filter(array_map('trim', explode(',', (string) $request->query->get('ids'))));
+        $events = $this->events->findVisibleByIds($ids);
+
+        return $this->render('event/_grouped_list.html.twig', [
+            'groups' => $this->groupByDay($events),
+        ]);
+    }
+
     #[Route('/event/{id}-{slug}', name: 'event_show', requirements: ['id' => '\d+', 'slug' => '[^/]*'], methods: ['GET'])]
     public function show(int $id, string $slug): Response
     {

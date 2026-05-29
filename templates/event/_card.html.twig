@@ -1,6 +1,14 @@
-{# A single event row/card. Expects `event`. #}
-<a href="{{ path('event_show', {id: event.id, slug: event.slug}) }}"
-   class="group flex gap-4 rounded-2xl border border-black/5 bg-white p-4 shadow-sm hover:shadow-md hover:border-brand-200 transition">
+{# A single event row/card. Expects `event`.
+   Uses the "stretched link" pattern: the title link covers the whole card via
+   a ::before overlay, so the bookmark button (higher z-index) stays clickable. #}
+<div class="group relative flex gap-4 rounded-2xl border border-black/5 bg-white p-4 shadow-sm hover:shadow-md hover:border-brand-200 transition">
+
+    {# Merken (bookmark) — toggled client-side, see assets/app.js #}
+    <button type="button" data-save-btn data-event-id="{{ event.id }}" aria-pressed="false"
+            class="save-btn absolute top-3 right-3 z-20 text-ink/30 hover:text-brand-600 transition"
+            aria-label="Merken" title="Merken">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>
+    </button>
 
     {# Time block #}
     {% set multiDay = event.endsAt and event.endsAt|date('Y-m-d') != event.startsAt|date('Y-m-d') %}
@@ -25,14 +33,12 @@
     {% endif %}
 
     {# Body #}
-    <div class="min-w-0 flex-1">
-        <div class="flex items-start gap-2 flex-wrap">
-            {% if event.category %}
-                <span class="chip text-white text-xs" style="background-color: {{ event.category.color }}">{{ event.category.name }}</span>
-            {% endif %}
-        </div>
+    <div class="min-w-0 flex-1 pr-7">
+        {% if event.category %}
+            <span class="chip text-white text-xs" style="background-color: {{ event.category.color }}">{{ event.category.name }}</span>
+        {% endif %}
         <h3 class="font-[family-name:var(--font-display)] text-lg font-bold text-ink leading-snug mt-1 group-hover:text-brand-700 transition line-clamp-2">
-            {{ event.title }}
+            <a href="{{ path('event_show', {id: event.id, slug: event.slug}) }}" class="before:absolute before:inset-0 before:z-0">{{ event.title }}</a>
         </h3>
         {% if event.displayLocation %}
             <p class="text-sm text-ink/60 mt-1 flex items-center gap-1.5">
@@ -45,4 +51,4 @@
             {% if event.price %}<span>·</span><span class="text-ink/60">{{ event.price }}</span>{% endif %}
         </div>
     </div>
-</a>
+</div>

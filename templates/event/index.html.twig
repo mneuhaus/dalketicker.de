@@ -14,22 +14,7 @@
             <p class="text-sm mt-1">Pass die Filter an oder schau in den <a href="{{ path('event_month', {year: 'now'|date('Y'), month: 'now'|date('n')}) }}" class="text-brand-700 underline">Kalender</a>.</p>
         </div>
     {% else %}
-        <div class="space-y-8">
-            {% for group in groups %}
-                <section>
-                    <div class="flex items-baseline gap-3 mb-3 sticky top-16 bg-paper/95 backdrop-blur py-1 z-10">
-                        <h2 class="font-[family-name:var(--font-display)] text-lg font-bold text-brand-800">{{ group.date|de_day_label }}</h2>
-                        <span class="text-xs text-ink/40">{{ group.events|length }} Termin{{ group.events|length == 1 ? '' : 'e' }}</span>
-                        <span class="flex-1 border-b border-dashed border-black/10"></span>
-                    </div>
-                    <div class="grid gap-3">
-                        {% for event in group.events %}
-                            {{ include('event/_card.html.twig', {event: event}) }}
-                        {% endfor %}
-                    </div>
-                </section>
-            {% endfor %}
-        </div>
+        {{ include('event/_grouped_list.html.twig') }}
 
         {% if pages > 1 %}
             <nav class="flex justify-center items-center gap-2 mt-10">

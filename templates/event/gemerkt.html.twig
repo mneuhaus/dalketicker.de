@@ -1,0 +1,20 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Gemerkt – {{ site_name }}{% endblock %}
+
+{% block body %}
+    <div class="mb-6">
+        <h1 class="font-[family-name:var(--font-display)] text-3xl sm:text-4xl font-extrabold tracking-tight text-ink">
+            Gemerkte Veranstaltungen
+        </h1>
+        <p class="text-ink/50 mt-1">Nur auf diesem Gerät gespeichert – ohne Konto, ohne Tracking.</p>
+    </div>
+
+    <div data-saved-empty class="hidden text-center py-20 text-ink/50 border border-dashed border-black/10 rounded-2xl">
+        <p class="font-medium text-ink/70">Du hast dir noch nichts gemerkt.</p>
+        <p class="text-sm mt-1">Tippe bei einer Veranstaltung auf das Lesezeichen, dann taucht sie hier auf.</p>
+        <a href="{{ path('event_index') }}" class="inline-block mt-4 chip-active">Veranstaltungen entdecken</a>
+    </div>
+
+    <div data-saved-list></div>
+{% endblock %}

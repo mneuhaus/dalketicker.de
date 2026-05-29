@@ -52,3 +52,11 @@
     @apply inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-medium transition bg-brand-600 text-white shadow-sm;
   }
 }
+
+/* Bookmark button: filled when the event is saved. */
+.save-btn.is-saved {
+  color: var(--color-brand-600);
+}
+.save-btn.is-saved svg {
+  fill: currentColor;
+}
