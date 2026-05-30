@@ -37,13 +37,30 @@ final class ImportedEvent
      */
     public function dedupKey(): string
     {
-        $place = $this->venueName ?? $this->city ?? $this->locationText ?? '';
+        // Place: prefer the municipality over the (often varying) venue string,
+        // so the same event from two sources with slightly different venue
+        // wording still collapses.
+        $place = $this->city ?? $this->venueName ?? $this->locationText ?? '';
 
         return substr(
-            self::normalize($this->title).'|'.$this->startsAt->format('Y-m-d').'|'.self::normalize($place),
+            self::normalizeTitle($this->title).'|'.$this->startsAt->format('Y-m-d').'|'.self::normalize($place),
             0,
             191,
         );
+    }
+
+    /**
+     * Title normalization for deduplication: drop a trailing subtitle/suffix
+     * after a spaced dash (e.g. "… - Eintritt frei") and any parentheticals,
+     * then strip to alphanumerics. Catches the common cross-source variants.
+     */
+    public static function normalizeTitle(string $title): string
+    {
+        $t = mb_strtolower(trim($title));
+        $t = preg_replace('/\s+[–—-]\s+.*$/u', '', $t) ?? $t; // cut at first " - "
+        $t = preg_replace('/\([^)]*\)/u', '', $t) ?? $t;       // drop (…)
+
+        return self::normalize($t);
     }
 
     /** Hash of meaningful fields; unchanged hash => skip the update. */
