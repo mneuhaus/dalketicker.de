@@ -22,8 +22,8 @@
             <a href="{{ path('event_index') }}" class="flex items-center gap-2.5 group">
                 {{ include('_logo.html.twig') }}
                 <span class="leading-tight">
-                    <span class="block font-[family-name:var(--font-display)] text-xl font-extrabold tracking-tight text-ink group-hover:text-brand-700 transition">{{ site_name }}</span>
-                    <span class="block text-xs text-ink/50 -mt-0.5">{{ site_tagline }}</span>
+                    <span class="block font-[family-name:var(--font-display)] text-lg sm:text-xl font-extrabold tracking-tight text-ink group-hover:text-brand-700 transition">{{ site_name }}</span>
+                    <span class="hidden sm:block text-xs text-ink/50 -mt-0.5">{{ site_tagline }}</span>
                 </span>
             </a>
             {% set meineActive = app.request.query.get('meine') == '1' %}
