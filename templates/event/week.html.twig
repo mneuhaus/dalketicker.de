@@ -34,7 +34,7 @@
                 {% if day.events is empty %}
                     <p class="text-sm text-ink/30 pl-1">Keine Termine.</p>
                 {% else %}
-                    <div class="grid gap-3">
+                    <div class="grid grid-cols-1 gap-3">
                         {% for event in day.events %}
                             {{ include('event/_card.html.twig', {event: event}) }}
                         {% endfor %}
