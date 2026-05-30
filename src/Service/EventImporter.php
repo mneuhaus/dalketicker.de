@@ -38,6 +38,7 @@ final class EventImporter
         private readonly SluggerInterface $slugger,
         private readonly ClockInterface $clock,
         private readonly LoggerInterface $logger,
+        private readonly CityNormalizer $cityNormalizer,
     ) {
     }
 
@@ -113,6 +114,10 @@ final class EventImporter
         if ($dto->title === '') {
             return;
         }
+
+        // Map sub-localities / spelling variants onto the 13 Kreis municipalities
+        // before it feeds the venue and the cross-source dedup key.
+        $dto->city = $this->cityNormalizer->normalize($dto->city);
 
         // Skip a second occurrence of the same externalId within this run —
         // the first persist isn't flushed yet, so a DB lookup wouldn't see it
