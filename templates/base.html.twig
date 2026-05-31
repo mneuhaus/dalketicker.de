@@ -6,9 +6,6 @@
     <title>{% block title %}{{ site_name }} – {{ site_tagline }}{% endblock %}</title>
     <meta name="description" content="{% block meta_description %}Alle Veranstaltungen im Kreis Gütersloh an einem Ort – Konzerte, Sport, Familie, Kultur und mehr. Endlich übersichtlich.{% endblock %}">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%230a8da3%22/><g fill=%22none%22 stroke=%22%23fff%22 stroke-width=%222.4%22 stroke-linecap=%22round%22><path d=%22M6 12c2.5-2.4 5-2.4 7.5 0s5 2.4 7.5 0 5-2.4 5 0%22/><path d=%22M6 19c2.5-2.4 5-2.4 7.5 0s5 2.4 7.5 0 5-2.4 5 0%22/></g></svg>">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
     {% block stylesheets %}{% endblock %}
     {% block javascripts %}
         {% block importmap %}{{ importmap('app') }}{% endblock %}
@@ -58,6 +55,7 @@
             </p>
             <nav class="flex flex-col gap-1 sm:text-right">
                 <a href="{{ path('page_quellen') }}" class="hover:text-brand-700">Quellen &amp; Hinweise</a>
+                <a href="{{ path('page_datenschutz') }}" class="hover:text-brand-700">Datenschutz</a>
                 <a href="{{ path('page_impressum') }}" class="hover:text-brand-700">Impressum</a>
             </nav>
         </div>

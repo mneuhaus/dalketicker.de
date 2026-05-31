@@ -4,6 +4,29 @@
 @source "../../templates";
 @source "../../src";
 
+/* Self-hosted display font (no Google Fonts call → no IP leak, no banner). */
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/SpaceGrotesk-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/SpaceGrotesk-600.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/SpaceGrotesk-700.woff2") format("woff2");
+}
+
 @theme {
   /* Dalke — river teal as the brand accent on a warm paper background. */
   --color-brand-50: #ecfeff;

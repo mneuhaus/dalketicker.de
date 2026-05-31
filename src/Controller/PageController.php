@@ -31,4 +31,10 @@ final class PageController extends AbstractController
 
         return $this->render('page/quellen.html.twig', ['sources' => $list]);
     }
+
+    #[Route('/datenschutz', name: 'page_datenschutz', methods: ['GET'])]
+    public function datenschutz(): Response
+    {
+        return $this->render('page/datenschutz.html.twig');
+    }
 }

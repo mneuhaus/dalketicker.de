@@ -1,0 +1,53 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Datenschutz – {{ site_name }}{% endblock %}
+{% block meta_description %}Datenschutzerklärung für {{ site_name }} – ohne Cookie-Banner, ohne Tracking.{% endblock %}
+
+{% block body %}
+    <article class="max-w-3xl mx-auto">
+        <h1 class="font-[family-name:var(--font-display)] text-3xl font-extrabold tracking-tight text-ink mb-2">Datenschutz</h1>
+        <p class="text-ink/50 mb-6">Kurz gesagt: {{ site_name }} setzt <strong class="text-ink/70">keine Tracking- oder Werbe-Cookies</strong>, nutzt <strong class="text-ink/70">keine Analyse-Tools</strong> und gibt keine Daten zu Werbezwecken weiter. Deshalb gibt es bewusst keinen Cookie-Banner.</p>
+
+        <div class="space-y-6 text-ink/80 leading-relaxed">
+            <section>
+                <h2 class="font-semibold text-ink mb-1">Verantwortlicher</h2>
+                <p>Marc Neuhaus, Brockhäger Str. 188, 33330 Gütersloh. Kontakt: <a href="mailto:marc@roothirsch.com" class="text-brand-700 underline">marc@roothirsch.com</a>. Siehe auch das <a href="{{ path('page_impressum') }}" class="text-brand-700 underline">Impressum</a>.</p>
+            </section>
+
+            <section>
+                <h2 class="font-semibold text-ink mb-1">Server-Logs</h2>
+                <p>Beim Aufruf der Seite verarbeitet der Webserver technisch notwendige Zugriffsdaten (u.a. IP-Adresse, Datum/Uhrzeit, abgerufene Seite, Browsertyp), um die Seite auszuliefern und den Betrieb abzusichern. Rechtsgrundlage ist das berechtigte Interesse am sicheren Betrieb (Art. 6 Abs. 1 lit. f DSGVO). Diese Logs werden nicht zu Profilen zusammengeführt und nur kurz vorgehalten.</p>
+            </section>
+
+            <section>
+                <h2 class="font-semibold text-ink mb-1">Keine Cookies, kein Tracking</h2>
+                <p>Auf den öffentlichen Seiten werden <strong>keine Cookies</strong> gesetzt. Es gibt keine Reichweitenmessung, kein Analytics, keine Werbenetzwerke, keine Social-Media-Plugins.</p>
+            </section>
+
+            <section>
+                <h2 class="font-semibold text-ink mb-1">Lokale Speicherung (localStorage)</h2>
+                <p>Wenn du Veranstaltungen über „Merken" speicherst oder Filter verwendest, wird das ausschließlich <strong>lokal in deinem Browser</strong> abgelegt (localStorage). Diese Daten verlassen dein Gerät nicht und werden nicht an uns übertragen. Sie dienen allein der von dir aktiv gewünschten Funktion und sind dafür technisch erforderlich (§ 25 Abs. 2 TDDDG) – daher ist keine Einwilligung nötig. Du kannst sie jederzeit über die Browser-Einstellungen löschen.</p>
+            </section>
+
+            <section>
+                <h2 class="font-semibold text-ink mb-1">Schriftart</h2>
+                <p>Die verwendete Schriftart wird vom eigenen Server geladen (self-hosted). Es findet <strong>keine Verbindung zu Google Fonts</strong> oder anderen Dritt-Anbietern statt.</p>
+            </section>
+
+            <section>
+                <h2 class="font-semibold text-ink mb-1">Veranstaltungsbilder &amp; externe Links</h2>
+                <p>Manche Veranstaltungsbilder werden direkt vom Server der jeweiligen Quelle geladen (verlinkt, nicht bei uns gespeichert). Dabei kann deine IP-Adresse an den jeweiligen Anbieter übertragen werden – technisch derselbe Vorgang wie beim Klick auf einen externen Link. Für verlinkte Veranstalter-Seiten gilt deren eigene Datenschutzerklärung.</p>
+            </section>
+
+            <section>
+                <h2 class="font-semibold text-ink mb-1">Administrationsbereich</h2>
+                <p>Nur für eingeloggte Betreiber wird ein technisch notwendiges Sitzungs-Cookie gesetzt (Login/Sicherheit). Für normale Besucher ist dieser Bereich nicht relevant.</p>
+            </section>
+
+            <section>
+                <h2 class="font-semibold text-ink mb-1">Deine Rechte</h2>
+                <p>Du hast das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung der Verarbeitung sowie Widerspruch. Wende dich dafür an die oben genannte Kontaktadresse. Außerdem kannst du dich bei einer Datenschutz-Aufsichtsbehörde beschweren (für NRW: Landesbeauftragte für Datenschutz und Informationsfreiheit Nordrhein-Westfalen, ldi.nrw.de).</p>
+            </section>
+        </div>
+    </article>
+{% endblock %}
