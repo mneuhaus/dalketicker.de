@@ -53,13 +53,27 @@
         {% block body %}{% endblock %}
     </main>
 
-    <footer class="border-t border-black/5 mt-10">
-        <div class="mx-auto max-w-6xl px-4 py-8 text-sm text-ink/50 flex flex-col sm:flex-row justify-between gap-4">
+    <footer class="border-t border-black/5 mt-10 text-sm text-ink/50">
+        {# Mobile: centred — links as one row, tagline quietly below. #}
+        <div class="sm:hidden mx-auto max-w-6xl px-4 py-7 flex flex-col items-center text-center gap-3">
+            <nav class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 font-medium text-ink/70">
+                <a href="{{ path('page_quellen') }}" class="hover:text-brand-700">Quellen &amp; Hinweise</a>
+                <span class="text-ink/25" aria-hidden="true">·</span>
+                <a href="{{ path('page_datenschutz') }}" class="hover:text-brand-700">Datenschutz</a>
+                <span class="text-ink/25" aria-hidden="true">·</span>
+                <a href="{{ path('page_impressum') }}" class="hover:text-brand-700">Impressum</a>
+            </nav>
+            <p class="text-xs text-ink/45 leading-relaxed max-w-xs">
+                <strong class="text-ink/60">{{ site_name }}</strong> aggregiert Veranstaltungen aus dem Kreis Gütersloh – alle Angaben ohne Gewähr.
+            </p>
+        </div>
+        {# Desktop: tagline left, links right. #}
+        <div class="hidden sm:flex mx-auto max-w-6xl px-4 py-8 justify-between gap-4">
             <p>
                 <strong class="text-ink/70">{{ site_name }}</strong> · aggregiert Veranstaltungen aus dem Kreis Gütersloh.<br>
                 Alle Angaben ohne Gewähr – maßgeblich ist immer der Veranstalter.
             </p>
-            <nav class="flex flex-col gap-1 sm:text-right">
+            <nav class="flex flex-col gap-1 text-right">
                 <a href="{{ path('page_quellen') }}" class="hover:text-brand-700">Quellen &amp; Hinweise</a>
                 <a href="{{ path('page_datenschutz') }}" class="hover:text-brand-700">Datenschutz</a>
                 <a href="{{ path('page_impressum') }}" class="hover:text-brand-700">Impressum</a>
