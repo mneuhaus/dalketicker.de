@@ -11,7 +11,7 @@
         {% block importmap %}{{ importmap('app') }}{% endblock %}
     {% endblock %}
 </head>
-<body class="min-h-screen flex flex-col">
+<body class="min-h-screen flex flex-col {{ view|default('') == 'surprise' ? 'pb-20 md:pb-0' : '' }}">
     <div class="river-rule h-1 w-full"></div>
 
     {# Header + (on list views) the mobile filter bar stick to the top together. #}

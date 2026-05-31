@@ -57,7 +57,9 @@
   <div class="group">
     <h2>Quelle (OpenStreetMap)</h2>
     <label>Grenze – Name der Relation</label>
-    <input type="text" id="boundaryName" value="Kreis Gütersloh">
+    <input type="text" id="boundaryName" value="Gütersloh">
+    <label>Ebene (admin_level · 8 = Stadt, 6 = Kreis)</label>
+    <input type="text" id="adminLevel" value="8">
     <label>Fluss – Name (waterway)</label>
     <input type="text" id="riverName" value="Dalke">
     <div class="btns">
@@ -127,13 +129,14 @@ const $ = id => document.getElementById(id);
 const statusEl = $('status');
 function setStatus(msg, err=false){ statusEl.textContent = msg; statusEl.classList.toggle('err', err); }
 
-function buildQuery(boundaryName, riverName){
+function buildQuery(boundaryName, riverName, adminLevel){
   const b = boundaryName.replace(/"/g,'\\"');
   const r = riverName.replace(/"/g,'\\"');
+  const lvl = (adminLevel||'8').replace(/[^0-9]/g,'') || '8';
   return `[out:json][timeout:90];
-rel["boundary"="administrative"]["admin_level"="6"]["name"="${b}"];
+rel["boundary"="administrative"]["admin_level"="${lvl}"]["name"="${b}"];
 out geom;
-rel["boundary"="administrative"]["admin_level"="6"]["name"="${b}"];
+rel["boundary"="administrative"]["admin_level"="${lvl}"]["name"="${b}"];
 map_to_area->.a;
 way["waterway"]["name"~"${r}"](area.a);
 out geom;`;
@@ -142,8 +145,9 @@ out geom;`;
 async function load(){
   const boundaryName = $('boundaryName').value.trim();
   const riverName = $('riverName').value.trim();
+  const adminLevel = $('adminLevel').value.trim();
   setStatus('Lade von OpenStreetMap … (kann 5–20 s dauern)');
-  const q = buildQuery(boundaryName, riverName);
+  const q = buildQuery(boundaryName, riverName, adminLevel);
   let data;
   try{
     const res = await fetch(ENDPOINTS[endpointIdx], {method:'POST', body:'data='+encodeURIComponent(q)});
