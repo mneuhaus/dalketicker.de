@@ -28,15 +28,15 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=web"
-      # Primary domain — serves the app.
-      - "traefik.http.routers.dalketicker.entrypoints=web,websecure"
+      # Primary domain — serves the app (https only; http handled by the redirect router below).
+      - "traefik.http.routers.dalketicker.entrypoints=websecure"
       - "traefik.http.routers.dalketicker.tls=true"
       - "traefik.http.routers.dalketicker.tls.certresolver=neuhaus"
       - "traefik.http.routers.dalketicker.rule=Host(`dalketicker.de`)"
       - "traefik.http.services.dalketicker.loadbalancer.server.port=80"
       - "traefik.http.services.dalketicker.loadbalancer.passhostheader=true"
       # Aliases (www + old test domain) → 301 to the canonical apex domain.
-      - "traefik.http.routers.dalketicker-redirect.entrypoints=web,websecure"
+      - "traefik.http.routers.dalketicker-redirect.entrypoints=websecure"
       - "traefik.http.routers.dalketicker-redirect.tls=true"
       - "traefik.http.routers.dalketicker-redirect.tls.certresolver=neuhaus"
       - "traefik.http.routers.dalketicker-redirect.rule=Host(`www.dalketicker.de`) || Host(`dalketicker.neuhaus.nrw`)"
@@ -45,6 +45,14 @@ services:
       - "traefik.http.middlewares.dalketicker-toapex.redirectregex.regex=^https?://[^/]+/(.*)"
       - "traefik.http.middlewares.dalketicker-toapex.redirectregex.replacement=https://dalketicker.de/$${1}"
       - "traefik.http.middlewares.dalketicker-toapex.redirectregex.permanent=true"
+      # Force http → https for all our hosts (ACME challenge on :80 is handled by
+      # Traefik's resolver before routers, so renewals keep working).
+      - "traefik.http.routers.dalketicker-http.entrypoints=web"
+      - "traefik.http.routers.dalketicker-http.rule=Host(`dalketicker.de`) || Host(`www.dalketicker.de`) || Host(`dalketicker.neuhaus.nrw`)"
+      - "traefik.http.routers.dalketicker-http.service=dalketicker"
+      - "traefik.http.routers.dalketicker-http.middlewares=dalketicker-https"
+      - "traefik.http.middlewares.dalketicker-https.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.dalketicker-https.redirectscheme.permanent=true"
 
   database:
     image: postgres:16-alpine
