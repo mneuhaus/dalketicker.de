@@ -6,7 +6,7 @@
 
 /* "Wide AND tall enough" — only then do we show the full chip sidebar; on a
    short (or narrow) viewport the compact dropdown filter bar is used instead. */
-@custom-variant tall-desktop (@media (min-width: 768px) and (min-height: 821px));
+@custom-variant tall-desktop (@media (min-width: 768px) and (min-height: 1042px));
 
 /* Self-hosted display font (no Google Fonts call → no IP leak, no banner). */
 @font-face {
