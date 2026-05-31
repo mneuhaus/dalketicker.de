@@ -89,8 +89,7 @@
                         <div class="prose prose-sm max-w-none mt-6 text-ink/80 whitespace-pre-line">{{ event.description|striptags("<br><p><a><strong><em><ul><ol><li>")|raw }}</div>
                     {% endif %}
 
-                    <div class="mt-8 pt-5 border-t border-black/5 flex flex-wrap items-center gap-3 justify-between">
-                        <span class="text-xs text-ink/40">Quelle: {{ event.source.name }}</span>
+                    <div class="mt-8 pt-5 border-t border-black/5 flex justify-end">
                         <button type="button" data-save-btn data-event-id="{{ event.id }}" aria-pressed="false"
                                 class="save-btn inline-flex items-center gap-2 rounded-xl border border-black/10 px-4 py-2.5 text-sm font-semibold text-ink/70 hover:border-brand-300 hover:text-brand-700 transition">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>
@@ -105,14 +104,14 @@
                 <nav class="mt-6 grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4" aria-label="Vorheriges und nächstes Event">
                     <div>
                         {% if prev %}
-                            <div class="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">← Davor</div>
+                            <div class="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">← Vorherige</div>
                             {{ ui.neighbor(prev, filter) }}
                         {% endif %}
                     </div>
                     <div class="hidden sm:block"></div>
                     <div>
                         {% if next %}
-                            <div class="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2 text-right">Danach →</div>
+                            <div class="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2 text-right">Nächste →</div>
                             {{ ui.neighbor(next, filter) }}
                         {% endif %}
                     </div>
@@ -136,9 +135,18 @@
                 </div>
             {% endif %}
 
+            <div class="bg-white rounded-2xl border border-black/5 shadow-sm p-5">
+                <h2 class="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-1">Quelle</h2>
+                {% if sourceHome %}
+                    <a href="{{ sourceHome }}" target="_blank" rel="noopener" class="text-sm text-brand-700 hover:underline inline-flex items-start gap-1">{{ event.source.name }}<span class="text-ink/30">↗</span></a>
+                {% else %}
+                    <div class="text-sm text-ink/80">{{ event.source.name }}</div>
+                {% endif %}
+            </div>
+
             {% if event.sourceUrl %}
                 <a href="{{ event.sourceUrl }}" target="_blank" rel="noopener"
-                   class="block text-center rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white hover:bg-brand-700 transition">Zum Veranstalter ↗</a>
+                   class="block text-center rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white hover:bg-brand-700 transition">Zur Veranstaltungsseite ↗</a>
             {% endif %}
         </aside>
     </div>

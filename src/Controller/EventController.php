@@ -133,7 +133,22 @@ final class EventController extends AbstractController
             'before' => $around['before'],
             'after' => $around['after'],
             'filter' => $filter,
+            'sourceHome' => $this->homepageOf($event->getSource()->getUrl()),
         ]);
+    }
+
+    /** Reduce a source URL to its bare homepage (scheme + host) for linking. */
+    private function homepageOf(?string $url): ?string
+    {
+        if ($url === null) {
+            return null;
+        }
+        $parts = parse_url($url);
+        if (empty($parts['host'])) {
+            return null;
+        }
+
+        return ($parts['scheme'] ?? 'https').'://'.$parts['host'];
     }
 
     /**
