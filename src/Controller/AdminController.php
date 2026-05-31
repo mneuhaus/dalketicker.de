@@ -10,6 +10,7 @@ use App\Repository\EventRepository;
 use App\Repository\ImportRunRepository;
 use App\Repository\SourceRepository;
 use App\Repository\UserRepository;
+use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Bundle\SecurityBundle\Security;
@@ -98,6 +99,37 @@ final class AdminController extends AbstractController
             'runs' => $runs->findForSource($source, 15),
             'importerClass' => $importerClass,
             'importerAvailable' => $importerAvailable,
+        ]);
+    }
+
+    /** Cookieless visit statistics: per-day views/visitors + top pages. */
+    #[Route('/statistik', name: 'admin_stats', methods: ['GET'])]
+    public function stats(Connection $db): Response
+    {
+        $since = (new \DateTimeImmutable('today', new \DateTimeZone('Europe/Berlin')))->modify('-29 days')->format('Y-m-d');
+
+        $days = $db->fetchAllAssociative(
+            'SELECT day, views, visitors FROM daily_stat ORDER BY day DESC LIMIT 30',
+        );
+        $totals = $db->fetchAssociative(
+            'SELECT COALESCE(SUM(views), 0) AS views, COALESCE(SUM(visitors), 0) AS visitors FROM daily_stat WHERE day >= :since',
+            ['since' => $since],
+        ) ?: ['views' => 0, 'visitors' => 0];
+        $pages = $db->fetchAllAssociative(
+            'SELECT route_key, SUM(views) AS views FROM page_stat WHERE day >= :since GROUP BY route_key ORDER BY views DESC LIMIT 15',
+            ['since' => $since],
+        );
+
+        $maxDayViews = 0;
+        foreach ($days as $d) {
+            $maxDayViews = max($maxDayViews, (int) $d['views']);
+        }
+
+        return $this->render('admin/stats.html.twig', [
+            'days' => $days,
+            'totals' => $totals,
+            'pages' => $pages,
+            'maxDayViews' => $maxDayViews,
         ]);
     }
 

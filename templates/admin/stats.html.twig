@@ -1,0 +1,91 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Statistik – {{ site_name }}{% endblock %}
+
+{% block body %}
+    {% set labels = {
+        'event_index': 'Liste',
+        'event_month': 'Monat',
+        'event_week': 'Woche',
+        'event_surprise': 'Überrasch mich',
+        'event_show': 'Event-Detail',
+        'page_quellen': 'Quellen',
+        'page_datenschutz': 'Datenschutz',
+        'page_impressum': 'Impressum'
+    } %}
+
+    <div class="flex items-center justify-between mb-6 gap-4">
+        <h1 class="font-[family-name:var(--font-display)] text-3xl font-extrabold tracking-tight text-ink">Statistik</h1>
+        <div class="flex items-center gap-3 text-sm">
+            <a href="{{ path('admin_imports') }}" class="chip-muted">Monitoring</a>
+            <a href="{{ path('admin_account') }}" class="chip-muted">Konto</a>
+            <a href="{{ path('app_logout') }}" class="chip-muted">Logout</a>
+        </div>
+    </div>
+
+    <p class="text-sm text-ink/50 mb-6">
+        Anonyme Zählung ohne Cookies, ohne Tracking – nur aggregierte Zahlen. „Besucher" ist eine grobe Schätzung
+        (tagesbezogener, gesalzener Hash, keine IP gespeichert).
+    </p>
+
+    {# Totals (last 30 days) #}
+    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-8">
+        <div class="bg-white rounded-2xl border border-black/5 shadow-sm p-5">
+            <div class="text-3xl font-bold text-ink tabular-nums font-[family-name:var(--font-display)]">{{ totals.views }}</div>
+            <div class="text-xs text-ink/50 mt-0.5">Seitenaufrufe · 30 Tage</div>
+        </div>
+        <div class="bg-white rounded-2xl border border-black/5 shadow-sm p-5">
+            <div class="text-3xl font-bold text-ink tabular-nums font-[family-name:var(--font-display)]">{{ totals.visitors }}</div>
+            <div class="text-xs text-ink/50 mt-0.5">Besucher (grob) · 30 Tage</div>
+        </div>
+        <div class="bg-white rounded-2xl border border-black/5 shadow-sm p-5">
+            <div class="text-3xl font-bold text-ink tabular-nums font-[family-name:var(--font-display)]">{{ days|length ? (days[0].day == 'now'|date('Y-m-d') ? days[0].views : 0) : 0 }}</div>
+            <div class="text-xs text-ink/50 mt-0.5">Aufrufe heute</div>
+        </div>
+    </div>
+
+    {# Per-day #}
+    <h2 class="font-[family-name:var(--font-display)] text-lg font-bold text-ink mb-2">Pro Tag (letzte 30)</h2>
+    <div class="bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden mb-8">
+        {% if days is empty %}
+            <div class="px-4 py-6 text-ink/40 text-sm">Noch keine Daten erfasst.</div>
+        {% else %}
+            <table class="w-full text-sm">
+                <thead class="text-left text-xs uppercase tracking-wide text-ink/40 border-b border-black/5">
+                    <tr>
+                        <th class="px-4 py-3 w-32">Tag</th>
+                        <th class="px-4 py-3">Aufrufe</th>
+                        <th class="px-4 py-3 text-right w-24">Besucher</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-black/5">
+                    {% for d in days %}
+                        <tr>
+                            <td class="px-4 py-2.5 text-ink/60 whitespace-nowrap tabular-nums">{{ d.day|date('d.m.Y') }}</td>
+                            <td class="px-4 py-2.5">
+                                <div class="flex items-center gap-2">
+                                    <div class="h-2 rounded-full bg-brand-500" style="width: {{ maxDayViews > 0 ? (d.views / maxDayViews * 100)|round : 0 }}%; min-width: 2px;"></div>
+                                    <span class="tabular-nums text-ink/70">{{ d.views }}</span>
+                                </div>
+                            </td>
+                            <td class="px-4 py-2.5 text-right tabular-nums text-ink/60">{{ d.visitors }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% endif %}
+    </div>
+
+    {# Top pages #}
+    <h2 class="font-[family-name:var(--font-display)] text-lg font-bold text-ink mb-2">Top-Seiten (30 Tage)</h2>
+    <div class="bg-white rounded-2xl border border-black/5 shadow-sm divide-y divide-black/5">
+        {% for p in pages %}
+            <div class="flex items-center gap-4 px-4 py-2.5 text-sm">
+                <span class="font-medium text-ink flex-1">{{ labels[p.route_key] ?? p.route_key }}</span>
+                <span class="text-ink/50 tabular-nums">{{ p.views }}</span>
+            </div>
+        {% else %}
+            <div class="px-4 py-6 text-ink/40 text-sm">Noch keine Daten erfasst.</div>
+        {% endfor %}
+    </div>
+{% endblock %}
