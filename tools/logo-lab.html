@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dalketicker · Logo-Lab (Kreis Gütersloh + Dalke)</title>
+<style>
+  :root{
+    --bg:#0f1416; --panel:#171d20; --line:#283034; --ink:#e7eced; --muted:#8b979c;
+    --brand:#0a8da3; --brand2:#117084; --accent:#22ccde;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--bg); color:var(--ink);
+    font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    display:grid; grid-template-columns:320px 1fr; height:100vh;
+  }
+  aside{background:var(--panel); border-right:1px solid var(--line); padding:18px; overflow:auto}
+  main{position:relative; display:flex; align-items:center; justify-content:center; padding:24px; overflow:auto}
+  h1{font-size:15px; margin:0 0 2px; letter-spacing:.2px}
+  .sub{color:var(--muted); font-size:12px; margin:0 0 16px}
+  .group{border:1px solid var(--line); border-radius:10px; padding:12px; margin-bottom:12px}
+  .group h2{font-size:11px; text-transform:uppercase; letter-spacing:.12em; color:var(--muted); margin:0 0 10px}
+  label{display:block; font-size:12px; color:var(--muted); margin:10px 0 4px}
+  label:first-of-type{margin-top:0}
+  input[type=text]{width:100%; background:#0c1113; border:1px solid var(--line); color:var(--ink); border-radius:8px; padding:7px 9px; font-size:13px}
+  input[type=range]{width:100%; accent-color:var(--accent)}
+  .row{display:flex; align-items:center; gap:8px}
+  .row input[type=color]{width:34px; height:28px; padding:0; border:1px solid var(--line); border-radius:6px; background:none}
+  .row .val{margin-left:auto; font-variant-numeric:tabular-nums; color:var(--ink); font-size:12px}
+  .checkrow{display:flex; align-items:center; gap:8px; margin:8px 0}
+  .checkrow input{accent-color:var(--accent)}
+  button{
+    width:100%; border:1px solid var(--line); background:#0c1113; color:var(--ink);
+    border-radius:9px; padding:9px 12px; font-size:13px; font-weight:600; cursor:pointer;
+  }
+  button:hover{border-color:var(--accent)}
+  button.primary{background:var(--brand); border-color:var(--brand); color:#fff}
+  button.primary:hover{background:var(--brand2)}
+  .btns{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:6px}
+  .status{font-size:12px; color:var(--muted); margin:8px 0 0; min-height:16px}
+  .status.err{color:#ff8a8a}
+  /* preview */
+  .stage{position:relative; border-radius:16px; box-shadow:0 10px 40px rgba(0,0,0,.4)}
+  .stage svg{display:block; width:min(72vh,72vw); height:min(72vh,72vw)}
+  textarea{width:100%; height:120px; background:#0c1113; border:1px solid var(--line); color:var(--muted);
+    border-radius:8px; padding:8px; font:11px/1.4 ui-monospace,monospace; resize:vertical; margin-top:8px}
+  .pill{display:inline-block; background:#0c1113; border:1px solid var(--line); border-radius:999px; padding:2px 8px; font-size:11px; color:var(--muted)}
+</style>
+</head>
+<body>
+<aside>
+  <h1>dalketicker · Logo-Lab</h1>
+  <p class="sub">Kreis-Gütersloh-Umriss + Dalke aus OpenStreetMap, als SVG.</p>
+
+  <div class="group">
+    <h2>Quelle (OpenStreetMap)</h2>
+    <label>Grenze – Name der Relation</label>
+    <input type="text" id="boundaryName" value="Kreis Gütersloh">
+    <label>Fluss – Name (waterway)</label>
+    <input type="text" id="riverName" value="Dalke">
+    <div class="btns">
+      <button id="reload" class="primary">Laden</button>
+      <button id="endpoint" title="Overpass-Server wechseln">Server: A</button>
+    </div>
+    <p class="status" id="status">Bereit.</p>
+  </div>
+
+  <div class="group">
+    <h2>Umriss (Kreis)</h2>
+    <div class="checkrow"><input type="checkbox" id="showBoundary" checked><span>anzeigen</span></div>
+    <div class="checkrow"><input type="checkbox" id="fillBoundary"><span>Fläche füllen</span></div>
+    <label>Linienstärke</label>
+    <div class="row"><input type="range" id="boundaryW" min="0" max="14" step="0.5" value="4"><span class="val" id="boundaryWv">4</span></div>
+    <label>Linienfarbe</label>
+    <div class="row"><input type="color" id="boundaryColor" value="#117084"><span class="val">Strich</span></div>
+    <label>Füllfarbe</label>
+    <div class="row"><input type="color" id="fillColor" value="#0a8da3"><input type="range" id="fillOpacity" min="0" max="100" value="12" style="flex:1"><span class="val" id="fillOpacityV">12%</span></div>
+  </div>
+
+  <div class="group">
+    <h2>Dalke (Fluss)</h2>
+    <div class="checkrow"><input type="checkbox" id="showRiver" checked><span>anzeigen</span></div>
+    <label>Linienstärke</label>
+    <div class="row"><input type="range" id="riverW" min="0" max="20" step="0.5" value="6"><span class="val" id="riverWv">6</span></div>
+    <label>Linienfarbe</label>
+    <div class="row"><input type="color" id="riverColor" value="#22ccde"><span class="val">Fluss</span></div>
+  </div>
+
+  <div class="group">
+    <h2>Form</h2>
+    <label>Vereinfachen (glätten)</label>
+    <div class="row"><input type="range" id="simplify" min="0" max="8" step="0.25" value="1"><span class="val" id="simplifyV">1.0 px</span></div>
+    <div class="checkrow"><input type="checkbox" id="roundJoin" checked><span>runde Ecken/Enden</span></div>
+    <label>Hintergrund (nur Vorschau)</label>
+    <div class="row"><input type="color" id="bg" value="#faf9f6"><span class="val">Paper</span></div>
+    <div class="checkrow"><input type="checkbox" id="transparentBg"><span>transparent</span></div>
+  </div>
+
+  <div class="group">
+    <h2>Export</h2>
+    <div class="btns">
+      <button id="copy">SVG kopieren</button>
+      <button id="download" class="primary">SVG laden</button>
+    </div>
+    <textarea id="svgsrc" spellcheck="false" readonly></textarea>
+    <p class="sub" style="margin-top:6px">Tipp: <span class="pill">ViewBox 0 0 512 512</span> – passt für Favicon & App-Icon.</p>
+  </div>
+</aside>
+
+<main>
+  <div class="stage" id="stage"></div>
+</main>
+
+<script>
+const VIEW = 512, PAD = 28;
+const ENDPOINTS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+];
+let endpointIdx = 0;
+let raw = null; // {boundaryRings:[[{lat,lon}]], rivers:[[{lat,lon}]]}
+
+const $ = id => document.getElementById(id);
+const statusEl = $('status');
+function setStatus(msg, err=false){ statusEl.textContent = msg; statusEl.classList.toggle('err', err); }
+
+function buildQuery(boundaryName, riverName){
+  const b = boundaryName.replace(/"/g,'\\"');
+  const r = riverName.replace(/"/g,'\\"');
+  return `[out:json][timeout:90];
+rel["boundary"="administrative"]["admin_level"="6"]["name"="${b}"];
+out geom;
+rel["boundary"="administrative"]["admin_level"="6"]["name"="${b}"];
+map_to_area->.a;
+way["waterway"]["name"~"${r}"](area.a);
+out geom;`;
+}
+
+async function load(){
+  const boundaryName = $('boundaryName').value.trim();
+  const riverName = $('riverName').value.trim();
+  setStatus('Lade von OpenStreetMap … (kann 5–20 s dauern)');
+  const q = buildQuery(boundaryName, riverName);
+  let data;
+  try{
+    const res = await fetch(ENDPOINTS[endpointIdx], {method:'POST', body:'data='+encodeURIComponent(q)});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    data = await res.json();
+  }catch(e){
+    setStatus('Fehler: '+e.message+' – versuch „Server" zu wechseln.', true);
+    return;
+  }
+  const boundarySegs=[], rivers=[];
+  for(const el of data.elements){
+    if(el.type==='relation' && el.members){
+      for(const m of el.members){
+        if(m.type==='way' && m.geometry && (m.role==='outer'||m.role===''||m.role==null)){
+          boundarySegs.push(m.geometry.map(p=>({lat:p.lat,lon:p.lon})));
+        }
+      }
+    } else if(el.type==='way' && el.geometry){
+      rivers.push(el.geometry.map(p=>({lat:p.lat,lon:p.lon})));
+    }
+  }
+  if(boundarySegs.length===0){ setStatus('Keine Grenze gefunden – Name prüfen.', true); return; }
+  const boundaryRings = assembleRings(boundarySegs);
+  raw = {boundaryRings, rivers};
+  setStatus(`Geladen: ${boundaryRings.length} Ring(e), ${rivers.length} Fluss-Segment(e).`);
+  render();
+}
+
+function near(p,q){ return Math.abs(p.lat-q.lat)<1e-6 && Math.abs(p.lon-q.lon)<1e-6; }
+function assembleRings(segs){
+  segs = segs.map(s=>s.slice());
+  const used = new Array(segs.length).fill(false);
+  const rings=[];
+  for(;;){
+    const start = used.findIndex(u=>!u);
+    if(start<0) break;
+    used[start]=true;
+    let ring = segs[start].slice();
+    let go=true;
+    while(go){
+      go=false;
+      const end = ring[ring.length-1];
+      for(let j=0;j<segs.length;j++){
+        if(used[j]) continue;
+        const s=segs[j], a=s[0], b=s[s.length-1];
+        if(near(end,a)){ ring=ring.concat(s.slice(1)); used[j]=true; go=true; break; }
+        if(near(end,b)){ ring=ring.concat(s.slice().reverse().slice(1)); used[j]=true; go=true; break; }
+      }
+    }
+    rings.push(ring);
+  }
+  // largest ring first (the main outline)
+  rings.sort((a,b)=>b.length-a.length);
+  return rings;
+}
+
+// Web Mercator
+function merc(lat,lon){ return {x: lon*Math.PI/180, y: Math.log(Math.tan(Math.PI/4 + lat*Math.PI/360))}; }
+
+function projector(rings){
+  let minx=Infinity,miny=Infinity,maxx=-Infinity,maxy=-Infinity;
+  for(const ring of rings) for(const p of ring){
+    const m=merc(p.lat,p.lon);
+    if(m.x<minx)minx=m.x; if(m.x>maxx)maxx=m.x;
+    if(m.y<miny)miny=m.y; if(m.y>maxy)maxy=m.y;
+  }
+  const w=maxx-minx||1, h=maxy-miny||1;
+  const scale=Math.min((VIEW-2*PAD)/w,(VIEW-2*PAD)/h);
+  const ox=(VIEW-w*scale)/2, oy=(VIEW-h*scale)/2;
+  return p=>{
+    const m=merc(p.lat,p.lon);
+    return {x: ox+(m.x-minx)*scale, y: VIEW-(oy+(m.y-miny)*scale)}; // flip y
+  };
+}
+
+// Douglas–Peucker on screen coords
+function simplify(pts, tol){
+  if(tol<=0 || pts.length<3) return pts;
+  const sq=x=>x*x;
+  function segDist(p,a,b){
+    let x=a.x,y=a.y,dx=b.x-x,dy=b.y-y;
+    if(dx||dy){ const t=((p.x-x)*dx+(p.y-y)*dy)/(dx*dx+dy*dy); if(t>1){x=b.x;y=b.y;} else if(t>0){x+=dx*t;y+=dy*t;} }
+    return sq(p.x-x)+sq(p.y-y);
+  }
+  function dp(s,e,out){
+    let maxD=0,idx=-1;
+    for(let i=s+1;i<e;i++){ const d=segDist(pts[i],pts[s],pts[e]); if(d>maxD){maxD=d;idx=i;} }
+    if(maxD>tol*tol){ dp(s,idx,out); out.push(pts[idx]); dp(idx,e,out); }
+  }
+  const out=[pts[0]]; dp(0,pts.length-1,out); out.push(pts[pts.length-1]);
+  return out;
+}
+
+function pathFrom(pts, close){
+  let d='';
+  pts.forEach((p,i)=>{ d += (i?'L':'M') + p.x.toFixed(2) + ' ' + p.y.toFixed(2); });
+  if(close) d+='Z';
+  return d;
+}
+
+function render(){
+  if(!raw) return;
+  const tol=parseFloat($('simplify').value);
+  const proj=projector(raw.boundaryRings);
+  const round=$('roundJoin').checked;
+  const lc=round?'round':'butt', lj=round?'round':'miter';
+
+  const boundaryW=parseFloat($('boundaryW').value);
+  const riverW=parseFloat($('riverW').value);
+  const showB=$('showBoundary').checked, showR=$('showRiver').checked, fillB=$('fillBoundary').checked;
+  const bColor=$('boundaryColor').value, rColor=$('riverColor').value, fColor=$('fillColor').value;
+  const fOp=parseInt($('fillOpacity').value,10)/100;
+
+  let parts=[];
+  // boundary fill (all rings, evenodd so inner rings cut holes)
+  if(showB && fillB){
+    const dFill = raw.boundaryRings.map(r=>pathFrom(simplify(r.map(proj),tol),true)).join(' ');
+    parts.push(`<path d="${dFill}" fill="${fColor}" fill-opacity="${fOp.toFixed(3)}" fill-rule="evenodd"/>`);
+  }
+  // boundary outline
+  if(showB && boundaryW>0){
+    const dOut = raw.boundaryRings.map(r=>pathFrom(simplify(r.map(proj),tol),true)).join(' ');
+    parts.push(`<path d="${dOut}" fill="none" stroke="${bColor}" stroke-width="${boundaryW}" stroke-linejoin="${lj}" stroke-linecap="${lc}"/>`);
+  }
+  // river
+  if(showR && riverW>0){
+    for(const seg of raw.rivers){
+      const d=pathFrom(simplify(seg.map(proj),tol),false);
+      parts.push(`<path d="${d}" fill="none" stroke="${rColor}" stroke-width="${riverW}" stroke-linejoin="${lj}" stroke-linecap="${lc}"/>`);
+    }
+  }
+
+  const transparent=$('transparentBg').checked;
+  const bg=$('bg').value;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${VIEW} ${VIEW}">\n`+
+    (transparent?'':`  <rect width="${VIEW}" height="${VIEW}" fill="${bg}"/>\n`)+
+    '  '+parts.join('\n  ')+'\n</svg>';
+
+  $('stage').innerHTML = svg;
+  $('stage').style.background = transparent ? 'repeating-conic-gradient(#2a3338 0 25%, #222a2e 0 50%) 50%/24px 24px' : 'transparent';
+  $('svgsrc').value = svg;
+}
+
+// wire controls
+['boundaryW','riverW','simplify','fillOpacity'].forEach(id=>{
+  const el=$(id), out=$(id+'V')||$(id+'v');
+  const fmt={simplify:v=>v.toFixed(2)+' px', fillOpacity:v=>v+'%'}[id]||(v=>v);
+  el.addEventListener('input',()=>{ if(out) out.textContent=fmt(parseFloat(el.value)); render(); });
+});
+['showBoundary','fillBoundary','showRiver','boundaryColor','fillColor','riverColor','roundJoin','bg','transparentBg']
+  .forEach(id=>$(id).addEventListener('input',render));
+
+$('reload').addEventListener('click',load);
+$('endpoint').addEventListener('click',()=>{ endpointIdx=(endpointIdx+1)%ENDPOINTS.length; $('endpoint').textContent='Server: '+'ABC'[endpointIdx]; setStatus('Server gewechselt – „Laden" drücken.'); });
+$('copy').addEventListener('click',async()=>{ try{ await navigator.clipboard.writeText($('svgsrc').value); setStatus('SVG in Zwischenablage kopiert.'); }catch(e){ setStatus('Kopieren nicht möglich – Text manuell markieren.', true);} });
+$('download').addEventListener('click',()=>{
+  const blob=new Blob([$('svgsrc').value],{type:'image/svg+xml'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='dalketicker-logo.svg'; a.click();
+});
+
+load();
+</script>
+</body>
+</html>
