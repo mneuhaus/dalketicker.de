@@ -1,9 +1,9 @@
 {% extends 'base.html.twig' %}
 
-{% block body %}
-    {# Mobile/narrow: a sticky dropdown filter bar at the top. #}
-    {{ include('event/_filter_bar.html.twig') }}
+{# Mobile/narrow: the dropdown filter bar sticks to the top together with the header. #}
+{% block subheader %}{{ include('event/_filter_bar.html.twig') }}{% endblock %}
 
+{% block body %}
     <div class="md:grid md:grid-cols-[16rem_minmax(0,1fr)] md:gap-6 md:items-start">
         {# Desktop: the chip sidebar — sticky and independently scrollable so it
            never gets cut off on a short viewport. #}

@@ -14,7 +14,9 @@
 <body class="min-h-screen flex flex-col">
     <div class="river-rule h-1 w-full"></div>
 
-    <header class="border-b border-black/5 bg-paper/90 backdrop-blur md:sticky md:top-0 z-30">
+    {# Header + (on list views) the mobile filter bar stick to the top together. #}
+    <div class="sticky top-0 z-30">
+    <header class="border-b border-black/5 bg-paper/90 backdrop-blur">
         <div class="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between gap-2 sm:gap-4">
             <a href="{{ path('event_index') }}" class="flex items-center gap-2.5 group">
                 {{ include('_logo.html.twig') }}
@@ -42,6 +44,8 @@
             </nav>
         </div>
     </header>
+        {% block subheader %}{% endblock %}
+    </div>
 
     <main class="flex-1 mx-auto max-w-6xl w-full px-4 py-6">
         {% block body %}{% endblock %}
