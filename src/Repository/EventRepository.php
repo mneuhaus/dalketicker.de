@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Repository;
 
 use App\Entity\Event;
+use App\Entity\Source;
 use App\Enum\EventStatus;
 use App\Search\EventFilter;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
@@ -174,6 +175,82 @@ class EventRepository extends ServiceEntityRepository
             ->setMaxResults(1)
             ->getQuery()
             ->getOneOrNullResult();
+    }
+
+    /**
+     * Events belonging to a source, newest-relevant first, with venue, category
+     * and the dedup target (+ its source) eager-loaded — for the admin source
+     * detail page. Includes every status so duplicates/hidden are visible too.
+     *
+     * @return Event[]
+     */
+    public function findBySource(Source $source, int $limit = 300): array
+    {
+        return $this->createQueryBuilder('e')
+            ->leftJoin('e.venue', 'v')->addSelect('v')
+            ->leftJoin('e.category', 'c')->addSelect('c')
+            ->leftJoin('e.duplicateOf', 'd')->addSelect('d')
+            ->leftJoin('d.source', 'ds')->addSelect('ds')
+            ->andWhere('e.source = :source')
+            ->setParameter('source', $source)
+            ->orderBy('e.startsAt', 'ASC')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult();
+    }
+
+    /**
+     * Event counts for a source, keyed by {@see EventStatus} value, plus a
+     * 'total' and an 'upcoming' (visible, not yet ended) bucket.
+     *
+     * @return array<string, int>
+     */
+    public function statusCountsForSource(Source $source): array
+    {
+        $rows = $this->createQueryBuilder('e')
+            ->select('e.status AS status, COUNT(e.id) AS cnt')
+            ->andWhere('e.source = :source')
+            ->setParameter('source', $source)
+            ->groupBy('e.status')
+            ->getQuery()
+            ->getResult();
+
+        $counts = ['total' => 0];
+        foreach ($rows as $row) {
+            $value = $row['status'] instanceof EventStatus ? $row['status']->value : (string) $row['status'];
+            $counts[$value] = (int) $row['cnt'];
+            $counts['total'] += (int) $row['cnt'];
+        }
+
+        $now = new \DateTimeImmutable('now', new \DateTimeZone('Europe/Berlin'));
+        $counts['upcoming'] = (int) $this->createQueryBuilder('e')
+            ->select('COUNT(e.id)')
+            ->andWhere('e.source = :source')
+            ->andWhere('e.status = :published')
+            ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :now')
+            ->setParameter('source', $source)
+            ->setParameter('published', EventStatus::Published)
+            ->setParameter('now', $now)
+            ->getQuery()
+            ->getSingleScalarResult();
+
+        return $counts;
+    }
+
+    /**
+     * How many events from *other* sources were demoted as duplicates of an
+     * event from this source — i.e. cases where this source "won" the dedup.
+     */
+    public function countWonDuplicates(Source $source): int
+    {
+        return (int) $this->createQueryBuilder('e')
+            ->select('COUNT(e.id)')
+            ->join('e.duplicateOf', 'd')
+            ->andWhere('d.source = :source')
+            ->andWhere('e.source != :source')
+            ->setParameter('source', $source)
+            ->getQuery()
+            ->getSingleScalarResult();
     }
 
     private function visibleQueryBuilder(EventFilter $filter): QueryBuilder

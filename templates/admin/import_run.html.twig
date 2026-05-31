@@ -14,7 +14,9 @@
 
     <div class="max-w-3xl">
         <div class="flex items-center gap-3 mb-1">
-            <h1 class="font-[family-name:var(--font-display)] text-2xl font-extrabold tracking-tight text-ink">{{ run.source.name }}</h1>
+            <h1 class="font-[family-name:var(--font-display)] text-2xl font-extrabold tracking-tight text-ink">
+                <a href="{{ path('admin_source', {id: run.source.id}) }}" class="hover:text-brand-700 hover:underline">{{ run.source.name }}</a>
+            </h1>
             {{ ui.badge(run.status) }}
         </div>
         <p class="text-ink/50 text-sm mb-6">{{ run.source.key }} · Importer „{{ run.source.importer }}" · Lauf #{{ run.id }}{% if run.dryRun %} · Testlauf{% endif %}</p>

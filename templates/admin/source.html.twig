@@ -1,0 +1,156 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}{{ source.name }} – Quelle – {{ site_name }}{% endblock %}
+
+{% macro event_badge(status) %}
+    {% set map = {'published': 'bg-emerald-100 text-emerald-800', 'duplicate': 'bg-zinc-200 text-zinc-600', 'hidden': 'bg-zinc-200 text-zinc-500', 'pending': 'bg-amber-100 text-amber-800'} %}
+    {% set label = {'published': 'sichtbar', 'duplicate': 'Duplikat', 'hidden': 'verborgen', 'pending': 'wartet'} %}
+    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold {{ map[status] ?? 'bg-black/10 text-ink/60' }}">{{ label[status] ?? status }}</span>
+{% endmacro %}
+
+{% macro run_badge(status) %}
+    {% set map = {'ok': 'bg-emerald-100 text-emerald-800', 'partial': 'bg-amber-100 text-amber-800', 'failed': 'bg-rose-100 text-rose-700'} %}
+    {% set label = {'ok': 'OK', 'partial': 'Teilweise', 'failed': 'Fehler'} %}
+    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold {{ map[status] ?? 'bg-black/10 text-ink/60' }}">{{ label[status] ?? status }}</span>
+{% endmacro %}
+
+{% block body %}
+    {% import _self as ui %}
+    <a href="{{ path('admin_imports') }}" class="text-sm text-ink/50 hover:text-brand-700 inline-flex items-center gap-1 mb-4">← Monitoring</a>
+
+    <div class="flex items-center gap-3 mb-1">
+        <h1 class="font-[family-name:var(--font-display)] text-2xl font-extrabold tracking-tight text-ink">{{ source.name }}</h1>
+        {% if source.enabled %}
+            <span class="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">aktiv</span>
+        {% else %}
+            <span class="inline-flex items-center rounded-full bg-zinc-200 px-2 py-0.5 text-xs font-semibold text-zinc-600">inaktiv</span>
+        {% endif %}
+    </div>
+    <p class="text-ink/50 text-sm mb-6">{{ source.key }} · {{ source.type.label }}</p>
+
+    {# Origin + adapter #}
+    <div class="grid sm:grid-cols-2 gap-4 mb-4">
+        <div class="bg-white rounded-2xl border border-black/5 shadow-sm p-5">
+            <h2 class="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-3">Herkunft</h2>
+            <dl class="space-y-1.5 text-sm">
+                <div class="flex justify-between gap-4"><dt class="text-ink/50">Typ</dt><dd class="text-ink font-medium text-right">{{ source.type.label }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-ink/50">Schlüssel</dt><dd class="text-ink font-mono text-xs text-right">{{ source.key }}</dd></div>
+                <div class="flex justify-between gap-4 items-baseline"><dt class="text-ink/50 shrink-0">URL</dt>
+                    <dd class="text-right min-w-0">
+                        {% if source.url %}
+                            <a href="{{ source.url }}" target="_blank" rel="noopener noreferrer" class="text-brand-700 hover:underline break-all">{{ source.url }}</a>
+                        {% else %}<span class="text-ink/30">–</span>{% endif %}
+                    </dd>
+                </div>
+            </dl>
+        </div>
+        <div class="bg-white rounded-2xl border border-black/5 shadow-sm p-5">
+            <h2 class="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-3">Adapter</h2>
+            <dl class="space-y-1.5 text-sm">
+                <div class="flex justify-between gap-4"><dt class="text-ink/50">Importer-Key</dt><dd class="text-ink font-mono text-xs text-right">{{ source.importer }}</dd></div>
+                <div class="flex justify-between gap-4 items-baseline"><dt class="text-ink/50 shrink-0">Klasse</dt>
+                    <dd class="text-right min-w-0">
+                        {% if importerClass %}
+                            <span class="text-ink font-mono text-xs break-all">{{ importerClass|split('\\')|last }}</span>
+                        {% else %}
+                            <span class="inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700">nicht registriert</span>
+                        {% endif %}
+                    </dd>
+                </div>
+                <div class="flex justify-between gap-4"><dt class="text-ink/50">Letzter Lauf</dt><dd class="text-ink font-medium text-right">{{ source.lastRunAt ? source.lastRunAt|de_date ~ ', ' ~ source.lastRunAt|date('H:i') : '–' }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-ink/50">Letzter Status</dt><dd class="text-ink/70 text-right text-xs">{{ source.lastStatus ?: '–' }}</dd></div>
+            </dl>
+        </div>
+    </div>
+
+    {# Per-source importer configuration #}
+    {% if source.config is not empty %}
+        <div class="bg-white rounded-2xl border border-black/5 shadow-sm p-5 mb-4">
+            <h2 class="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">Konfiguration</h2>
+            <pre class="text-xs text-ink/70 whitespace-pre-wrap break-words font-mono">{{ source.config|json_encode(constant('JSON_PRETTY_PRINT') b-or constant('JSON_UNESCAPED_SLASHES') b-or constant('JSON_UNESCAPED_UNICODE')) }}</pre>
+        </div>
+    {% endif %}
+
+    {# Dedup / statistics #}
+    <h2 class="font-[family-name:var(--font-display)] text-lg font-bold text-ink mb-3">Statistik &amp; Deduplizierung</h2>
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+        {% set tiles = [
+            {label: 'Events gesamt', value: counts.total ?? 0},
+            {label: 'Aktuell (kommend)', value: counts.upcoming ?? 0},
+            {label: 'Sichtbar', value: counts.published ?? 0},
+            {label: 'Duplikat (ausgeblendet)', value: counts.duplicate ?? 0}
+        ] %}
+        {% for tile in tiles %}
+            <div class="bg-white rounded-2xl border border-black/5 shadow-sm p-4">
+                <div class="text-2xl font-bold text-ink tabular-nums font-[family-name:var(--font-display)]">{{ tile.value }}</div>
+                <div class="text-xs text-ink/50 mt-0.5">{{ tile.label }}</div>
+            </div>
+        {% endfor %}
+    </div>
+    <p class="text-sm text-ink/50 mb-8 leading-relaxed">
+        {{ counts.duplicate ?? 0 }} Event{{ (counts.duplicate ?? 0) == 1 ? '' : 's' }} dieser Quelle wurden als Duplikat einer anderen Quelle ausgeblendet (sie kamen dort zuerst vor).
+        {% if wonDuplicates > 0 %} Umgekehrt wurden {{ wonDuplicates }} Event{{ wonDuplicates == 1 ? '' : 's' }} aus anderen Quellen zugunsten dieser Quelle ausgeblendet.{% endif %}
+        {% if (counts.hidden ?? 0) > 0 or (counts.pending ?? 0) > 0 %} Außerdem: {{ counts.hidden ?? 0 }} verborgen, {{ counts.pending ?? 0 }} wartend.{% endif %}
+    </p>
+
+    {# Events from this source #}
+    <div class="flex items-baseline justify-between mb-2">
+        <h2 class="font-[family-name:var(--font-display)] text-lg font-bold text-ink">Events aus dieser Quelle</h2>
+        <span class="text-xs text-ink/40">chronologisch{% if events|length >= 300 %} · erste 300{% endif %}</span>
+    </div>
+    <div class="bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden mb-8">
+        <table class="w-full text-sm">
+            <thead class="text-left text-xs uppercase tracking-wide text-ink/40 border-b border-black/5">
+                <tr>
+                    <th class="px-4 py-3 w-32">Datum</th>
+                    <th class="px-4 py-3">Titel</th>
+                    <th class="px-4 py-3">Ort</th>
+                    <th class="px-4 py-3">Kategorie</th>
+                    <th class="px-4 py-3 text-right">Status</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-black/5">
+                {% for event in events %}
+                    <tr class="{{ event.status.value == 'published' ? '' : 'opacity-60' }}">
+                        <td class="px-4 py-2.5 text-ink/60 whitespace-nowrap tabular-nums text-xs">
+                            {{ event.startsAt|de_date }}{% if not event.allDay %}<span class="text-ink/35"> · {{ event.startsAt|date('H:i') }}</span>{% endif %}
+                        </td>
+                        <td class="px-4 py-2.5">
+                            {% if event.status.value == 'published' %}
+                                <a href="{{ path('event_show', {id: event.id, slug: event.slug}) }}" class="text-ink font-medium hover:text-brand-700 hover:underline">{{ event.title }}</a>
+                            {% else %}
+                                <span class="text-ink/70">{{ event.title }}</span>
+                            {% endif %}
+                            {% if event.duplicateOf %}
+                                <div class="text-xs text-ink/40 mt-0.5">Duplikat von „{{ event.duplicateOf.source.name }}"</div>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-2.5 text-ink/60">{{ event.displayLocation ?: '–' }}</td>
+                        <td class="px-4 py-2.5">
+                            {% if event.category %}
+                                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold text-white whitespace-nowrap" style="background-color: {{ event.category.color }}">{{ event.category.name }}</span>
+                            {% else %}<span class="text-ink/30">–</span>{% endif %}
+                        </td>
+                        <td class="px-4 py-2.5 text-right">{{ ui.event_badge(event.status.value) }}</td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="5" class="px-4 py-6 text-ink/40 text-sm">Noch keine Events aus dieser Quelle.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {# Run history #}
+    <h2 class="font-[family-name:var(--font-display)] text-lg font-bold text-ink mb-3">Letzte Läufe</h2>
+    <div class="bg-white rounded-2xl border border-black/5 shadow-sm divide-y divide-black/5">
+        {% for run in runs %}
+            <a href="{{ path('admin_import_run', {id: run.id}) }}" class="flex items-center gap-4 px-4 py-2.5 text-sm hover:bg-black/[0.02] transition">
+                <span class="text-ink/40 text-xs w-28 shrink-0">{{ run.startedAt|de_date }} {{ run.startedAt|date('H:i') }}</span>
+                {{ ui.run_badge(run.status) }}
+                <span class="text-ink/50 tabular-nums flex-1 text-right">{{ run.seen }} ges. · {{ run.created }} neu · {{ run.errors }} Fehler</span>
+            </a>
+        {% else %}
+            <div class="px-4 py-6 text-ink/40 text-sm">Noch keine Läufe aufgezeichnet.</div>
+        {% endfor %}
+    </div>
+{% endblock %}

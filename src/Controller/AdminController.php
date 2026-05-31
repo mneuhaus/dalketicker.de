@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Entity\User;
+use App\Importer\ImporterRegistry;
+use App\Repository\EventRepository;
 use App\Repository\ImportRunRepository;
 use App\Repository\SourceRepository;
 use App\Repository\UserRepository;
@@ -68,6 +70,34 @@ final class AdminController extends AbstractController
         return $this->render('admin/import_run.html.twig', [
             'run' => $run,
             'history' => $runs->findForSource($run->getSource(), 15),
+        ]);
+    }
+
+    /** Everything about one source: origin, adapter, dedup stats, its events, run history. */
+    #[Route('/sources/{id}', name: 'admin_source', requirements: ['id' => '\d+'], methods: ['GET'])]
+    public function source(
+        int $id,
+        SourceRepository $sources,
+        EventRepository $events,
+        ImportRunRepository $runs,
+        ImporterRegistry $importers,
+    ): Response {
+        $source = $sources->find($id);
+        if ($source === null) {
+            throw $this->createNotFoundException('Quelle nicht gefunden.');
+        }
+
+        $importerAvailable = $importers->has($source);
+        $importerClass = $importerAvailable ? $importers->get($source)::class : null;
+
+        return $this->render('admin/source.html.twig', [
+            'source' => $source,
+            'counts' => $events->statusCountsForSource($source),
+            'wonDuplicates' => $events->countWonDuplicates($source),
+            'events' => $events->findBySource($source),
+            'runs' => $runs->findForSource($source, 15),
+            'importerClass' => $importerClass,
+            'importerAvailable' => $importerAvailable,
         ]);
     }
 
