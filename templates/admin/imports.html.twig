@@ -14,6 +14,7 @@
         <h1 class="font-[family-name:var(--font-display)] text-3xl font-extrabold tracking-tight text-ink">Import-Monitoring</h1>
         <div class="flex items-center gap-3 text-sm">
             <span class="text-ink/50">{{ app.user ? app.user.email }}</span>
+            <a href="{{ path('admin_account') }}" class="chip-muted">Konto</a>
             <a href="{{ path('app_logout') }}" class="chip-muted">Logout</a>
         </div>
     </div>

@@ -1,0 +1,53 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Konto – {{ site_name }}{% endblock %}
+
+{% block body %}
+    <div class="max-w-md mx-auto">
+        <div class="flex items-center justify-between mb-6 gap-4">
+            <h1 class="font-[family-name:var(--font-display)] text-2xl font-extrabold tracking-tight text-ink">Konto</h1>
+            <a href="{{ path('admin_imports') }}" class="text-sm text-ink/50 hover:text-brand-700">← Monitoring</a>
+        </div>
+
+        {% for msg in app.flashes('success') %}
+            <div class="rounded-xl bg-emerald-50 text-emerald-800 text-sm px-3 py-2 mb-4">{{ msg }}</div>
+        {% endfor %}
+        {% if error %}
+            <div class="rounded-xl bg-rose-50 text-rose-700 text-sm px-3 py-2 mb-4">{{ error }}</div>
+        {% endif %}
+
+        <form method="post" class="bg-white rounded-2xl border border-black/5 shadow-sm p-6 space-y-4">
+            <div>
+                <label for="email" class="block text-xs font-semibold uppercase tracking-wide text-ink/40 mb-1">E-Mail / Login</label>
+                <input type="email" id="email" name="email" value="{{ email }}" required
+                       class="w-full rounded-xl border border-black/10 bg-paper px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 outline-none">
+            </div>
+
+            <hr class="border-black/5">
+
+            <div>
+                <label for="new_password" class="block text-xs font-semibold uppercase tracking-wide text-ink/40 mb-1">Neues Passwort</label>
+                <input type="password" id="new_password" name="new_password" autocomplete="new-password" placeholder="leer lassen = unverändert"
+                       class="w-full rounded-xl border border-black/10 bg-paper px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 outline-none">
+                <p class="text-xs text-ink/40 mt-1">Mindestens 8 Zeichen. Leer lassen, um das Passwort nicht zu ändern.</p>
+            </div>
+            <div>
+                <label for="new_password_confirm" class="block text-xs font-semibold uppercase tracking-wide text-ink/40 mb-1">Neues Passwort bestätigen</label>
+                <input type="password" id="new_password_confirm" name="new_password_confirm" autocomplete="new-password"
+                       class="w-full rounded-xl border border-black/10 bg-paper px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 outline-none">
+            </div>
+
+            <hr class="border-black/5">
+
+            <div>
+                <label for="current_password" class="block text-xs font-semibold uppercase tracking-wide text-ink/40 mb-1">Aktuelles Passwort (zur Bestätigung)</label>
+                <input type="password" id="current_password" name="current_password" autocomplete="current-password" required
+                       class="w-full rounded-xl border border-black/10 bg-paper px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 outline-none">
+            </div>
+
+            <input type="hidden" name="_token" value="{{ csrf_token('account') }}">
+
+            <button type="submit" class="w-full rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 transition">Speichern</button>
+        </form>
+    </div>
+{% endblock %}
