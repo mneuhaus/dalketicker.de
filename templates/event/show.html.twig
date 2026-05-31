@@ -46,15 +46,14 @@
 
         {# Left column: the detail box + the previous/next row beneath it #}
         <div class="min-w-0">
-            <article class="bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden">
+            <article data-evdetail class="evdetail bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden">
                 {% if event.imageUrl %}
-                    <div class="relative">
-                        <img src="{{ path('image_proxy', {id: event.id}) }}" alt="" class="w-full h-52 sm:h-72 object-cover">
-                        <div class="absolute inset-0 bg-gradient-to-t from-black/15 to-transparent"></div>
+                    <div class="evimg-wrap">
+                        <img data-evimg src="{{ path('image_proxy', {id: event.id}) }}" alt="" class="evimg">
                     </div>
                 {% endif %}
 
-                <div class="p-6 sm:p-8">
+                <div class="evbody p-6 sm:p-8">
                     {% if event.category or event.isCourse or (event.bookingStatus and event.bookingStatus.showBadge) %}
                         <div class="mb-3 flex flex-wrap items-center gap-2">
                             {% if event.category %}
@@ -158,4 +157,6 @@
             </p>
         </aside>
     </div>
+
+    {{ include('event/_image_fit.html.twig') }}
 {% endblock %}

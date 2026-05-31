@@ -17,8 +17,8 @@
                     <article data-surprise-card data-url="{{ path('event_show', {id: event.id, slug: event.slug}) }}"
                              class="surprise-card rounded-2xl border border-black/5 bg-white shadow-sm overflow-hidden">
                         {% if event.imageUrl %}
-                            <div class="relative bg-black/5">
-                                <img src="{{ path('image_proxy', {id: event.id}) }}" alt="" loading="lazy" class="w-full h-48 object-cover">
+                            <div class="bg-black/[0.03] flex items-center justify-center">
+                                <img data-fitcap src="{{ path('image_proxy', {id: event.id}) }}" alt="" loading="lazy" class="fitcap">
                             </div>
                         {% endif %}
                         <div class="p-5">
@@ -73,4 +73,6 @@
             </div>
         </div>
     {% endif %}
+
+    {{ include('event/_image_fit.html.twig') }}
 {% endblock %}
