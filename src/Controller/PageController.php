@@ -37,4 +37,11 @@ final class PageController extends AbstractController
     {
         return $this->render('page/datenschutz.html.twig');
     }
+
+    /** How to add dalketicker to the home screen (installable web app). */
+    #[Route('/app', name: 'page_app', methods: ['GET'])]
+    public function app(): Response
+    {
+        return $this->render('page/app.html.twig');
+    }
 }

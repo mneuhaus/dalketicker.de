@@ -1,0 +1,15 @@
+{
+  "name": "dalketicker – Was läuft im Kreis Gütersloh",
+  "short_name": "dalketicker",
+  "description": "Alle Veranstaltungen im Kreis Gütersloh an einem Ort.",
+  "lang": "de",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#faf9f6",
+  "theme_color": "#0a8da3",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

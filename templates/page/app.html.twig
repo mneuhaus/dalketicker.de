@@ -1,0 +1,51 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Als App speichern – {{ site_name }}{% endblock %}
+{% block meta_description %}dalketicker lässt sich wie eine App auf dem Homescreen ablegen – ohne Store, ohne Installation.{% endblock %}
+
+{% block body %}
+    <article class="max-w-2xl mx-auto">
+        <div class="flex items-center gap-3 mb-4">
+            <img src="/icons/icon-192.png" alt="" width="48" height="48" class="w-12 h-12 rounded-xl shadow-sm">
+            <h1 class="font-[family-name:var(--font-display)] text-3xl font-extrabold tracking-tight text-ink">dalketicker als App</h1>
+        </div>
+        <p class="text-ink/70 leading-relaxed mb-8">
+            Du kannst dalketicker wie eine App auf deinem Homescreen ablegen – ohne App-Store, ohne echte Installation.
+            Es öffnet sich dann im Vollbild, ganz ohne Browser-Leiste.
+        </p>
+
+        {# Android/Chrome: a one-tap install button, only shown when the browser offers it. #}
+        <div class="install-cta mb-8">
+            <button type="button" data-install-app
+                    class="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white hover:bg-brand-700 transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M4 20h16"/></svg>
+                Jetzt installieren
+            </button>
+        </div>
+
+        <div class="space-y-6">
+            <section class="bg-white rounded-2xl border border-black/5 shadow-sm p-5">
+                <h2 class="font-semibold text-ink mb-2">iPhone / iPad (Safari)</h2>
+                <ol class="list-decimal list-inside space-y-1 text-ink/70 text-sm leading-relaxed">
+                    <li>Unten (bzw. oben) auf das <strong class="text-ink/80">Teilen-Symbol</strong> tippen.</li>
+                    <li><strong class="text-ink/80">„Zum Home-Bildschirm"</strong> wählen.</li>
+                    <li>Mit <strong class="text-ink/80">„Hinzufügen"</strong> bestätigen – fertig.</li>
+                </ol>
+            </section>
+
+            <section class="bg-white rounded-2xl border border-black/5 shadow-sm p-5">
+                <h2 class="font-semibold text-ink mb-2">Android (Chrome)</h2>
+                <ol class="list-decimal list-inside space-y-1 text-ink/70 text-sm leading-relaxed">
+                    <li>Oben auf das <strong class="text-ink/80">Menü ⋮</strong> tippen.</li>
+                    <li><strong class="text-ink/80">„App installieren"</strong> bzw. <strong class="text-ink/80">„Zum Startbildschirm hinzufügen"</strong> wählen.</li>
+                    <li>Bestätigen – dalketicker liegt dann als Icon auf dem Homescreen.</li>
+                </ol>
+                <p class="text-xs text-ink/45 mt-3">Tipp: Wenn der Button oben erscheint, geht’s auch mit einem Tipp.</p>
+            </section>
+        </div>
+
+        <p class="text-xs text-ink/45 mt-8">
+            Es werden dabei keine Daten gesammelt – die „App" ist einfach diese Website im Vollbild.
+        </p>
+    </article>
+{% endblock %}

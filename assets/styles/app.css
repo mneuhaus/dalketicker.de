@@ -97,6 +97,14 @@
   }
 }
 
+/* The "install app" button only shows once the browser offers installation. */
+.install-cta {
+  display: none;
+}
+.can-install .install-cta {
+  display: block;
+}
+
 /* "Überrasch mich" swipe cards. */
 .surprise-card {
   transition: transform 0.18s ease, opacity 0.18s ease;
