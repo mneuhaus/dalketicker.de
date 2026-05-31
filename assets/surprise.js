@@ -60,8 +60,24 @@ function init() {
         }
     }
 
+    function prev() {
+        if (pos >= order.length) { pos = order.length - 1; }
+        else if (pos > 0) { pos--; }
+        else { return; }
+        render();
+    }
+
     if (nextBtn) nextBtn.addEventListener('click', next);
     if (restartBtn) restartBtn.addEventListener('click', () => { order = shuffle([...cards.keys()]); pos = 0; render(); });
+
+    // Arrow keys: → next event, ← previous event.
+    document.addEventListener('keydown', (e) => {
+        if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+        const t = e.target;
+        if (t && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))) return;
+        if (e.key === 'ArrowRight') { e.preventDefault(); next(); }
+        else if (e.key === 'ArrowLeft') { e.preventDefault(); prev(); }
+    });
 
     // Swipe-left to skip; drag follows the finger and snaps back otherwise.
     // Requires real horizontal movement so stray taps never advance the stack.

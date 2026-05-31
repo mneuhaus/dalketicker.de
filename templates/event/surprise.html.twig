@@ -4,7 +4,7 @@
 {% block meta_description %}Keine Idee? Lass dir zufällig eine Veranstaltung für heute im Kreis Gütersloh vorschlagen.{% endblock %}
 
 {% block body %}
-    <div class="max-w-md mx-auto">
+    <div class="max-w-md md:max-w-2xl mx-auto">
         {% if events is empty %}
             <div class="text-center py-16 text-ink/50 border border-dashed border-black/10 rounded-2xl">
                 <p class="font-medium text-ink/70">Heute ist (noch) nichts eingetragen.</p>
@@ -41,6 +41,30 @@
                                     {% if event.price %}<p class="text-ink/45">{{ event.price }}</p>{% endif %}
                                 </div>
                             {% endif %}
+
+                            {# Desktop: full details inline, so no need to open the detail page. #}
+                            <div class="hidden md:block mt-3 space-y-3">
+                                {% if event.venue and event.venue.fullAddress %}
+                                    <p class="text-sm text-ink/55">{{ event.venue.fullAddress }}</p>
+                                {% endif %}
+                                {% if event.organizer %}
+                                    <p class="text-sm text-ink/55">Veranstalter: {{ event.organizer }}</p>
+                                {% endif %}
+                                {% if event.description %}
+                                    <div class="prose prose-sm max-w-none text-ink/80 whitespace-pre-line">{{ event.description|striptags("<br><p><a><strong><em><ul><ol><li>")|raw }}</div>
+                                {% endif %}
+                                <div class="flex flex-wrap items-center gap-3 pt-1">
+                                    {% if event.sourceUrl %}
+                                        <a href="{{ event.sourceUrl }}" target="_blank" rel="noopener" class="inline-flex items-center rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 transition">Zur Veranstaltungsseite ↗</a>
+                                    {% endif %}
+                                    <button type="button" data-save-btn data-event-id="{{ event.id }}" aria-pressed="false"
+                                            class="save-btn inline-flex items-center gap-2 rounded-xl border border-black/10 px-4 py-2 text-sm font-semibold text-ink/70 hover:border-brand-300 hover:text-brand-700 transition">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>
+                                        Merken
+                                    </button>
+                                </div>
+                                <p class="text-xs text-ink/40">Quelle: {{ event.source.name }}</p>
+                            </div>
                         </div>
                     </article>
                 {% endfor %}
@@ -62,7 +86,7 @@
         <div data-surprise-actions
              class="fixed bottom-0 inset-x-0 z-30 px-4 py-3 bg-paper/95 backdrop-blur border-t border-black/5
                     md:static md:inset-auto md:z-auto md:px-0 md:py-0 md:mt-5 md:bg-transparent md:border-0">
-            <div class="max-w-md mx-auto flex items-center gap-2">
+            <div class="max-w-md md:max-w-2xl mx-auto flex items-center gap-2">
                 <button type="button" data-surprise-next
                         class="shrink-0 inline-flex items-center gap-1.5 rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm font-semibold text-ink/70 hover:border-brand-300 hover:text-brand-700 transition">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992V4.356M2.985 19.644v-4.992h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"/></svg>
