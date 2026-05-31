@@ -46,10 +46,28 @@ final class AdminController extends AbstractController
             return $tb <=> $ta;
         });
 
+        $recent = $runs->findRecent(40);
+
         return $this->render('admin/imports.html.twig', [
             'sources' => $allSources,
             'latest' => $latest,
-            'recent' => $runs->findRecent(40),
+            'recent' => $recent,
+            'lastRun' => $recent[0] ?? null,
+        ]);
+    }
+
+    /** Details of a single import run. */
+    #[Route('/imports/{id}', name: 'admin_import_run', requirements: ['id' => '\d+'], methods: ['GET'])]
+    public function importRun(int $id, ImportRunRepository $runs): Response
+    {
+        $run = $runs->find($id);
+        if ($run === null) {
+            throw $this->createNotFoundException('Lauf nicht gefunden.');
+        }
+
+        return $this->render('admin/import_run.html.twig', [
+            'run' => $run,
+            'history' => $runs->findForSource($run->getSource(), 15),
         ]);
     }
 

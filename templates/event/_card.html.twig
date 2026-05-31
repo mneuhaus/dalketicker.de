@@ -6,7 +6,10 @@
 {% set showUrl = path('event_show', {id: event.id, slug: event.slug}|merge(filter.toQueryParams|default({}))) %}
 
 {% macro meta(event) %}
-    <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-ink/55">
+    <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink/55">
+        {% if event.category %}
+            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold text-white whitespace-nowrap" style="background-color: {{ event.category.color }}">{{ event.category.name }}</span>
+        {% endif %}
         {% if event.displayLocation %}
             <span class="inline-flex items-center gap-1 min-w-0 max-w-full">
                 <svg class="w-3.5 h-3.5 shrink-0 text-ink/35" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
@@ -14,7 +17,6 @@
             </span>
         {% endif %}
         {% if event.price %}<span class="text-ink/25">·</span><span class="whitespace-nowrap">{{ event.price }}</span>{% endif %}
-        {% if event.category %}<span class="text-ink/25">·</span><span class="font-medium whitespace-nowrap" style="color: {{ event.category.color }}">{{ event.category.name }}</span>{% endif %}
     </div>
 {% endmacro %}
 
