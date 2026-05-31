@@ -1,0 +1,118 @@
+{# Mobile/narrow filter bar (below md): search + dropdowns for Kategorien,
+   Kurse, Ort, Zeitraum. Sticky to the top while scrolling. The dropdown labels
+   reflect the current selection. Auto-submits via filter_form.js. #}
+
+{# Selected category names, for the dropdown label. #}
+{% set selectedCats = allCategories|filter(c => filter.hasCategory(c.slug))|map(c => c.name) %}
+{% set catLabel = selectedCats is empty ? 'Kategorien' : (selectedCats|length == 1 ? (selectedCats|first) : selectedCats|length ~ ' Kategorien') %}
+{% set kurseLabel = filter.course == 'only' ? 'Nur Kurse' : (filter.course == 'hide' ? 'Kurse aus' : 'Kurse') %}
+{% set showPeriod = view|default('list') == 'list' %}
+{% set zeitLabel = 'Zeitraum' %}
+{% if filter.period %}{% set zeitLabel = constant('App\\Search\\EventFilter::PERIODS')[filter.period] %}
+{% elseif filter.hasCustomDate %}{% set zeitLabel = 'Datum' %}{% endif %}
+
+{% macro chevron() %}<svg class="w-3.5 h-3.5 text-ink/40 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>{% endmacro %}
+{% import _self as bar %}
+
+<form method="get" action="{{ app.request.pathInfo }}" data-autosubmit
+      class="md:hidden sticky top-0 z-40 -mx-4 px-4 py-2.5 bg-paper/95 backdrop-blur border-b border-black/5 mb-4 space-y-2">
+
+    {# Search #}
+    <div class="relative">
+        <input type="search" name="q" value="{{ filter.q }}" placeholder="Titel, Ort, Stichwort…"
+               class="w-full rounded-xl border border-black/10 bg-white px-3 py-2 pl-9 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 outline-none">
+        <svg class="w-4 h-4 absolute left-3 top-2.5 text-ink/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z"/></svg>
+    </div>
+
+    {# Dropdown row. Wraps instead of scrolling so the absolute dropdown panels
+       are never clipped by an overflow container. #}
+    <div class="flex flex-wrap items-center gap-2">
+
+        {# Kategorien — multi-select #}
+        <details data-dd class="relative shrink-0">
+            <summary class="list-none cursor-pointer inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm font-medium whitespace-nowrap {{ selectedCats is not empty ? 'border-brand-500 bg-brand-50 text-brand-800' : 'border-black/10 bg-white text-ink/70' }}">
+                {{ catLabel }}{{ bar.chevron() }}
+            </summary>
+            <div class="absolute left-0 mt-1 z-50 w-60 max-h-72 overflow-y-auto rounded-xl border border-black/10 bg-white shadow-lg p-1.5">
+                {% for category in allCategories %}
+                    <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-black/5 cursor-pointer text-sm">
+                        <input type="checkbox" name="kategorie[]" value="{{ category.slug }}" {{ filter.hasCategory(category.slug) ? 'checked' }} class="accent-brand-600 w-4 h-4">
+                        <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:{{ category.color }}"></span>
+                        <span class="text-ink/80">{{ category.name }}</span>
+                    </label>
+                {% endfor %}
+            </div>
+        </details>
+
+        {# Kurse — single-select #}
+        <details data-dd class="relative shrink-0">
+            <summary class="list-none cursor-pointer inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm font-medium whitespace-nowrap {{ filter.course ? 'border-brand-500 bg-brand-50 text-brand-800' : 'border-black/10 bg-white text-ink/70' }}">
+                {{ kurseLabel }}{{ bar.chevron() }}
+            </summary>
+            <div class="absolute left-0 mt-1 z-50 w-52 rounded-xl border border-black/10 bg-white shadow-lg p-1.5">
+                {% for value, label in {'': 'Alle', 'only': 'Nur Kurse', 'hide': 'Kurse ausblenden'} %}
+                    <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-black/5 cursor-pointer text-sm">
+                        <input type="radio" name="kurse" value="{{ value }}" {{ (filter.course ?? '') == value ? 'checked' }} class="accent-brand-600 w-4 h-4">
+                        <span class="text-ink/80">{{ label }}</span>
+                    </label>
+                {% endfor %}
+            </div>
+        </details>
+
+        {# Ort — single-select #}
+        {% if allCities is not empty %}
+            <details data-dd class="relative shrink-0">
+                <summary class="list-none cursor-pointer inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm font-medium whitespace-nowrap {{ filter.city ? 'border-brand-500 bg-brand-50 text-brand-800' : 'border-black/10 bg-white text-ink/70' }}">
+                    {{ filter.city ?: 'Ort' }}{{ bar.chevron() }}
+                </summary>
+                <div class="absolute left-0 mt-1 z-50 w-56 max-h-72 overflow-y-auto rounded-xl border border-black/10 bg-white shadow-lg p-1.5">
+                    <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-black/5 cursor-pointer text-sm">
+                        <input type="radio" name="ort" value="" {{ filter.city is null ? 'checked' }} class="accent-brand-600 w-4 h-4">
+                        <span class="text-ink/80">Alle Orte</span>
+                    </label>
+                    {% for city in allCities %}
+                        <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-black/5 cursor-pointer text-sm">
+                            <input type="radio" name="ort" value="{{ city }}" {{ filter.city == city ? 'checked' }} class="accent-brand-600 w-4 h-4">
+                            <span class="text-ink/80">{{ city }}</span>
+                        </label>
+                    {% endfor %}
+                </div>
+            </details>
+        {% endif %}
+
+        {# Zeitraum — presets + custom range (list view only) #}
+        {% if showPeriod %}
+            <details data-dd class="relative shrink-0">
+                <summary class="list-none cursor-pointer inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm font-medium whitespace-nowrap {{ (filter.period or filter.hasCustomDate) ? 'border-brand-500 bg-brand-50 text-brand-800' : 'border-black/10 bg-white text-ink/70' }}">
+                    {{ zeitLabel }}{{ bar.chevron() }}
+                </summary>
+                <div class="absolute right-0 mt-1 z-50 w-60 rounded-xl border border-black/10 bg-white shadow-lg p-1.5">
+                    <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-black/5 cursor-pointer text-sm">
+                        <input type="radio" name="zeitraum" value="" {{ (filter.period is null and not filter.hasCustomDate) ? 'checked' }} class="accent-brand-600 w-4 h-4">
+                        <span class="text-ink/80">Jederzeit</span>
+                    </label>
+                    {% for key, label in constant('App\\Search\\EventFilter::PERIODS') %}
+                        <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-black/5 cursor-pointer text-sm">
+                            <input type="radio" name="zeitraum" value="{{ key }}" {{ filter.period == key ? 'checked' }} class="accent-brand-600 w-4 h-4">
+                            <span class="text-ink/80">{{ label }}</span>
+                        </label>
+                    {% endfor %}
+                    <div class="mt-1.5 pt-1.5 border-t border-black/5 grid grid-cols-2 gap-2">
+                        <input type="date" name="von" value="{{ filter.hasCustomDate and filter.from ? filter.from|date('Y-m-d') }}" aria-label="von"
+                               class="rounded-lg border border-black/10 bg-white px-2 py-1.5 text-sm focus:border-brand-500 outline-none">
+                        <input type="date" name="bis" value="{{ filter.hasCustomDate and filter.to ? filter.to|date('Y-m-d') }}" aria-label="bis"
+                               class="rounded-lg border border-black/10 bg-white px-2 py-1.5 text-sm focus:border-brand-500 outline-none">
+                    </div>
+                </div>
+            </details>
+        {% endif %}
+
+        {% if filter.hasAny %}
+            <a href="{{ app.request.pathInfo }}" data-reset-filters class="shrink-0 inline-flex items-center rounded-full px-3 py-1.5 text-sm text-ink/50 hover:text-brand-700 whitespace-nowrap">Zurücksetzen</a>
+        {% endif %}
+    </div>
+
+    {# Keep the "Meine Events" view state when other filters change. #}
+    <input type="hidden" name="meine" value="1" {{ filter.onlySaved ? '' : 'disabled' }}>
+    <input type="hidden" name="ids" data-saved-ids-input value="{{ filter.savedIds|join(',') }}" {{ filter.onlySaved ? '' : 'disabled' }}>
+</form>

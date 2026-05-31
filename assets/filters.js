@@ -8,7 +8,7 @@ const KEY = 'dalketicker:filters';
 
 function filterSlice(sp) {
     const out = new URLSearchParams();
-    for (const k of ['q', 'ort', 'zeitraum', 'von', 'bis']) {
+    for (const k of ['q', 'ort', 'zeitraum', 'von', 'bis', 'kurse']) {
         const v = sp.get(k);
         if (v) out.set(k, v);
     }

@@ -1,5 +1,5 @@
-{# Left filter sidebar: search + category checkboxes + place + period.
-   Submits via GET to the current route; auto-submits on change. #}
+{# Left filter sidebar (desktop): search + category checkboxes + place + period.
+   Submits via GET to the current route; auto-submits on change (filter_form.js). #}
 <form method="get" action="{{ app.request.pathInfo }}" data-autosubmit class="space-y-6">
     {# Search #}
     <div>
@@ -95,52 +95,3 @@
         </div>
     {% endif %}
 </form>
-
-<script>
-    (function () {
-        var form = document.querySelector('form[data-autosubmit]');
-        if (!form) return;
-        form.addEventListener('change', function (e) {
-            // The "meine" toggle is handled in saved_events.js (needs to sync IDs first).
-            if (e.target.matches('[data-meine]')) return;
-            // Custom date: clear the preset radios so they don't conflict.
-            if (e.target.matches('input[type=date]')) {
-                if (e.target.value) {
-                    form.querySelectorAll('input[name="zeitraum"]').forEach(function (r) { r.checked = false; });
-                }
-                form.requestSubmit();
-                return;
-            }
-            // Picking a preset clears any custom date.
-            if (e.target.matches('input[name="zeitraum"]')) {
-                form.querySelectorAll('input[type=date]').forEach(function (d) { d.value = ''; });
-            }
-            if (e.target.matches('input[type=checkbox], input[type=radio], select')) {
-                form.requestSubmit();
-            }
-        });
-
-        // Toggle the custom date panel.
-        var dateToggle = form.querySelector('[data-date-toggle]');
-        var datePanel = form.querySelector('[data-date-panel]');
-        if (dateToggle && datePanel) {
-            dateToggle.addEventListener('click', function () {
-                datePanel.classList.toggle('hidden');
-            });
-        }
-
-        // Clicking an already-active single-select chip (Ort/Zeitraum radio)
-        // deselects it and re-filters.
-        form.querySelectorAll('label > input[type=radio]').forEach(function (radio) {
-            var label = radio.closest('label');
-            label.addEventListener('mousedown', function () { radio._was = radio.checked; });
-            label.addEventListener('click', function (e) {
-                if (radio._was) {
-                    e.preventDefault();
-                    radio.checked = false;
-                    form.requestSubmit();
-                }
-            });
-        });
-    })();
-</script>

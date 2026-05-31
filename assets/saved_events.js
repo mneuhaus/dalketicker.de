@@ -55,13 +55,13 @@ function refresh() {
         el.classList.toggle('hidden', ids.length === 0);
     });
 
-    // Keep the hidden IDs field (used by the "meine Events" filter) in sync; it
-    // only submits while the "meine" view is active.
-    const idsInput = document.querySelector('[data-saved-ids-input]');
-    if (idsInput) {
+    // Keep the hidden IDs field(s) (used by the "meine Events" filter) in sync;
+    // they only submit while the "meine" view is active. There can be two forms
+    // present (desktop sidebar + mobile filter bar).
+    document.querySelectorAll('[data-saved-ids-input]').forEach((idsInput) => {
         idsInput.value = ids.join(',');
         idsInput.disabled = !onlySavedActive();
-    }
+    });
 }
 
 function init() {
