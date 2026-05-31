@@ -110,6 +110,19 @@ final class EventController extends AbstractController
         ] + $this->filterData());
     }
 
+    /** "Überrasch mich": a playful shuffle through today's events (mobile-first). */
+    #[Route('/ueberrasch-mich', name: 'event_surprise', methods: ['GET'])]
+    public function surprise(): Response
+    {
+        $tz = new \DateTimeZone('Europe/Berlin');
+        $today = $this->clock->now()->setTimezone($tz)->setTime(0, 0);
+
+        return $this->render('event/surprise.html.twig', [
+            'events' => $this->events->findInRange($today, $today->modify('+1 day'), new EventFilter()),
+            'view' => 'surprise',
+        ]);
+    }
+
     #[Route('/event/{id}-{slug}', name: 'event_show', requirements: ['id' => '\d+', 'slug' => '[^/]*'], methods: ['GET'])]
     public function show(Request $request, int $id, string $slug): Response
     {

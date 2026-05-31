@@ -97,6 +97,15 @@
   }
 }
 
+/* "Überrasch mich" swipe cards. */
+.surprise-card {
+  transition: transform 0.18s ease, opacity 0.18s ease;
+}
+.surprise-card.surprise-leaving {
+  transform: translateX(-60%) rotate(-4deg);
+  opacity: 0;
+}
+
 /* Bookmark button: filled when the event is saved. */
 .save-btn.is-saved {
   color: var(--color-brand-600);
