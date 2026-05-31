@@ -5,7 +5,7 @@
 {# Selected category names, for the dropdown label. #}
 {% set selectedCats = allCategories|filter(c => filter.hasCategory(c.slug))|map(c => c.name) %}
 {% set catLabel = selectedCats is empty ? 'Kategorien' : (selectedCats|length == 1 ? (selectedCats|first) : selectedCats|length ~ ' Kategorien') %}
-{% set kurseLabel = filter.course == 'only' ? 'Nur Kurse' : (filter.course == 'hide' ? 'Kurse aus' : 'Kurse') %}
+{% set kurseLabel = filter.course == 'only' ? 'Nur Kurse' : (filter.course == 'hide' ? 'Kurse aus' : 'inklusive Kurse') %}
 {% set showPeriod = view|default('list') == 'list' %}
 {% set zeitLabel = 'Zeitraum' %}
 {% if filter.period %}{% set zeitLabel = constant('App\\Search\\EventFilter::PERIODS')[filter.period] %}
@@ -63,7 +63,7 @@
         {% if allCities is not empty %}
             <details data-dd class="relative shrink-0">
                 <summary class="list-none cursor-pointer inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm font-medium whitespace-nowrap {{ filter.city ? 'border-brand-500 bg-brand-50 text-brand-800' : 'border-black/10 bg-white text-ink/70' }}">
-                    {{ filter.city ?: 'Ort' }}{{ bar.chevron() }}
+                    {{ filter.city ?: 'Kreis Gütersloh' }}{{ bar.chevron() }}
                 </summary>
                 <div class="absolute left-0 mt-1 z-50 w-56 max-h-72 overflow-y-auto rounded-xl border border-black/10 bg-white shadow-lg p-1.5">
                     <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-black/5 cursor-pointer text-sm">
@@ -108,7 +108,10 @@
         {% endif %}
 
         {% if filter.hasAny %}
-            <a href="{{ app.request.pathInfo }}" data-reset-filters class="shrink-0 inline-flex items-center rounded-full px-3 py-1.5 text-sm text-ink/50 hover:text-brand-700 whitespace-nowrap">Zurücksetzen</a>
+            <a href="{{ app.request.pathInfo }}" data-reset-filters aria-label="Filter zurücksetzen" title="Filter zurücksetzen"
+               class="shrink-0 ml-auto inline-flex items-center justify-center w-8 h-8 rounded-full text-ink/45 hover:text-brand-700 hover:bg-black/5 transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992V4.356M2.985 19.644v-4.992h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"/></svg>
+            </a>
         {% endif %}
     </div>
 
