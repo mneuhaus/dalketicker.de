@@ -4,10 +4,10 @@
 {% block subheader %}{{ include('event/_filter_bar.html.twig') }}{% endblock %}
 
 {% block body %}
-    <div class="md:grid md:grid-cols-[16rem_minmax(0,1fr)] md:gap-6 md:items-start">
-        {# Desktop: the chip sidebar — sticky and independently scrollable so it
-           never gets cut off on a short viewport. #}
-        <aside class="hidden md:block md:sticky md:top-20 md:max-h-[calc(100vh-6rem)] md:overflow-y-auto md:pr-1 mb-6 md:mb-0">
+    <div class="tall-desktop:grid tall-desktop:grid-cols-[16rem_minmax(0,1fr)] tall-desktop:gap-6 tall-desktop:items-start">
+        {# Chip sidebar — only on a wide AND tall viewport; sticky + own scroll.
+           On narrow OR short viewports the dropdown filter bar (subheader) is used. #}
+        <aside class="hidden tall-desktop:block tall-desktop:sticky tall-desktop:top-20 tall-desktop:max-h-[calc(100vh-6rem)] tall-desktop:overflow-y-auto tall-desktop:pr-1 mb-6 tall-desktop:mb-0">
             {{ include('event/_sidebar.html.twig') }}
         </aside>
 

@@ -52,7 +52,14 @@ function refresh() {
 
     document.querySelectorAll('[data-save-count]').forEach((el) => {
         el.textContent = ids.length;
-        el.classList.toggle('hidden', ids.length === 0);
+        // Inline display beats the conflicting `hidden`/flex utility classes.
+        el.style.display = ids.length ? 'inline-flex' : 'none';
+    });
+
+    // The whole "Meine Events" nav item is pointless on small screens (icon only,
+    // no label) when nothing is saved — hide it there until something is saved.
+    document.querySelectorAll('[data-meine-nav]').forEach((el) => {
+        el.classList.toggle('is-empty', ids.length === 0);
     });
 
     // Keep the hidden IDs field(s) (used by the "meine Events" filter) in sync;
