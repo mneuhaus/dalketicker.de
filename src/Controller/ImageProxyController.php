@@ -22,6 +22,7 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 final class ImageProxyController extends AbstractController
 {
     private const MAX_BYTES = 8 * 1024 * 1024;
+    private const MAX_WIDTH = 1000;
     private const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif'];
 
     public function __construct(
@@ -52,6 +53,13 @@ final class ImageProxyController extends AbstractController
         [$data, $type] = $this->fetch($url);
         if ($data === null) {
             return $this->transparentPixel();
+        }
+
+        // Downscale oversized images (event flyers are often 1–2 MB) so cards
+        // stay fast. We only ever display them a few hundred px wide.
+        $shrunk = $this->downscale($data);
+        if ($shrunk !== null) {
+            [$data, $type] = $shrunk;
         }
 
         if (!is_dir($this->imageCacheDir)) {
@@ -88,6 +96,55 @@ final class ImageProxyController extends AbstractController
         } catch (\Throwable) {
             return [null, ''];
         }
+    }
+
+    /**
+     * Shrink images wider than {@see MAX_WIDTH} and re-encode as JPEG, so a
+     * card image is a few dozen KB instead of one or two MB. Returns null when
+     * GD is unavailable, the image can't be decoded, or it's already small.
+     *
+     * @return array{0: string, 1: string}|null
+     */
+    private function downscale(string $data): ?array
+    {
+        if (!\function_exists('imagecreatefromstring')) {
+            return null;
+        }
+        $img = @imagecreatefromstring($data);
+        if ($img === false) {
+            return null;
+        }
+        $w = imagesx($img);
+        $h = imagesy($img);
+        if ($w <= self::MAX_WIDTH) {
+            imagedestroy($img);
+
+            return null; // already small enough — keep the original
+        }
+
+        $nh = max(1, (int) round($h * self::MAX_WIDTH / $w));
+        $scaled = imagescale($img, self::MAX_WIDTH, $nh);
+        imagedestroy($img);
+        if ($scaled === false) {
+            return null;
+        }
+
+        // Flatten onto white so transparent PNGs don't turn black as JPEG.
+        $canvas = imagecreatetruecolor(self::MAX_WIDTH, $nh);
+        if ($canvas !== false) {
+            imagefill($canvas, 0, 0, imagecolorallocate($canvas, 255, 255, 255));
+            imagecopy($canvas, $scaled, 0, 0, 0, 0, self::MAX_WIDTH, $nh);
+            imagedestroy($scaled);
+            $scaled = $canvas;
+        }
+
+        ob_start();
+        imageinterlace($scaled, true);
+        $ok = imagejpeg($scaled, null, 82);
+        $out = ob_get_clean();
+        imagedestroy($scaled);
+
+        return ($ok && is_string($out) && $out !== '') ? [$out, 'image/jpeg'] : null;
     }
 
     private function serve(string $data, string $type): Response

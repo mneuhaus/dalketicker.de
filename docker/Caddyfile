@@ -9,6 +9,10 @@
 	root * /app/public
 	encode zstd br gzip
 
+	# Content-hashed assets + self-hosted fonts can be cached forever.
+	@immutable path /assets/* /fonts/*
+	header @immutable Cache-Control "public, max-age=31536000, immutable"
+
 	# Symfony front controller
 	php_server
 
