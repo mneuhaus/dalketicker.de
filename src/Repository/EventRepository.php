@@ -128,14 +128,20 @@ class EventRepository extends ServiceEntityRepository
             ->getOneOrNullResult();
     }
 
-    /** Distinct cities present on visible events, for the location filter. */
+    /**
+     * Distinct cities present on visible events, for the location filter.
+     * "Kreis Gütersloh" is the kreis-wide bucket, not a town — it's excluded
+     * here and represented by the "all" option (which the UI labels accordingly).
+     */
     public function findUsedCities(): array
     {
         $rows = $this->createQueryBuilder('e')
             ->select('DISTINCT v.city AS city')
             ->join('e.venue', 'v')
             ->andWhere('e.status = :published')
+            ->andWhere('v.city != :kreis')
             ->setParameter('published', EventStatus::Published)
+            ->setParameter('kreis', 'Kreis Gütersloh')
             ->orderBy('v.city', 'ASC')
             ->getQuery()
             ->getScalarResult();
