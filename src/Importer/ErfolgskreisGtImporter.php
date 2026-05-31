@@ -42,7 +42,9 @@ final class ErfolgskreisGtImporter implements SourceImporter
     private const DEFAULT_EXPERIENCE = 'erfolgskreis-gt';
     private const DEFAULT_BOOTSTRAP = 'https://pages.destination.one/de/erfolgskreis-gt/default/search/Event/mode:next_months,12/sort:chronological';
     private const META_BASE = 'https://meta.et4.de/rest.ashx/search/';
-    private const DETAIL_BASE = 'https://www.erfolgskreis-gt.de/veranstaltungen/detailansicht/event/';
+    // The TYPO3 site has no server-rendered per-event page; the destination.one
+    // PAGES app deep-links a single event via its query DSL (id:<event-id>).
+    private const PAGES_DETAIL_BASE = 'https://pages.destination.one/de/%s/default/search/Event/id:%s';
     private const USER_AGENT = 'Dalketicker/1.0 (+https://dalketicker.neuhaus.nrw)';
     private const PAGE_SIZE = 100;
 
@@ -209,7 +211,7 @@ final class ErfolgskreisGtImporter implements SourceImporter
         }
 
         $id = (string) ($item['id'] ?? $item['global_id'] ?? '');
-        $sourceUrl = $id !== '' ? self::DETAIL_BASE.rawurlencode($id).'/' : null;
+        $sourceUrl = $this->buildSourceUrl($id, $experience, (string) ($item['web'] ?? ''));
         $description = $this->extractDescription($item);
         $price = $this->extractText($item, 'PRICE_INFO');
         $categorySlug = $this->mapCategory($item['categories'] ?? []);
@@ -366,6 +368,34 @@ final class ErfolgskreisGtImporter implements SourceImporter
     }
 
     /**
+     * The event's "Veranstaltungsseite". The TYPO3 detail route 404s for every
+     * event, so we deep-link the destination.one PAGES app to the single event
+     * (always reachable, always the right event). The feed's organizer URL
+     * ("web") is too unreliable to use as primary (dead hosts, bare homepages),
+     * so it only serves as a last resort when no event id is available.
+     */
+    private function buildSourceUrl(string $id, string $experience, string $web): ?string
+    {
+        if ($id !== '') {
+            return sprintf(self::PAGES_DETAIL_BASE, rawurlencode($experience), rawurlencode($id));
+        }
+        $web = trim($web);
+
+        return $web !== '' && $this->isHttpUrl($web) ? $web : null;
+    }
+
+    /** A well-formed absolute http(s) URL with a dotted host (rejects mojibake/double-scheme). */
+    private function isHttpUrl(string $url): bool
+    {
+        if (!preg_match('#^https?://#i', $url) || filter_var($url, \FILTER_VALIDATE_URL) === false) {
+            return false;
+        }
+        $host = parse_url($url, \PHP_URL_HOST);
+
+        return \is_string($host) && str_contains($host, '.') && !str_contains($host, ':');
+    }
+
+    /**
      * Hotlink the original event image from the feed's media_objects (no
      * extra request, no rehosting). Prefer the "default" relation, then the
      * highest-priority image/* object; URLs are already absolute.
@@ -385,11 +415,7 @@ final class ErfolgskreisGtImporter implements SourceImporter
                 continue;
             }
             $url = trim((string) ($media['url'] ?? ''));
-            if ($url === '' || !preg_match('#^https?://#i', $url)) {
-                continue;
-            }
-            $type = (string) ($media['type'] ?? '');
-            if ($type !== '' && !str_starts_with($type, 'image/')) {
+            if (!$this->isUsableImageUrl($url, (string) ($media['type'] ?? ''))) {
                 continue;
             }
             if (($media['rel'] ?? null) === 'default') {
@@ -403,6 +429,23 @@ final class ErfolgskreisGtImporter implements SourceImporter
         }
 
         return $best;
+    }
+
+    /**
+     * A media object only counts as an image if it is a well-formed absolute
+     * URL that is either declared image/* or ends in a known image extension.
+     * Filters out junk links (e.g. a malformed "http://https//…/" homepage).
+     */
+    private function isUsableImageUrl(string $url, string $type): bool
+    {
+        if ($url === '' || !$this->isHttpUrl($url)) {
+            return false;
+        }
+        if ($type !== '') {
+            return str_starts_with($type, 'image/');
+        }
+
+        return (bool) preg_match('~\.(jpe?g|png|webp|gif|avif)(\?|#|$)~i', $url);
     }
 
     /** @param mixed $value ISO-8601 string like 2026-09-18T18:30:00+02:00 */

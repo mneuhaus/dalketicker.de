@@ -135,19 +135,19 @@
                 </div>
             {% endif %}
 
-            <div class="bg-white rounded-2xl border border-black/5 shadow-sm p-5">
-                <h2 class="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-1">Quelle</h2>
-                {% if sourceHome %}
-                    <a href="{{ sourceHome }}" target="_blank" rel="noopener" class="text-sm text-brand-700 hover:underline inline-flex items-start gap-1">{{ event.source.name }}<span class="text-ink/30">↗</span></a>
-                {% else %}
-                    <div class="text-sm text-ink/80">{{ event.source.name }}</div>
-                {% endif %}
-            </div>
-
             {% if event.sourceUrl %}
                 <a href="{{ event.sourceUrl }}" target="_blank" rel="noopener"
                    class="block text-center rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white hover:bg-brand-700 transition">Zur Veranstaltungsseite ↗</a>
             {% endif %}
+
+            <p class="text-xs text-ink/40 px-1">
+                Quelle:
+                {% if sourceHome %}
+                    <a href="{{ sourceHome }}" target="_blank" rel="noopener" class="hover:text-ink/60 hover:underline">{{ event.source.name }}</a>
+                {% else %}
+                    {{ event.source.name }}
+                {% endif %}
+            </p>
         </aside>
     </div>
 {% endblock %}
