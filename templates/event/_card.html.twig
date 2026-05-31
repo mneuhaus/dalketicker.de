@@ -38,7 +38,7 @@
     {# Media card #}
     <article data-event-card="{{ event.id }}" class="group relative rounded-2xl border border-black/5 bg-white shadow-sm overflow-hidden transition hover:shadow-md hover:border-black/10">
         <div class="relative bg-black/5">
-            <img src="{{ event.imageUrl }}" alt="" loading="lazy" referrerpolicy="no-referrer"
+            <img src="{{ path('image_proxy', {id: event.id}) }}" alt="" loading="lazy"
                  class="w-full h-40 sm:h-52 object-cover group-hover:scale-[1.02] transition duration-300">
             <div class="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/40 to-transparent"></div>
             <span class="absolute left-2.5 bottom-2.5 rounded-md bg-black/55 px-2 py-0.5 text-xs font-semibold text-white backdrop-blur-sm">

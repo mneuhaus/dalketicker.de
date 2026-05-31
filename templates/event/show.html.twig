@@ -17,7 +17,7 @@
        class="flex gap-3 rounded-xl border border-black/5 bg-white p-2.5 hover:border-brand-200 hover:shadow-sm transition">
         {% if e.imageUrl %}
             <div class="shrink-0 w-14 h-14 rounded-lg overflow-hidden bg-black/5">
-                <img src="{{ e.imageUrl }}" alt="" loading="lazy" referrerpolicy="no-referrer" class="w-full h-full object-cover">
+                <img src="{{ path('image_proxy', {id: e.id}) }}" alt="" loading="lazy" class="w-full h-full object-cover">
             </div>
         {% endif %}
         <div class="min-w-0">
@@ -41,7 +41,7 @@
         <article class="bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden">
             {% if event.imageUrl %}
                 <div class="relative">
-                    <img src="{{ event.imageUrl }}" alt="" referrerpolicy="no-referrer" class="w-full h-52 sm:h-72 object-cover">
+                    <img src="{{ path('image_proxy', {id: event.id}) }}" alt="" class="w-full h-52 sm:h-72 object-cover">
                     <div class="absolute inset-0 bg-gradient-to-t from-black/15 to-transparent"></div>
                 </div>
             {% endif %}
