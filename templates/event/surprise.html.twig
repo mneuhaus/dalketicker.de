@@ -5,10 +5,7 @@
 
 {% block body %}
     <div class="max-w-md mx-auto">
-        <div class="text-center mb-5">
-            <h1 class="font-[family-name:var(--font-display)] text-2xl font-extrabold tracking-tight text-ink">Überrasch mich</h1>
-            <p class="text-sm text-ink/50 mt-1">Zufälliger Vorschlag für heute. Passt nicht? Nach links wischen oder „was anderes".</p>
-        </div>
+        <p class="text-center text-sm text-ink/50 mb-5">Zufälliger Tipp für heute – passt nicht? Einfach weiter.</p>
 
         {% if events is empty %}
             <div class="text-center py-16 text-ink/50 border border-dashed border-black/10 rounded-2xl">
