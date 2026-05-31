@@ -1,4 +1,4 @@
-# Production deployment for dalketicker.neuhaus.nrw
+# Production deployment for dalketicker.de (www + dalketicker.neuhaus.nrw 301 → apex).
 # Runs on the shared host behind Traefik (external network "web", certresolver "neuhaus").
 #   docker compose -f docker-compose.prod.yml up -d --build
 # Secrets (APP_SECRET, DB_PASSWORD) come from a sibling .env file (not committed).
@@ -18,7 +18,7 @@ services:
       TRUSTED_PROXIES: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
       DATABASE_URL: "postgresql://dalke:${DB_PASSWORD}@database:5432/dalketicker?serverVersion=16&charset=utf8"
       MAILER_DSN: null://null
-      DEFAULT_URI: https://dalketicker.neuhaus.nrw
+      DEFAULT_URI: https://dalketicker.de
     depends_on:
       database:
         condition: service_healthy
@@ -28,12 +28,23 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=web"
+      # Primary domain — serves the app.
       - "traefik.http.routers.dalketicker.entrypoints=web,websecure"
       - "traefik.http.routers.dalketicker.tls=true"
       - "traefik.http.routers.dalketicker.tls.certresolver=neuhaus"
-      - "traefik.http.routers.dalketicker.rule=Host(`dalketicker.neuhaus.nrw`)"
+      - "traefik.http.routers.dalketicker.rule=Host(`dalketicker.de`)"
       - "traefik.http.services.dalketicker.loadbalancer.server.port=80"
       - "traefik.http.services.dalketicker.loadbalancer.passhostheader=true"
+      # Aliases (www + old test domain) → 301 to the canonical apex domain.
+      - "traefik.http.routers.dalketicker-redirect.entrypoints=web,websecure"
+      - "traefik.http.routers.dalketicker-redirect.tls=true"
+      - "traefik.http.routers.dalketicker-redirect.tls.certresolver=neuhaus"
+      - "traefik.http.routers.dalketicker-redirect.rule=Host(`www.dalketicker.de`) || Host(`dalketicker.neuhaus.nrw`)"
+      - "traefik.http.routers.dalketicker-redirect.service=dalketicker"
+      - "traefik.http.routers.dalketicker-redirect.middlewares=dalketicker-toapex"
+      - "traefik.http.middlewares.dalketicker-toapex.redirectregex.regex=^https?://[^/]+/(.*)"
+      - "traefik.http.middlewares.dalketicker-toapex.redirectregex.replacement=https://dalketicker.de/$${1}"
+      - "traefik.http.middlewares.dalketicker-toapex.redirectregex.permanent=true"
 
   database:
     image: postgres:16-alpine
