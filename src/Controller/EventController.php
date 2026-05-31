@@ -125,7 +125,8 @@ final class EventController extends AbstractController
             return $this->redirectToRoute('event_show', ['id' => $id, 'slug' => $event->getSlug()] + $filter->toQueryParams(), Response::HTTP_MOVED_PERMANENTLY);
         }
 
-        $around = $this->events->findAround($filter, $event);
+        // Only the immediate neighbours are shown (one before, one after).
+        $around = $this->events->findAround($filter, $event, 1);
 
         return $this->render('event/show.html.twig', [
             'event' => $event,

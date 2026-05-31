@@ -34,95 +34,112 @@
     {% import _self as ui %}
     {% set color = event.category ? event.category.color : 'var(--color-brand-600)' %}
     {% set multiDay = event.endsAt and event.endsAt|date('Y-m-d') != event.startsAt|date('Y-m-d') %}
+    {% set prev = before ? before|last : null %}
+    {% set next = after ? after|first : null %}
+    {% set prevUrl = prev ? path('event_show', {id: prev.id, slug: prev.slug}|merge(filter.toQueryParams|default({}))) : '' %}
+    {% set nextUrl = next ? path('event_show', {id: next.id, slug: next.slug}|merge(filter.toQueryParams|default({}))) : '' %}
 
     <a href="{{ path('event_index', filter.toQueryParams|default({})) }}" class="text-sm text-ink/50 hover:text-brand-700 inline-flex items-center gap-1 mb-4">← Alle Veranstaltungen</a>
 
-    <div class="lg:grid lg:grid-cols-[minmax(0,1fr)_19rem] lg:gap-6 lg:items-start">
-        <article class="bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden">
-            {% if event.imageUrl %}
-                <div class="relative">
-                    <img src="{{ path('image_proxy', {id: event.id}) }}" alt="" class="w-full h-52 sm:h-72 object-cover">
-                    <div class="absolute inset-0 bg-gradient-to-t from-black/15 to-transparent"></div>
-                </div>
-            {% endif %}
+    <div data-event-nav data-event-id="{{ event.id }}" data-prev-url="{{ prevUrl }}" data-next-url="{{ nextUrl }}"
+         class="lg:grid lg:grid-cols-[minmax(0,1fr)_19rem] lg:gap-6 lg:items-start">
 
-            <div class="p-6 sm:p-8">
-                {% if event.category %}
-                    <div class="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide mb-2" style="color: {{ color }}">
-                        <span class="w-2 h-2 rounded-full" style="background-color: {{ color }}"></span>{{ event.category.name }}
+        {# Left column: the detail box + the previous/next row beneath it #}
+        <div class="min-w-0">
+            <article class="bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden">
+                {% if event.imageUrl %}
+                    <div class="relative">
+                        <img src="{{ path('image_proxy', {id: event.id}) }}" alt="" class="w-full h-52 sm:h-72 object-cover">
+                        <div class="absolute inset-0 bg-gradient-to-t from-black/15 to-transparent"></div>
                     </div>
                 {% endif %}
 
-                <h1 class="font-[family-name:var(--font-display)] text-3xl sm:text-4xl font-extrabold tracking-tight text-ink leading-tight">{{ event.title }}</h1>
-
-                {# When — the prominent secondary line #}
-                <p class="mt-3 text-lg font-semibold text-brand-800">
-                    {% if multiDay %}
-                        {{ event.startsAt|de_weekday }}, {{ event.startsAt|de_date }} – {{ event.endsAt|de_weekday }}, {{ event.endsAt|de_date(true) }}{% if not event.allDay %} · {{ event.startsAt|de_time }}{% endif %}
-                    {% else %}
-                        {{ event.startsAt|de_weekday(true) }}, {{ event.startsAt|de_date(true) }}{% if not event.allDay %} · {{ event.startsAt|de_time }}{% if event.endsAt %}–{{ event.endsAt|date('H:i') }} Uhr{% endif %}{% endif %}
+                <div class="p-6 sm:p-8">
+                    {% if event.category %}
+                        <div class="mb-3">
+                            <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold text-white" style="background-color: {{ color }}">{{ event.category.name }}</span>
+                        </div>
                     {% endif %}
-                    {% if event.allDay %}<span class="text-ink/40 font-normal">· ganztägig</span>{% endif %}
-                </p>
 
-                {# Where #}
-                {% if event.displayLocation %}
-                    <p class="mt-1.5 text-ink/60 flex items-start gap-1.5">
-                        {{ ui.meta_icon('pin') }}
-                        <span>
-                            <span class="text-ink/80 font-medium">{{ event.venue ? event.venue.name : event.locationText }}</span>{% if event.venue and event.venue.city %}<span class="text-ink/50">, {{ event.venue.city }}</span>{% endif %}
-                            {% if event.venue and event.venue.fullAddress %}<span class="block text-sm text-ink/45">{{ event.venue.fullAddress }}</span>{% endif %}
-                        </span>
+                    <h1 class="font-[family-name:var(--font-display)] text-3xl sm:text-4xl font-extrabold tracking-tight text-ink leading-tight">{{ event.title }}</h1>
+
+                    {# When — the prominent secondary line #}
+                    <p class="mt-3 text-lg font-semibold text-brand-800">
+                        {% if multiDay %}
+                            {{ event.startsAt|de_weekday }}, {{ event.startsAt|de_date }} – {{ event.endsAt|de_weekday }}, {{ event.endsAt|de_date(true) }}{% if not event.allDay %} · {{ event.startsAt|de_time }}{% endif %}
+                        {% else %}
+                            {{ event.startsAt|de_weekday(true) }}, {{ event.startsAt|de_date(true) }}{% if not event.allDay %} · {{ event.startsAt|de_time }}{% if event.endsAt %}–{{ event.endsAt|date('H:i') }} Uhr{% endif %}{% endif %}
+                        {% endif %}
+                        {% if event.allDay %}<span class="text-ink/40 font-normal">· ganztägig</span>{% endif %}
                     </p>
-                {% endif %}
 
-                {# Secondary tags #}
-                {% if event.price or event.organizer %}
-                    <div class="mt-4 flex flex-wrap gap-2 text-sm">
-                        {% if event.price %}
-                            <span class="inline-flex items-center gap-1.5 rounded-lg bg-black/5 px-2.5 py-1 text-ink/70">{{ ui.meta_icon('ticket') }}{{ event.price }}</span>
-                        {% endif %}
-                        {% if event.organizer %}
-                            <span class="inline-flex items-center gap-1.5 rounded-lg bg-black/5 px-2.5 py-1 text-ink/70">{{ ui.meta_icon('user') }}{{ event.organizer }}</span>
-                        {% endif %}
-                    </div>
-                {% endif %}
+                    {# Secondary tags #}
+                    {% if event.price or event.organizer %}
+                        <div class="mt-4 flex flex-wrap gap-2 text-sm">
+                            {% if event.price %}
+                                <span class="inline-flex items-center gap-1.5 rounded-lg bg-black/5 px-2.5 py-1 text-ink/70">{{ ui.meta_icon('ticket') }}{{ event.price }}</span>
+                            {% endif %}
+                            {% if event.organizer %}
+                                <span class="inline-flex items-center gap-1.5 rounded-lg bg-black/5 px-2.5 py-1 text-ink/70">{{ ui.meta_icon('user') }}{{ event.organizer }}</span>
+                            {% endif %}
+                        </div>
+                    {% endif %}
 
-                {% if event.description %}
-                    <div class="prose prose-sm max-w-none mt-6 text-ink/80 whitespace-pre-line">{{ event.description|striptags("<br><p><a><strong><em><ul><ol><li>")|raw }}</div>
-                {% endif %}
+                    {% if event.description %}
+                        <div class="prose prose-sm max-w-none mt-6 text-ink/80 whitespace-pre-line">{{ event.description|striptags("<br><p><a><strong><em><ul><ol><li>")|raw }}</div>
+                    {% endif %}
 
-                <div class="mt-8 pt-5 border-t border-black/5 flex flex-wrap items-center gap-3 justify-between">
-                    <span class="text-xs text-ink/40">Quelle: {{ event.source.name }}</span>
-                    <div class="flex items-center gap-2">
+                    <div class="mt-8 pt-5 border-t border-black/5 flex flex-wrap items-center gap-3 justify-between">
+                        <span class="text-xs text-ink/40">Quelle: {{ event.source.name }}</span>
                         <button type="button" data-save-btn data-event-id="{{ event.id }}" aria-pressed="false"
                                 class="save-btn inline-flex items-center gap-2 rounded-xl border border-black/10 px-4 py-2.5 text-sm font-semibold text-ink/70 hover:border-brand-300 hover:text-brand-700 transition">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>
                             Merken
                         </button>
-                        {% if event.sourceUrl %}
-                            <a href="{{ event.sourceUrl }}" target="_blank" rel="noopener" class="rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 transition">Zum Veranstalter ↗</a>
-                        {% endif %}
                     </div>
                 </div>
-            </div>
-        </article>
+            </article>
 
-        {% if before or after %}
-            <aside class="mt-6 lg:mt-0 space-y-6">
-                {% if after %}
+            {# Previous / next in the current list — three columns, middle left empty #}
+            {% if prev or next %}
+                <nav class="mt-6 grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4" aria-label="Vorheriges und nächstes Event">
                     <div>
-                        <h2 class="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">Danach</h2>
-                        <div class="space-y-2">{% for e in after %}{{ ui.neighbor(e, filter) }}{% endfor %}</div>
+                        {% if prev %}
+                            <div class="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">← Davor</div>
+                            {{ ui.neighbor(prev, filter) }}
+                        {% endif %}
                     </div>
-                {% endif %}
-                {% if before %}
+                    <div class="hidden sm:block"></div>
                     <div>
-                        <h2 class="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">Davor</h2>
-                        <div class="space-y-2">{% for e in before %}{{ ui.neighbor(e, filter) }}{% endfor %}</div>
+                        {% if next %}
+                            <div class="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2 text-right">Danach →</div>
+                            {{ ui.neighbor(next, filter) }}
+                        {% endif %}
                     </div>
-                {% endif %}
-            </aside>
-        {% endif %}
+                </nav>
+            {% endif %}
+        </div>
+
+        {# Right column: where + organizer link #}
+        <aside class="mt-6 lg:mt-0 space-y-4">
+            {% if event.displayLocation %}
+                <div class="bg-white rounded-2xl border border-black/5 shadow-sm p-5">
+                    <h2 class="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">Ort</h2>
+                    <div class="flex items-start gap-2 text-sm">
+                        <span class="text-brand-600 mt-0.5">{{ ui.meta_icon('pin') }}</span>
+                        <div class="min-w-0">
+                            <div class="text-ink font-medium">{{ event.venue ? event.venue.name : event.locationText }}</div>
+                            {% if event.venue and event.venue.city %}<div class="text-ink/60">{{ event.venue.city }}</div>{% endif %}
+                            {% if event.venue and event.venue.fullAddress %}<div class="text-ink/45 text-xs mt-0.5">{{ event.venue.fullAddress }}</div>{% endif %}
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+
+            {% if event.sourceUrl %}
+                <a href="{{ event.sourceUrl }}" target="_blank" rel="noopener"
+                   class="block text-center rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white hover:bg-brand-700 transition">Zum Veranstalter ↗</a>
+            {% endif %}
+        </aside>
     </div>
 {% endblock %}
