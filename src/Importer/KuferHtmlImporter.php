@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Importer;
 
 use App\Entity\Source;
+use App\Enum\BookingStatus;
 use Symfony\Component\DependencyInjection\Attribute\AutoconfigureTag;
 use Symfony\Component\DomCrawler\Crawler;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
@@ -157,6 +158,15 @@ final class KuferHtmlImporter implements SourceImporter
         $city = $config['city'] ?? null;
         $venueName = ($whereText !== null && $whereText !== '') ? $whereText : null;
 
+        // Booking status: KuferWEB usually renders a ".kw_ampel" span; some
+        // installs only label it "Status:". Best-effort, null when absent.
+        $statusText = null;
+        $ampel = $row->filter('.kw_ampel');
+        if ($ampel->count() > 0) {
+            $statusText = $this->clean($ampel->first()->text(''));
+        }
+        $statusText ??= $this->valueAfterLabel($link, 'Status');
+
         return new ImportedEvent(
             title: $title,
             startsAt: $start,
@@ -177,6 +187,8 @@ final class KuferHtmlImporter implements SourceImporter
                 'where' => $whereText ?? '',
                 'nr' => $courseNo ?? '',
             ],
+            isCourse: true,
+            bookingStatus: BookingStatus::fromText($statusText),
         );
     }
 

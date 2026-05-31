@@ -165,6 +165,8 @@ final class EventImporter
         $event->setPrice($dto->price !== null ? mb_substr($dto->price, 0, 120) : null);
         $event->setOrganizer($dto->organizer !== null ? mb_substr($dto->organizer, 0, 200) : null);
         $event->setExternalId($dto->externalId);
+        $event->setIsCourse($dto->isCourse || (bool) ($source->getConfig()['isCourse'] ?? false));
+        $event->setBookingStatus($dto->bookingStatus);
         $event->setContentHash($hash);
         $event->setDedupKey($dedupKey);
         $event->setRaw($dto->raw);

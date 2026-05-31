@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Entity;
 
+use App\Enum\BookingStatus;
 use App\Enum\EventStatus;
 use App\Repository\EventRepository;
 use Doctrine\DBAL\Types\Types;
@@ -96,6 +97,14 @@ class Event
 
     #[ORM\Column(length: 20, enumType: EventStatus::class)]
     private EventStatus $status = EventStatus::Published;
+
+    /** Secondary classification: course-like offering (VHS etc.), orthogonal to category. */
+    #[ORM\Column]
+    private bool $isCourse = false;
+
+    /** Booking/availability state for courses (null = unknown / not a course). */
+    #[ORM\Column(length: 20, nullable: true, enumType: BookingStatus::class)]
+    private ?BookingStatus $bookingStatus = null;
 
     /** Untrusted raw payload from the source, kept for debugging/re-mapping. */
     #[ORM\Column(type: Types::JSON)]
@@ -357,6 +366,30 @@ class Event
     public function setStatus(EventStatus $status): static
     {
         $this->status = $status;
+
+        return $this;
+    }
+
+    public function isCourse(): bool
+    {
+        return $this->isCourse;
+    }
+
+    public function setIsCourse(bool $isCourse): static
+    {
+        $this->isCourse = $isCourse;
+
+        return $this;
+    }
+
+    public function getBookingStatus(): ?BookingStatus
+    {
+        return $this->bookingStatus;
+    }
+
+    public function setBookingStatus(?BookingStatus $bookingStatus): static
+    {
+        $this->bookingStatus = $bookingStatus;
 
         return $this;
     }

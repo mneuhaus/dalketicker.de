@@ -31,6 +31,19 @@
         </div>
     </div>
 
+    {# Courses — secondary classification toggle (only / hide). #}
+    <div>
+        <label class="block text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">Kurse</label>
+        <div class="flex flex-wrap gap-2">
+            <label class="cursor-pointer {{ filter.course == 'only' ? 'chip-active' : 'chip-muted' }}">
+                <input type="radio" name="kurse" value="only" {{ filter.course == 'only' ? 'checked' }} class="sr-only">Nur Kurse
+            </label>
+            <label class="cursor-pointer {{ filter.course == 'hide' ? 'chip-active' : 'chip-muted' }}">
+                <input type="radio" name="kurse" value="hide" {{ filter.course == 'hide' ? 'checked' }} class="sr-only">Kurse ausblenden
+            </label>
+        </div>
+    </div>
+
     {# Place — single-select tag bubbles #}
     {% if allCities is not empty %}
         <div>

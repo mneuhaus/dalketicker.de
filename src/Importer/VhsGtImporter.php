@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Importer;
 
 use App\Entity\Source;
+use App\Enum\BookingStatus;
 use Symfony\Component\DependencyInjection\Attribute\AutoconfigureTag;
 use Symfony\Component\DomCrawler\Crawler;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
@@ -119,6 +120,7 @@ final class VhsGtImporter implements SourceImporter
         $dateText = $this->cellText($row, 'columnheader-datum');
         $ort = $this->cellText($row, 'columnheader-ort');
         $knr = $this->cleanKnr($this->cellText($row, 'columnheader-nummer'));
+        $bookingStatus = BookingStatus::fromText($this->cellText($row, 'columnheader-status'));
 
         if ($title === '' || $dateText === '') {
             return null;
@@ -166,6 +168,8 @@ final class VhsGtImporter implements SourceImporter
                 'date' => $dateText,
                 'ort' => $ort,
             ],
+            isCourse: true,
+            bookingStatus: $bookingStatus,
         );
     }
 

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Importer;
 
+use App\Enum\BookingStatus;
+
 /**
  * Normalized, source-agnostic representation of one event as produced by an
  * importer. The {@see \App\Service\EventImporter} turns these into persisted
@@ -27,6 +29,8 @@ final class ImportedEvent
         public ?string $organizer = null,
         public ?string $externalId = null,
         public array $raw = [],
+        public bool $isCourse = false,
+        public ?BookingStatus $bookingStatus = null,
     ) {
         $this->title = trim($title);
     }
@@ -80,6 +84,8 @@ final class ImportedEvent
             $this->price ?? '',
             $this->organizer ?? '',
             $this->categorySlug ?? '',
+            $this->isCourse ? '1' : '0',
+            $this->bookingStatus?->value ?? '',
         ]));
     }
 

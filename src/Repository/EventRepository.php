@@ -275,6 +275,12 @@ class EventRepository extends ServiceEntityRepository
             $qb->andWhere('v.city = :city')->setParameter('city', $filter->city);
         }
 
+        if ($filter->course === 'only') {
+            $qb->andWhere('e.isCourse = true');
+        } elseif ($filter->course === 'hide') {
+            $qb->andWhere('e.isCourse = false');
+        }
+
         if ($filter->onlySaved) {
             if ($filter->savedIds === []) {
                 $qb->andWhere('1 = 0'); // "meine Events" active but nothing saved

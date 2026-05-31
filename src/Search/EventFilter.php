@@ -40,6 +40,7 @@ final class EventFilter
         public ?\DateTimeImmutable $to = null,
         public bool $onlySaved = false,
         public array $savedIds = [],
+        public ?string $course = null,
     ) {
     }
 
@@ -70,6 +71,11 @@ final class EventFilter
             [$from, $to] = self::resolvePeriod($period);
         }
 
+        $course = self::clean($request->query->get('kurse'));
+        if (!in_array($course, ['only', 'hide'], true)) {
+            $course = null;
+        }
+
         $onlySaved = $request->query->get('meine') === '1';
         $savedIds = [];
         foreach (explode(',', (string) $request->query->get('ids')) as $id) {
@@ -88,6 +94,7 @@ final class EventFilter
             to: $to,
             onlySaved: $onlySaved,
             savedIds: array_values(array_unique($savedIds)),
+            course: $course,
         );
     }
 
@@ -161,7 +168,8 @@ final class EventFilter
             || $this->city !== null
             || $this->period !== null
             || $this->hasCustomDate()
-            || $this->onlySaved;
+            || $this->onlySaved
+            || $this->course !== null;
     }
 
     /** Query params for building links/canonical URLs, dropping empty values. */
@@ -174,6 +182,7 @@ final class EventFilter
             'zeitraum' => $this->period,
             'von' => $this->hasCustomDate() ? $this->from?->format('Y-m-d') : null,
             'bis' => $this->hasCustomDate() ? $this->to?->format('Y-m-d') : null,
+            'kurse' => $this->course,
         ];
         if ($this->onlySaved) {
             $params['meine'] = '1';
