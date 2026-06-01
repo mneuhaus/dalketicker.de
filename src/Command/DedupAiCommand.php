@@ -177,33 +177,69 @@ final class DedupAiCommand extends Command
     }
 
     /**
-     * Cheap pre-filter: only worth an AI call if at least two events have
-     * similar normalized titles (catches the cases the key-dedup missed).
+     * Cheap pre-filter: decide whether a day is worth an AI call. It only needs
+     * to gate cost — the AI is the actual judge — so we cast a fairly wide net
+     * and let the model reject non-duplicates. A pair qualifies when titles are
+     * equal, one normalized title contains the other (e.g. "Repair-Café" ⊂
+     * "Makerspace Repaircafé"), titles are reasonably similar, OR the events
+     * share a start time and a venue token (same place, same time, different
+     * wording — exactly what the key-dedup misses).
      *
      * @param Event[] $events
      */
     private function hasCandidatePair(array $events): bool
     {
-        $titles = array_map(static fn (Event $e) => ImportedEvent::normalizeTitle($e->getTitle()), $events);
-        $n = \count($titles);
+        $n = \count($events);
+        $titles = [];
+        $times = [];
+        $locTokens = [];
+        foreach ($events as $idx => $e) {
+            $titles[$idx] = ImportedEvent::normalizeTitle($e->getTitle());
+            $times[$idx] = $e->isAllDay() ? 'allday' : $e->getStartsAt()->format('H:i');
+            $locTokens[$idx] = $this->locationTokens($e->getDisplayLocation() ?? '');
+        }
+
         for ($i = 0; $i < $n; ++$i) {
             for ($j = $i + 1; $j < $n; ++$j) {
                 $a = $titles[$i];
                 $b = $titles[$j];
-                if ($a === '' || $b === '') {
-                    continue;
+                if ($a !== '' && $b !== '') {
+                    if ($a === $b) {
+                        return true;
+                    }
+                    $short = \strlen($a) <= \strlen($b) ? $a : $b;
+                    $long = $short === $a ? $b : $a;
+                    if (\strlen($short) >= 5 && str_contains($long, $short)) {
+                        return true;
+                    }
+                    similar_text($a, $b, $pct);
+                    if ($pct >= 60.0) {
+                        return true;
+                    }
                 }
-                if ($a === $b) {
-                    return true;
-                }
-                similar_text($a, $b, $pct);
-                if ($pct >= 72.0) {
+                // Same time + same place, regardless of wording.
+                if ($times[$i] === $times[$j] && array_intersect($locTokens[$i], $locTokens[$j]) !== []) {
                     return true;
                 }
             }
         }
 
         return false;
+    }
+
+    /**
+     * Significant tokens (≥4 chars) of a location string, for cheap venue
+     * matching in the pre-filter. "Stadtbibliothek Gütersloh · Gütersloh"
+     * → ["stadtbibliothek", "gutersloh"].
+     *
+     * @return string[]
+     */
+    private function locationTokens(string $location): array
+    {
+        $cleaned = preg_replace('/[^a-z0-9äöüß]+/u', ' ', mb_strtolower($location)) ?? '';
+        $tokens = array_filter(preg_split('/\s+/', trim($cleaned)) ?: [], static fn (string $t) => mb_strlen($t) >= 4);
+
+        return array_values(array_unique($tokens));
     }
 
     private function storeDay(object $dayRepo, ?AiDedupDay $rec, string $dayKey, string $fp): void

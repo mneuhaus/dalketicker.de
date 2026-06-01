@@ -26,9 +26,14 @@ final class AiDeduper
         (z. B. "Repair-Café" vs. "Reparatur-Café im Bürgerhaus" derselben Sache).
         Führe NICHT zusammen: bloß ähnliche, aber eigenständige Events (zwei verschiedene Konzerte,
         zwei getrennte Kurstermine/Sessions einer Reihe, gleicher Veranstaltungsort aber andere Veranstaltung).
-        Für jedes Duplikat-Paar rufe das Tool mark_duplicate auf: duplicate_event_id = der auszublendende
-        Eintrag, canonical_event_id = der zu behaltende. Behalte den mit den reicheren Infos (Beschreibung/Bild)
-        bzw. der offizielleren Quelle. Im Zweifel NICHTS tun.
+        Für jedes Duplikat-Paar rufe das Tool mark_duplicate auf.
+        WICHTIG – canonical_event_id ist der WERTVOLLERE, zu BEHALTENDE Eintrag, duplicate_event_id der
+        schwächere, auszublendende. Entscheide „wertvoller" in dieser Reihenfolge:
+        1. hat ein Bild (Bild: ja) – schlägt einen Eintrag ohne Bild;
+        2. ausführlichere / informativere Beschreibung;
+        3. vollständigerer, aussagekräftigerer Titel;
+        4. offiziellere Quelle (Veranstalter selbst statt Aggregator).
+        Im Zweifel NICHTS tun.
         TXT;
 
     public function __construct(
@@ -66,11 +71,12 @@ final class AiDeduper
             $loc = $e->getDisplayLocation() ?: '—';
             $desc = $e->getDescription() ? mb_substr(preg_replace('/\s+/', ' ', strip_tags($e->getDescription())) ?? '', 0, 200) : '';
             $lines[] = sprintf(
-                'id=%d | %s | "%s" | %s | Veranstalter: %s | Quelle: %s%s',
+                'id=%d | %s | "%s" | %s | Bild: %s | Veranstalter: %s | Quelle: %s%s',
                 $e->getId(),
                 $time,
                 $e->getTitle(),
                 $loc,
+                $e->getImageUrl() ? 'ja' : 'nein',
                 $e->getOrganizer() ?: '—',
                 $e->getSource()->getKey(),
                 $desc !== '' ? ' | '.$desc : '',
