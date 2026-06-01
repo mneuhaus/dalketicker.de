@@ -232,6 +232,29 @@ class EventRepository extends ServiceEntityRepository
             ->getResult();
     }
 
+    /**
+     * Visible, still-upcoming events lacking a real category (none at all, or
+     * only the "sonstiges" catch-all) — the gap the AI categorizer fills.
+     *
+     * @return Event[]
+     */
+    public function findUncategorizedUpcoming(int $limit = 50): array
+    {
+        $withRealCategory = $this->createQueryBuilder('ec')
+            ->select('ec.id')
+            ->join('ec.categories', 'cc')
+            ->where("cc.slug != 'sonstiges'");
+
+        return $this->visibleQueryBuilder(new EventFilter())
+            ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :now')
+            ->andWhere($this->getEntityManager()->getExpressionBuilder()->notIn('e.id', $withRealCategory->getDQL()))
+            ->setParameter('now', new \DateTimeImmutable('now', new \DateTimeZone('Europe/Berlin')))
+            ->orderBy('e.startsAt', 'ASC')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult();
+    }
+
     public function findVisible(int $id): ?Event
     {
         return $this->createQueryBuilder('e')
