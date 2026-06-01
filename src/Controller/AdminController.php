@@ -178,6 +178,9 @@ final class AdminController extends AbstractController
             return $this->redirectToRoute('admin_dedup');
         }
 
+        // In prod, Symfony logs to stderr, so var/log isn't created on its own —
+        // make sure it exists, else the redirect below fails and the job dies.
+        @mkdir($projectDir.'/var/log', 0775, true);
         $log = $projectDir.'/var/log/dedup-manual.log';
         // Trailing "&" lets the shell return immediately; nohup detaches the run
         // from the web request so it survives the response.
