@@ -73,6 +73,14 @@ services:
       - "traefik.http.routers.dalketicker-http.rule=Host(`dalketicker.de`) || Host(`www.dalketicker.de`) || Host(`dalketicker.neuhaus.nrw`)"
       - "traefik.http.routers.dalketicker-http.service=dalketicker"
       - "traefik.http.routers.dalketicker-http.middlewares=dalketicker-https"
+      # Calendar apps subscribe via webcal://, which resolves to plain http; many
+      # (esp. Apple Calendar) don't follow the →https redirect and end up with an
+      # empty subscription. So serve the feed directly over http too (higher
+      # priority than the redirect router). It's public, cookieless data.
+      - "traefik.http.routers.dalketicker-feed.entrypoints=web"
+      - "traefik.http.routers.dalketicker-feed.rule=Host(`dalketicker.de`) && Path(`/kalender.ics`)"
+      - "traefik.http.routers.dalketicker-feed.service=dalketicker"
+      - "traefik.http.routers.dalketicker-feed.priority=1000"
       - "traefik.http.middlewares.dalketicker-https.redirectscheme.scheme=https"
       - "traefik.http.middlewares.dalketicker-https.redirectscheme.permanent=true"
 
