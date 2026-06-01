@@ -265,6 +265,18 @@ class EventRepository extends ServiceEntityRepository
         return $qb->getQuery()->getResult();
     }
 
+    /** Upcoming published events the categorizer hasn't looked at yet (no decision). */
+    public function countWithoutCategoryDecision(): int
+    {
+        return (int) $this->visibleQueryBuilder(new EventFilter())
+            ->select('COUNT(e.id)')
+            ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :now')
+            ->andWhere('e.id NOT IN (SELECT IDENTITY(aicd.event) FROM '.\App\Entity\AiCategoryDecision::class.' aicd)')
+            ->setParameter('now', new \DateTimeImmutable('now', new \DateTimeZone('Europe/Berlin')))
+            ->getQuery()
+            ->getSingleScalarResult();
+    }
+
     public function findVisible(int $id): ?Event
     {
         return $this->createQueryBuilder('e')

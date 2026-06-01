@@ -246,15 +246,31 @@ final class AdminController extends AbstractController
 
     /** Review AI categorization: pending suggestions (accept/dismiss) + applied (undo). */
     #[Route('/kategorien', name: 'admin_categorize', methods: ['GET'])]
-    public function categorize(EntityManagerInterface $em, AiCategorizer $categorizer): Response
+    public function categorize(EntityManagerInterface $em, AiCategorizer $categorizer, EventRepository $events): Response
     {
         $repo = $em->getRepository(AiCategoryDecision::class);
+
+        $counts = [];
+        foreach (['applied', 'pending', 'agreed', 'dismissed', 'undone'] as $status) {
+            $counts[$status] = $repo->count(['status' => $status]);
+        }
+        $processed = array_sum($counts);
+        $remaining = $events->countWithoutCategoryDecision();
+
+        // A run is "active" if decisions were written in the last 2 minutes — then
+        // we let the page auto-refresh so progress updates live.
+        $lastAt = $em->createQuery('SELECT MAX(d.createdAt) FROM '.AiCategoryDecision::class.' d')->getSingleScalarResult();
+        $active = $lastAt !== null && new \DateTimeImmutable((string) $lastAt) > new \DateTimeImmutable('-2 minutes');
 
         return $this->render('admin/categorize.html.twig', [
             'pending' => $repo->findBy(['status' => 'pending'], ['createdAt' => 'DESC'], 200),
             'applied' => $repo->findBy(['status' => 'applied'], ['createdAt' => 'DESC'], 60),
             'configured' => $categorizer->isConfigured(),
             'model' => $categorizer->getModel(),
+            'counts' => $counts,
+            'processed' => $processed,
+            'remaining' => $remaining,
+            'active' => $active,
         ]);
     }
 
