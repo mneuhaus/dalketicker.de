@@ -117,6 +117,31 @@ class EventRepository extends ServiceEntityRepository
         return ['before' => array_reverse($before), 'after' => $after];
     }
 
+    /**
+     * Visible, still-upcoming events for the subscribable .ics feed. Honours the
+     * non-temporal filters (search/category/course/city) via the shared builder
+     * but ignores the period/von/bis filter — a calendar subscription always
+     * spans "from now into the future" (capped at one year + a hard row limit so
+     * the feed stays bounded).
+     *
+     * @return Event[]
+     */
+    public function findForFeed(EventFilter $filter, int $limit = 2000): array
+    {
+        $tz = new \DateTimeZone('Europe/Berlin');
+        $now = new \DateTimeImmutable('now', $tz);
+
+        return $this->visibleQueryBuilder($filter)
+            ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :now')
+            ->andWhere('e.startsAt < :until')
+            ->setParameter('now', $now)
+            ->setParameter('until', $now->modify('+1 year'))
+            ->orderBy('e.startsAt', 'ASC')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult();
+    }
+
     public function findVisible(int $id): ?Event
     {
         return $this->createQueryBuilder('e')

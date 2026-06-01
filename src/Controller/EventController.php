@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Calendar\IcsFeedBuilder;
 use App\Entity\Event;
 use App\Repository\CategoryRepository;
 use App\Repository\EventRepository;
@@ -22,6 +23,7 @@ final class EventController extends AbstractController
         private readonly EventRepository $events,
         private readonly CategoryRepository $categories,
         private readonly ClockInterface $clock,
+        private readonly IcsFeedBuilder $icsFeed,
     ) {
     }
 
@@ -126,6 +128,62 @@ final class EventController extends AbstractController
             'events' => $this->events->findInRange($today, $today->modify('+1 day'), new EventFilter()),
             'view' => 'surprise',
         ]);
+    }
+
+    /**
+     * Subscribable iCalendar feed of the (optionally filtered) programme. Honours
+     * the same search/category/course/city filters as the list view; the time
+     * range is intentionally ignored (a subscription always means "from now on").
+     */
+    #[Route('/kalender.ics', name: 'event_feed', methods: ['GET'])]
+    public function feed(Request $request): Response
+    {
+        $requested = EventFilter::fromRequest($request);
+        // Drop the temporal + "Meine Events" parts; keep the meaningful filters.
+        $filter = new EventFilter(
+            q: $requested->q,
+            categorySlugs: $requested->categorySlugs,
+            city: $requested->city,
+            course: $requested->course,
+        );
+
+        $events = $this->events->findForFeed($filter);
+        $ics = $this->icsFeed->build($events, $this->feedName($filter));
+
+        $response = new Response($ics, Response::HTTP_OK, ['Content-Type' => 'text/calendar; charset=utf-8']);
+        $response->headers->set('Content-Disposition', 'inline; filename="dalketicker.ics"');
+
+        return $response;
+    }
+
+    /** Human-readable calendar name reflecting the active filters. */
+    private function feedName(EventFilter $filter): string
+    {
+        $bits = [];
+        if ($filter->categorySlugs !== []) {
+            $names = [];
+            foreach ($this->categories->findAllOrdered() as $category) {
+                if (in_array($category->getSlug(), $filter->categorySlugs, true)) {
+                    $names[] = $category->getName();
+                }
+            }
+            if ($names !== []) {
+                $bits[] = implode(', ', $names);
+            }
+        }
+        if ($filter->course === 'only') {
+            $bits[] = 'Kurse';
+        } elseif ($filter->course === 'hide') {
+            $bits[] = 'ohne Kurse';
+        }
+        if ($filter->city !== null) {
+            $bits[] = $filter->city;
+        }
+        if ($filter->q !== null) {
+            $bits[] = '„'.$filter->q.'“';
+        }
+
+        return 'dalketicker – '.($bits !== [] ? implode(' · ', $bits) : 'Kreis Gütersloh');
     }
 
     #[Route('/event/{id}-{slug}', name: 'event_show', requirements: ['id' => '\d+', 'slug' => '[^/]*'], methods: ['GET'])]

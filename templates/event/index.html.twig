@@ -1,6 +1,25 @@
 {% extends 'layout_with_sidebar.html.twig' %}
 
+{# Let calendar apps auto-discover the (full) subscribable feed. #}
+{% block head_links %}
+    <link rel="alternate" type="text/calendar" title="dalketicker – Veranstaltungen Kreis Gütersloh" href="{{ url('event_feed') }}">
+{% endblock %}
+
 {% block content %}
+    {% if groups is not empty %}
+        {# Subscribe to exactly the current filter selection (webcal:// opens the
+           "add calendar" dialog in most apps; the feed ignores the time range). #}
+        {% set feedUrl = url('event_feed', filter.toQueryParams)|replace({'https://': 'webcal://', 'http://': 'webcal://'}) %}
+        <div class="flex justify-end -mt-1 mb-4">
+            <a href="{{ feedUrl }}"
+               class="inline-flex items-center gap-1.5 rounded-lg border border-black/10 px-3 py-1.5 text-sm font-medium text-ink/60 hover:border-brand-300 hover:text-brand-700 transition"
+               title="{{ filter.hasAny ? 'Diese gefilterte Auswahl' : 'Alle Veranstaltungen' }} im eigenen Kalender abonnieren – aktualisiert sich automatisch">
+                <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                Kalender abonnieren{% if filter.hasAny %} <span class="text-ink/40">(gefiltert)</span>{% endif %}
+            </a>
+        </div>
+    {% endif %}
+
     {% if groups is empty %}
         {% if filter.onlySaved %}
             <div class="text-center py-16 px-6 text-ink/50 border border-dashed border-black/10 rounded-2xl">
