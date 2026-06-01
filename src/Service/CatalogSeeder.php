@@ -171,7 +171,7 @@ final class CatalogSeeder
             'stadt_rietberg', 'stadt_shs', 'stadt_verl', 'stadt_versmold', 'gem_steinhagen',
             'gem_langenberg', 'burg_ravensberg', 'owl_arena', 'glanzlichter', 'musikschule_gt',
             'bib_verl', 'bib_borgholzhausen', 'gartenschaupark', 'weberei_fv',
-            'club_hangover',
+            'club_hangover', 'kulturig',
         ];
 
         // [key => [name, type, url, importer, city]]
@@ -199,7 +199,7 @@ final class CatalogSeeder
             ['vhs_re', 'VHS Reckenberg-Ems', SourceType::Html, 'https://www.vhs-re.de/programm', 'vhs_re', 'Rheda-Wiedenbrück'],
             ['stadt_rietberg', 'Stadt Rietberg Veranstaltungskalender', SourceType::Html, 'https://www.rietberg.de/tourismus/freizeitangebote/veranstaltungen/uebersicht.html', 'stadt_rietberg', 'Rietberg'],
             ['gartenschaupark', 'Gartenschaupark Rietberg', SourceType::Html, 'https://www.gartenschaupark-rietberg.de/veranstaltungen/veranstaltungen-konzerte-feste-etc.html', 'gartenschaupark', 'Rietberg'],
-            ['kulturig', 'kulturig e.V.', SourceType::Html, 'https://www.kulturig.de/events-tickets/eventkalender.html', 'jsonld', 'Rietberg'],
+            ['kulturig', 'kulturig e.V.', SourceType::Html, 'https://www.kulturig.de/events-tickets/eventkalender.html', 'kulturig', 'Rietberg'],
             ['stadtbib_rietberg', 'Stadtbibliothek Rietberg', SourceType::Html, 'https://www.rietberg.de/tourismus/freizeitangebote/veranstaltungen/veranstaltungsort/stadtbibliothek-rietberg-394.html', 'manual', 'Rietberg'],
             ['stadt_harsewinkel', 'Stadt Harsewinkel Veranstaltungskalender', SourceType::Ics, 'https://www.harsewinkel.de/veranstaltungen/veranstaltungen.ical?zeitauswahl=1&auswahl_woche_tage=730&onlyMonat_select=0&selected_kommune=34050', 'ics', 'Harsewinkel'],
             ['wilhalm', 'Kulturort Wilhalm', SourceType::Html, 'https://www.wilhalm.de/api/events.php', 'wilhalm', 'Harsewinkel'],
