@@ -170,7 +170,7 @@ final class CatalogSeeder
             // Built in the 2026-05-31 importer-backlog batch:
             'stadt_rietberg', 'stadt_shs', 'stadt_verl', 'stadt_versmold', 'gem_steinhagen',
             'gem_langenberg', 'burg_ravensberg', 'owl_arena', 'glanzlichter', 'musikschule_gt',
-            'bib_verl', 'bib_borgholzhausen', 'gartenschaupark',
+            'bib_verl', 'bib_borgholzhausen', 'gartenschaupark', 'weberei_fv',
         ];
 
         // [key => [name, type, url, importer, city]]
@@ -180,6 +180,7 @@ final class CatalogSeeder
             ['theater_gt', 'Theater Gütersloh', SourceType::Html, 'https://www.theater-gt.de/spielplan', 'theater_gt', 'Gütersloh'],
             ['stadthalle_gt', 'Stadthalle Gütersloh', SourceType::Html, 'https://www.stadthalle-gt.de/', 'stadthalle_gt', 'Gütersloh'],
             ['weberei', 'Die Weberei', SourceType::Html, 'https://www.die-weberei.de/', 'weberei', 'Gütersloh'],
+            ['weberei_fv', 'Förderverein Die Weberei', SourceType::Html, 'https://weberei-foerderverein.de/termine/', 'weberei_fv', 'Gütersloh'],
             ['bambi_kino', 'Bambi & Löwenherz Kino', SourceType::Html, 'https://www.bambikino.de/programm/', 'bambi_kino', 'Gütersloh'],
             ['filmwerk_gt', 'Filmwerk Gütersloh', SourceType::Html, 'https://web.filmwerk-gt.de/', 'manual', 'Gütersloh'],
             ['stadtbib_gt', 'Stadtbibliothek Gütersloh', SourceType::Html, 'https://stadtbibliothek-guetersloh.easy2book.de/veranstaltungen/', 'stadtbib_gt', 'Gütersloh'],
