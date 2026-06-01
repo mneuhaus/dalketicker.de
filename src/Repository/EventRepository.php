@@ -233,26 +233,36 @@ class EventRepository extends ServiceEntityRepository
     }
 
     /**
-     * Visible, still-upcoming events lacking a real category (none at all, or
-     * only the "sonstiges" catch-all) — the gap the AI categorizer fills.
+     * Visible, still-upcoming events for the AI categorizer that have NOT yet
+     * been looked at (no {@see \App\Entity\AiCategoryDecision}). When
+     * $uncategorized is true: only events lacking a real category (none, or only
+     * "sonstiges") — the gaps to fill. When false: only events that already have
+     * a real category — for the AI "second opinion" pass.
      *
      * @return Event[]
      */
-    public function findUncategorizedUpcoming(int $limit = 50): array
+    public function findForCategorization(bool $uncategorized, int $limit = 50): array
     {
+        $expr = $this->getEntityManager()->getExpressionBuilder();
         $withRealCategory = $this->createQueryBuilder('ec')
             ->select('ec.id')
             ->join('ec.categories', 'cc')
             ->where("cc.slug != 'sonstiges'");
 
-        return $this->visibleQueryBuilder(new EventFilter())
+        $qb = $this->visibleQueryBuilder(new EventFilter())
             ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :now')
-            ->andWhere($this->getEntityManager()->getExpressionBuilder()->notIn('e.id', $withRealCategory->getDQL()))
+            ->andWhere('e.id NOT IN (SELECT IDENTITY(aicd.event) FROM '.\App\Entity\AiCategoryDecision::class.' aicd)')
             ->setParameter('now', new \DateTimeImmutable('now', new \DateTimeZone('Europe/Berlin')))
             ->orderBy('e.startsAt', 'ASC')
-            ->setMaxResults($limit)
-            ->getQuery()
-            ->getResult();
+            ->setMaxResults($limit);
+
+        $qb->andWhere(
+            $uncategorized
+                ? $expr->notIn('e.id', $withRealCategory->getDQL())
+                : $expr->in('e.id', $withRealCategory->getDQL()),
+        );
+
+        return $qb->getQuery()->getResult();
     }
 
     public function findVisible(int $id): ?Event

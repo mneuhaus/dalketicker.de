@@ -151,6 +151,9 @@ import/dry: ## Run importers without writing (dry run)
 dedup: ## AI dedup pass (after import)
 	@$(CONSOLE) dalketicker:dedup-ai
 
+categorize: ## AI categorization pass (after import/dedup)
+	@$(CONSOLE) dalketicker:categorize-ai --apply
+
 dedup/dry: ## AI dedup pass, propose only (no changes)
 	@$(CONSOLE) dalketicker:dedup-ai --dry-run
 
@@ -212,3 +215,6 @@ deploy/import: ## Run importers on the server
 
 deploy/dedup: ## Run the AI dedup pass on the server
 	ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && $(PROD) exec -T app php bin/console dalketicker:dedup-ai'
+
+deploy/categorize: ## Run the AI categorization pass on the server
+	ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && $(PROD) exec -T app php bin/console dalketicker:categorize-ai --apply'

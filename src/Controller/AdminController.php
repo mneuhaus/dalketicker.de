@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Ai\AiCategorizer;
 use App\Ai\AiDeduper;
+use App\Ai\CategoryApplier;
 use App\Ai\DuplicateMerger;
+use App\Entity\AiCategoryDecision;
 use App\Entity\AiDedupDecision;
 use App\Entity\ContactMessage;
 use App\Repository\ContactMessageRepository;
@@ -239,6 +242,81 @@ final class AdminController extends AbstractController
         }
 
         return $this->redirectToRoute('admin_dedup');
+    }
+
+    /** Review AI categorization: pending suggestions (accept/dismiss) + applied (undo). */
+    #[Route('/kategorien', name: 'admin_categorize', methods: ['GET'])]
+    public function categorize(EntityManagerInterface $em, AiCategorizer $categorizer): Response
+    {
+        $repo = $em->getRepository(AiCategoryDecision::class);
+
+        return $this->render('admin/categorize.html.twig', [
+            'pending' => $repo->findBy(['status' => 'pending'], ['createdAt' => 'DESC'], 200),
+            'applied' => $repo->findBy(['status' => 'applied'], ['createdAt' => 'DESC'], 60),
+            'configured' => $categorizer->isConfigured(),
+            'model' => $categorizer->getModel(),
+        ]);
+    }
+
+    /** Trigger the AI categorization pass by hand (detached, like the dedup run). */
+    #[Route('/kategorien/run', name: 'admin_categorize_run', methods: ['POST'])]
+    public function categorizeRun(
+        Request $request,
+        AiCategorizer $categorizer,
+        #[Autowire('%kernel.project_dir%')] string $projectDir,
+    ): RedirectResponse {
+        if (!$this->isCsrfTokenValid('categorize', (string) $request->request->get('_token'))) {
+            $this->addFlash('error', 'Ungültiges Formular.');
+
+            return $this->redirectToRoute('admin_categorize');
+        }
+        if (!$categorizer->isConfigured()) {
+            $this->addFlash('error', 'AI ist nicht konfiguriert (OPENROUTER_API_KEY fehlt).');
+
+            return $this->redirectToRoute('admin_categorize');
+        }
+
+        @mkdir($projectDir.'/var/log', 0775, true);
+        $log = $projectDir.'/var/log/categorize-manual.log';
+        $cmd = sprintf(
+            'nohup php %s/bin/console dalketicker:categorize-ai --apply --max-calls=120 >> %s 2>&1 &',
+            escapeshellarg($projectDir),
+            escapeshellarg($log),
+        );
+        $process = Process::fromShellCommandline($cmd, $projectDir);
+        $process->setTimeout(null);
+        $process->disableOutput();
+        $process->run();
+
+        $this->addFlash('success', 'KI-Kategorisierung gestartet – läuft im Hintergrund. Liste in ~1–2 Minuten aktualisieren.');
+
+        return $this->redirectToRoute('admin_categorize');
+    }
+
+    #[Route('/kategorien/{id}/{action}', name: 'admin_categorize_decide', requirements: ['id' => '\d+', 'action' => 'accept|dismiss|undo'], methods: ['POST'])]
+    public function categorizeDecide(int $id, string $action, Request $request, EntityManagerInterface $em, CategoryApplier $applier): RedirectResponse
+    {
+        if (!$this->isCsrfTokenValid('categorize', (string) $request->request->get('_token'))) {
+            $this->addFlash('error', 'Ungültiges Formular.');
+
+            return $this->redirectToRoute('admin_categorize');
+        }
+        $decision = $em->getRepository(AiCategoryDecision::class)->find($id);
+        if ($decision !== null) {
+            match ($action) {
+                'accept' => $applier->acceptSuggestion($decision),
+                'dismiss' => $applier->dismissSuggestion($decision),
+                'undo' => $applier->undo($decision),
+            };
+            $em->flush();
+            $this->addFlash('success', match ($action) {
+                'accept' => 'Vorschlag übernommen.',
+                'dismiss' => 'Vorschlag verworfen.',
+                'undo' => 'Kategorie zurückgesetzt.',
+            });
+        }
+
+        return $this->redirectToRoute('admin_categorize');
     }
 
     /** Edit & pin individual event fields so a correction survives re-imports. */
