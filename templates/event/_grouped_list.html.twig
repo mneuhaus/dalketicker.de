@@ -10,7 +10,7 @@
             </div>
             <div class="grid grid-cols-1 gap-3">
                 {% for event in group.events %}
-                    {{ include('event/_card.html.twig', {event: event}) }}
+                    {{ include('event/_card.html.twig', {event: event, series: (seriesByEvent|default({}))[event.id]|default(null)}) }}
                 {% endfor %}
             </div>
         </section>

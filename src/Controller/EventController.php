@@ -37,6 +37,18 @@ final class EventController extends AbstractController
 
         $events = $this->events->findUpcoming($filter, self::PER_PAGE, $offset);
         $total = $this->events->countUpcoming($filter);
+
+        // Recurring series (same title+venue) are collapsed to one card by the
+        // repository; map the label data ("täglich · bis …") onto those cards.
+        $seriesInfo = $this->events->seriesLabelInfo($filter);
+        $seriesByEvent = [];
+        foreach ($events as $event) {
+            $key = $event->getTitle().'|'.($event->getVenue()?->getId() ?? '');
+            if (isset($seriesInfo[$key])) {
+                $seriesByEvent[$event->getId()] = $seriesInfo[$key];
+            }
+        }
+
         $today = $this->clock->now()->setTimezone(new \DateTimeZone('Europe/Berlin'));
         // Group multi-day events that span into the window under the window start
         // (e.g. a Thu–Sun market shows on Saturday for the "Wochenende" filter).
@@ -51,6 +63,7 @@ final class EventController extends AbstractController
             'pages' => max(1, (int) ceil($total / self::PER_PAGE)),
             'filter' => $filter,
             'view' => 'list',
+            'seriesByEvent' => $seriesByEvent,
         ] + $this->filterData());
     }
 

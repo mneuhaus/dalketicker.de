@@ -32,6 +32,7 @@ class EventRepository extends ServiceEntityRepository
     {
         $qb = $this->visibleQueryBuilder($filter);
         $this->applyUpcomingWindow($qb, $filter);
+        $this->applySeriesCollapse($qb, $filter);
 
         // Sort by an "effective" start: events already running (started before
         // today but not yet ended, e.g. exhibitions) sort as if they start
@@ -53,8 +54,97 @@ class EventRepository extends ServiceEntityRepository
     {
         $qb = $this->visibleQueryBuilder($filter);
         $this->applyUpcomingWindow($qb, $filter);
+        $this->applySeriesCollapse($qb, $filter);
 
         return (int) $qb->select('COUNT(e.id)')->getQuery()->getSingleScalarResult();
+    }
+
+    /**
+     * Series-label data for the upcoming list: for each recurring entry (same
+     * title + venue, ≥2 upcoming occurrences) the total count and the last date,
+     * so the (single, collapsed) card can show "täglich · bis 26. Juni" instead
+     * of appearing once per day. Keyed by "<title>|<venueId>".
+     *
+     * @return array<string, array{count: int, last: \DateTimeImmutable, daily: bool}>
+     */
+    public function seriesLabelInfo(EventFilter $filter): array
+    {
+        if ($filter->onlySaved) {
+            return [];
+        }
+
+        $qb = $this->visibleQueryBuilder($filter);
+        $qb->andWhere('COALESCE(e.endsAt, e.startsAt) >= :seriesFloor')
+            ->setParameter('seriesFloor', $this->seriesFloor($filter));
+        if ($filter->to !== null) {
+            $qb->andWhere('e.startsAt < :seriesTo')->setParameter('seriesTo', $filter->to->modify('+1 day'));
+        }
+
+        $rows = $qb
+            ->select('e.title AS title', 'IDENTITY(e.venue) AS venueId', 'COUNT(e.id) AS cnt', 'MAX(COALESCE(e.endsAt, e.startsAt)) AS lastAt', 'MIN(e.startsAt) AS firstAt')
+            ->groupBy('e.title')->addGroupBy('e.venue')
+            ->having('COUNT(e.id) > 1')
+            ->getQuery()
+            ->getResult();
+
+        $info = [];
+        foreach ($rows as $row) {
+            $first = $this->toDate($row['firstAt']);
+            $last = $this->toDate($row['lastAt']);
+            $count = (int) $row['cnt'];
+            $spanDays = $first->diff($last)->days + 1;
+            $info[$row['title'].'|'.($row['venueId'] ?? '')] = [
+                'count' => $count,
+                'last' => $last,
+                // "Daily" when the occurrences cover (almost) every day of the run.
+                'daily' => $count >= $spanDays * 0.8,
+            ];
+        }
+
+        return $info;
+    }
+
+    private function toDate(mixed $value): \DateTimeImmutable
+    {
+        if ($value instanceof \DateTimeImmutable) {
+            return $value;
+        }
+        if ($value instanceof \DateTimeInterface) {
+            return \DateTimeImmutable::createFromInterface($value);
+        }
+
+        return new \DateTimeImmutable((string) $value, new \DateTimeZone('Europe/Berlin'));
+    }
+
+    private function seriesFloor(EventFilter $filter): \DateTimeImmutable
+    {
+        return $filter->from ?? new \DateTimeImmutable('now', new \DateTimeZone('Europe/Berlin'));
+    }
+
+    /**
+     * Collapse recurring series (same title + venue) to a single card: keep only
+     * the soonest still-upcoming occurrence. Skipped for "Meine Events" (there the
+     * user picked specific occurrences). {@see seriesLabelInfo} supplies the label.
+     */
+    private function applySeriesCollapse(QueryBuilder $qb, EventFilter $filter): void
+    {
+        if ($filter->onlySaved) {
+            return;
+        }
+
+        // Keep only the soonest still-upcoming occurrence of each series
+        // (same title + venue). Title/venue/course/city are series-invariant; a
+        // category filter is applied on the outer row, so the representative is
+        // still chosen among the visible occurrences.
+        $qb->andWhere(
+            'e.startsAt = ('
+            .'SELECT MIN(e2.startsAt) FROM '.Event::class.' e2 '
+            .'WHERE e2.title = e.title '
+            .'AND (IDENTITY(e2.venue) = IDENTITY(e.venue) OR (e2.venue IS NULL AND e.venue IS NULL)) '
+            .'AND e2.status = :published '
+            .'AND COALESCE(e2.endsAt, e2.startsAt) >= :seriesFloor'
+            .')'
+        )->setParameter('seriesFloor', $this->seriesFloor($filter));
     }
 
     /**
