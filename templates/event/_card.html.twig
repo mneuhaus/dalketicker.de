@@ -8,9 +8,9 @@
 
 {% macro meta(event) %}
     <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink/55">
-        {% if event.category %}
-            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold text-white whitespace-nowrap" style="background-color: {{ event.category.color }}">{{ event.category.name }}</span>
-        {% endif %}
+        {% for category in event.categories %}
+            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold text-white whitespace-nowrap" style="background-color: {{ category.color }}">{{ category.name }}</span>
+        {% endfor %}
         {% if event.isCourse %}
             <span class="inline-flex items-center rounded-full bg-black/5 px-2 py-0.5 text-xs font-semibold text-ink/55 whitespace-nowrap">Kurs</span>
         {% endif %}

@@ -7,6 +7,8 @@ namespace App\Entity;
 use App\Enum\BookingStatus;
 use App\Enum\EventStatus;
 use App\Repository\EventRepository;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -59,9 +61,16 @@ class Event
     #[ORM\Column(length: 255, nullable: true)]
     private ?string $locationText = null;
 
-    #[ORM\ManyToOne(targetEntity: Category::class)]
-    #[ORM\JoinColumn(nullable: true, onDelete: 'SET NULL')]
-    private ?Category $category = null;
+    /**
+     * Equal-rank classifications: an event can belong to several (a kids' film
+     * is both "Kino" and "Familie"). For colour/dot purposes the first one acts
+     * as the primary, exposed via {@see getCategory()}.
+     *
+     * @var Collection<int, Category>
+     */
+    #[ORM\ManyToMany(targetEntity: Category::class)]
+    #[ORM\JoinTable(name: 'event_category')]
+    private Collection $categories;
 
     #[ORM\ManyToOne(targetEntity: Source::class)]
     #[ORM\JoinColumn(nullable: false, onDelete: 'CASCADE')]
@@ -125,6 +134,7 @@ class Event
         $now = $startsAt; // overwritten by lifecycle/import; placeholder for non-managed instances
         $this->firstSeenAt = $now;
         $this->lastSeenAt = $now;
+        $this->categories = new ArrayCollection();
     }
 
     public function getId(): ?int
@@ -238,16 +248,53 @@ class Event
         return $this->locationText;
     }
 
-    public function getCategory(): ?Category
+    /** @return Collection<int, Category> */
+    public function getCategories(): Collection
     {
-        return $this->category;
+        return $this->categories;
     }
 
-    public function setCategory(?Category $category): static
+    public function addCategory(Category $category): static
     {
-        $this->category = $category;
+        if (!$this->categories->contains($category)) {
+            $this->categories->add($category);
+        }
 
         return $this;
+    }
+
+    public function removeCategory(Category $category): static
+    {
+        $this->categories->removeElement($category);
+
+        return $this;
+    }
+
+    /**
+     * Replace the whole set of categories at once.
+     *
+     * @param iterable<Category> $categories
+     */
+    public function setCategories(iterable $categories): static
+    {
+        $this->categories->clear();
+        foreach ($categories as $category) {
+            $this->addCategory($category);
+        }
+
+        return $this;
+    }
+
+    /** Primary category (the first one) — drives the colour/dot in the UI. */
+    public function getCategory(): ?Category
+    {
+        return $this->categories->first() ?: null;
+    }
+
+    /** Back-compat single-category setter: resets the set to just this one. */
+    public function setCategory(?Category $category): static
+    {
+        return $this->setCategories($category !== null ? [$category] : []);
     }
 
     public function getSource(): Source

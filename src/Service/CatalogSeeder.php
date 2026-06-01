@@ -133,6 +133,7 @@ final class CatalogSeeder
             'musik' => ['Konzert & Musik', '#e11d48'],
             'party' => ['Party & Nightlife', '#7c3aed'],
             'buehne' => ['Bühne & Theater', '#d97706'],
+            'kino' => ['Kino', '#9f1239'],
             'kunst' => ['Kunst & Ausstellung', '#0891b2'],
             'familie' => ['Familie & Kinder', '#16a34a'],
             'sport' => ['Sport', '#2563eb'],

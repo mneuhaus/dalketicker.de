@@ -24,13 +24,14 @@ final class BambiKinoImporter implements SourceImporter
     private const DEFAULT_URL = 'https://www.bambikino.de/programm/';
     private const USER_AGENT = 'Dalketicker/1.0 (+https://dalketicker.neuhaus.nrw)';
 
-    /** Maps "Theater for WordPress" production categories to allowed slugs. */
+    /**
+     * Every screening is "Kino"; these map themed "Theater for WordPress"
+     * production categories onto an ADDITIONAL equal-rank category (a kids'
+     * film is Kino + Familie, a film concert Kino + Musik …).
+     */
     private const CATEGORY_MAP = [
         'kinderkino' => 'familie',
         'filmkonzert' => 'musik',
-        'dokumentarfilme' => 'bildung',
-        'literaturkino' => 'bildung',
-        'seniorenkino' => 'sonstiges',
     ];
 
     public function __construct(private readonly HttpClientInterface $http)
@@ -89,7 +90,8 @@ final class BambiKinoImporter implements SourceImporter
             venueName: $venue,
             city: $city,
             locationText: $venue.', '.$city,
-            categorySlug: $this->mapCategory($node),
+            categorySlug: 'kino',
+            categorySlugs: $this->extraCategories($node),
             sourceUrl: $href !== '' ? $href : null,
             imageUrl: $this->extractImage($node, $baseUrl), // hotlink to the poster, never hosted
             organizer: $venue,
@@ -142,25 +144,31 @@ final class BambiKinoImporter implements SourceImporter
         return $dt ?: null;
     }
 
-    private function mapCategory(Crawler $node): ?string
+    /**
+     * Additional equal-rank categories beyond "Kino", derived from the film's
+     * theme tags (empty for a plain screening).
+     *
+     * @return list<string>
+     */
+    private function extraCategories(Crawler $node): array
     {
         $items = $node->filter('.wpt_production_categories li.wpt_production_category');
         if ($items->count() === 0) {
-            return null;
+            return [];
         }
 
+        $slugs = [];
         foreach ($items as $li) {
             $label = mb_strtolower(trim((new Crawler($li))->text('')));
             $label = str_replace([' ', 'ä', 'ö', 'ü', 'ß'], ['', 'a', 'o', 'u', 'ss'], $label);
             foreach (self::CATEGORY_MAP as $needle => $slug) {
                 if (str_contains($label, $needle)) {
-                    return $slug;
+                    $slugs[] = $slug;
                 }
             }
         }
 
-        // A cinema screening that didn't match a specific theme.
-        return 'sonstiges';
+        return array_values(array_unique($slugs));
     }
 
     /**

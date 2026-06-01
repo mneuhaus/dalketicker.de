@@ -192,9 +192,10 @@ class EventRepository extends ServiceEntityRepository
      */
     public function findBySource(Source $source, int $limit = 300): array
     {
+        // e.categories is to-many → lazy-loaded for display, not fetch-joined
+        // (a join + addSelect would multiply rows under the limit).
         return $this->createQueryBuilder('e')
             ->leftJoin('e.venue', 'v')->addSelect('v')
-            ->leftJoin('e.category', 'c')->addSelect('c')
             ->leftJoin('e.duplicateOf', 'd')->addSelect('d')
             ->leftJoin('d.source', 'ds')->addSelect('ds')
             ->andWhere('e.source = :source')
@@ -261,20 +262,30 @@ class EventRepository extends ServiceEntityRepository
 
     private function visibleQueryBuilder(EventFilter $filter): QueryBuilder
     {
+        // Categories are a to-many relation, so they are NOT fetch-joined here
+        // (that would multiply rows and break LIMIT/COUNT); they lazy-load for
+        // display, and the category filter runs as a subquery on event ids.
         $qb = $this->createQueryBuilder('e')
             ->leftJoin('e.venue', 'v')->addSelect('v')
-            ->leftJoin('e.category', 'c')->addSelect('c')
             ->leftJoin('e.source', 's')->addSelect('s')
             ->andWhere('e.status = :published')
             ->setParameter('published', EventStatus::Published);
 
         if ($filter->q !== null) {
-            $qb->andWhere('LOWER(e.title) LIKE :q OR LOWER(e.description) LIKE :q OR LOWER(v.name) LIKE :q')
+            // Match title, description, venue name, venue city AND the source
+            // name/origin — so "Bambi" finds every film from "Bambi & Löwenherz
+            // Kino", "Filmwerk" the Filmwerk programme, etc.
+            $qb->andWhere('LOWER(e.title) LIKE :q OR LOWER(e.description) LIKE :q OR LOWER(v.name) LIKE :q OR LOWER(v.city) LIKE :q OR LOWER(s.name) LIKE :q')
                 ->setParameter('q', '%'.mb_strtolower($filter->q).'%');
         }
 
         if ($filter->categorySlugs !== []) {
-            $qb->andWhere('c.slug IN (:categorySlugs)')->setParameter('categorySlugs', $filter->categorySlugs);
+            $sub = $this->createQueryBuilder('ec')
+                ->select('ec.id')
+                ->join('ec.categories', 'cc')
+                ->where('cc.slug IN (:categorySlugs)');
+            $qb->andWhere($qb->expr()->in('e.id', $sub->getDQL()))
+                ->setParameter('categorySlugs', $filter->categorySlugs);
         }
 
         if ($filter->city !== null) {

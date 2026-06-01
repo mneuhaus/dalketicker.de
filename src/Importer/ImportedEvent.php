@@ -31,8 +31,25 @@ final class ImportedEvent
         public array $raw = [],
         public bool $isCourse = false,
         public ?BookingStatus $bookingStatus = null,
+        // Additional equal-rank categories beyond $categorySlug (e.g. a cinema's
+        // kids' film is ['kino'] + ['familie']). Merged via allCategorySlugs().
+        /** @var list<string> */
+        public array $categorySlugs = [],
     ) {
         $this->title = trim($title);
+    }
+
+    /**
+     * All distinct category slugs for this event: the primary $categorySlug
+     * plus any $categorySlugs, empties dropped.
+     *
+     * @return list<string>
+     */
+    public function allCategorySlugs(): array
+    {
+        $slugs = array_merge($this->categorySlug !== null ? [$this->categorySlug] : [], $this->categorySlugs);
+
+        return array_values(array_unique(array_filter($slugs, static fn (string $s) => $s !== '')));
     }
 
     /**
@@ -83,7 +100,7 @@ final class ImportedEvent
             $this->imageUrl ?? '',
             $this->price ?? '',
             $this->organizer ?? '',
-            $this->categorySlug ?? '',
+            implode(',', $this->allCategorySlugs()),
             $this->isCourse ? '1' : '0',
             $this->bookingStatus?->value ?? '',
         ]));

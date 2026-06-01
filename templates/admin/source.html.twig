@@ -127,9 +127,9 @@
                         </td>
                         <td class="px-4 py-2.5 text-ink/60">{{ event.displayLocation ?: '–' }}</td>
                         <td class="px-4 py-2.5">
-                            {% if event.category %}
-                                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold text-white whitespace-nowrap" style="background-color: {{ event.category.color }}">{{ event.category.name }}</span>
-                            {% else %}<span class="text-ink/30">–</span>{% endif %}
+                            {% for category in event.categories %}
+                                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold text-white whitespace-nowrap" style="background-color: {{ category.color }}">{{ category.name }}</span>
+                            {% else %}<span class="text-ink/30">–</span>{% endfor %}
                         </td>
                         <td class="px-4 py-2.5 text-right">{{ ui.event_badge(event.status.value) }}</td>
                     </tr>

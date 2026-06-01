@@ -54,11 +54,11 @@
                 {% endif %}
 
                 <div class="evbody p-6 sm:p-8">
-                    {% if event.category or event.isCourse or (event.bookingStatus and event.bookingStatus.showBadge) %}
+                    {% if event.categories|length or event.isCourse or (event.bookingStatus and event.bookingStatus.showBadge) %}
                         <div class="mb-3 flex flex-wrap items-center gap-2">
-                            {% if event.category %}
-                                <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold text-white" style="background-color: {{ color }}">{{ event.category.name }}</span>
-                            {% endif %}
+                            {% for category in event.categories %}
+                                <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold text-white" style="background-color: {{ category.color }}">{{ category.name }}</span>
+                            {% endfor %}
                             {% if event.isCourse %}
                                 <span class="inline-flex items-center rounded-full bg-black/5 px-2.5 py-1 text-xs font-semibold text-ink/55">Kurs</span>
                             {% endif %}
