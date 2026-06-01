@@ -43,8 +43,9 @@
 
     {# Verlauf (letzte 30 Tage) als SVG-Chart mit zwei Skalen:
        Aufrufe (gefüllt, linke Achse) + Besucher (gestrichelt, rechte Achse). #}
-    {% set W = 720 %}{% set H = 180 %}{% set top = 8 %}
+    {% set W = 720 %}{% set H = 180 %}{% set top = 0 %}
     {% set n = series|length %}
+    {% set slot = (W / (n - 1))|round(2) %}
     {% set viewsPts = [] %}{% set visPts = [] %}
     {% for d in series %}
         {% set x = (loop.index0 / (n - 1) * W)|round(2) %}
@@ -70,22 +71,33 @@
                 <span class="text-brand-600/60">0</span>
             </div>
             <div class="flex-1 min-w-0">
-                <svg viewBox="0 0 {{ W }} {{ H }}" class="w-full block" style="height: 200px" preserveAspectRatio="none" role="img" aria-label="Besuchsverlauf der letzten 30 Tage">
+                <svg viewBox="0 0 {{ W }} {{ H }}" class="w-full block" style="height: 200px; overflow: visible" preserveAspectRatio="none" role="img" aria-label="Besuchsverlauf der letzten 30 Tage">
                     <defs>
                         <linearGradient id="viewsFill" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="0%" stop-color="#06b0c4" stop-opacity="0.20"/>
                             <stop offset="100%" stop-color="#06b0c4" stop-opacity="0"/>
                         </linearGradient>
                     </defs>
+                    {# Horizontale Gitterlinien bei 0/25/50/75/100 % (Achsenwerte) #}
+                    {% for f in [0, 0.25, 0.5, 0.75, 1] %}
+                        <line x1="0" y1="{{ (H * (1 - f))|round(2) }}" x2="{{ W }}" y2="{{ (H * (1 - f))|round(2) }}"
+                              stroke="#000" stroke-opacity="{{ f in [0, 0.5, 1] ? '0.10' : '0.05' }}" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                    {% endfor %}
                     <polygon points="{{ viewsPts|join(' ') }} {{ W }},{{ H }} 0,{{ H }}" fill="url(#viewsFill)"/>
                     <polyline points="{{ viewsPts|join(' ') }}" fill="none" stroke="#06b0c4" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
                     <polyline points="{{ visPts|join(' ') }}" fill="none" stroke="#1b1d1e" stroke-opacity="0.45" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"/>
+                    {# Sichtbare Datenpunkte #}
                     {% for d in series %}
                         {% set x = (loop.index0 / (n - 1) * W)|round(2) %}
-                        {% set yv = (H - (d.views / maxViews) * (H - top))|round(2) %}
-                        <circle cx="{{ x }}" cy="{{ yv }}" r="6" fill="transparent">
+                        <circle cx="{{ x }}" cy="{{ (H - (d.visitors / maxVisitors) * H)|round(2) }}" r="2.2" fill="#1b1d1e" fill-opacity="0.45"/>
+                        <circle cx="{{ x }}" cy="{{ (H - (d.views / maxViews) * H)|round(2) }}" r="2.8" fill="#06b0c4"/>
+                    {% endfor %}
+                    {# Hover-Zone pro Tag (volle Höhe) → Popup mit genauen Zahlen #}
+                    {% for d in series %}
+                        {% set x = (loop.index0 / (n - 1) * W)|round(2) %}
+                        <rect x="{{ (x - slot / 2)|round(2) }}" y="0" width="{{ slot }}" height="{{ H }}" fill="transparent">
                             <title>{{ d.day|date('d.m.Y') }} — {{ d.views }} Aufrufe · {{ d.visitors }} Besucher</title>
-                        </circle>
+                        </rect>
                     {% endfor %}
                 </svg>
             </div>
