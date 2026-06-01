@@ -144,11 +144,15 @@ final class AdminController extends AbstractController
             ['since' => $since],
         );
 
+        // Independent scales so the (smaller) visitor line is readable against
+        // its own right-hand axis rather than hugging the baseline.
         $maxViews = max(1, max(array_column($series, 'views')));
+        $maxVisitors = max(1, max(array_column($series, 'visitors')));
 
         return $this->render('admin/stats.html.twig', [
             'series' => $series,
             'maxViews' => $maxViews,
+            'maxVisitors' => $maxVisitors,
             'todayViews' => end($series)['views'] ?? 0,
             'totals' => $totals,
             'pages' => $pages,

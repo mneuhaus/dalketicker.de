@@ -41,14 +41,15 @@
         </div>
     </div>
 
-    {# Verlauf (letzte 30 Tage) als SVG-Chart: Aufrufe (gefüllt) + Besucher (Linie) #}
+    {# Verlauf (letzte 30 Tage) als SVG-Chart mit zwei Skalen:
+       Aufrufe (gefüllt, linke Achse) + Besucher (gestrichelt, rechte Achse). #}
     {% set W = 720 %}{% set H = 180 %}{% set top = 8 %}
     {% set n = series|length %}
     {% set viewsPts = [] %}{% set visPts = [] %}
     {% for d in series %}
         {% set x = (loop.index0 / (n - 1) * W)|round(2) %}
         {% set yv = (H - (d.views / maxViews) * (H - top))|round(2) %}
-        {% set yp = (H - (d.visitors / maxViews) * (H - top))|round(2) %}
+        {% set yp = (H - (d.visitors / maxVisitors) * (H - top))|round(2) %}
         {% set viewsPts = viewsPts|merge([x ~ ',' ~ yv]) %}
         {% set visPts = visPts|merge([x ~ ',' ~ yp]) %}
     {% endfor %}
@@ -57,32 +58,53 @@
         <h2 class="font-[family-name:var(--font-display)] text-lg font-bold text-ink">Verlauf (letzte 30 Tage)</h2>
         <div class="flex items-center gap-4 text-xs text-ink/55">
             <span class="inline-flex items-center gap-1.5"><span class="w-3 h-1.5 rounded-full bg-brand-500"></span>Aufrufe</span>
-            <span class="inline-flex items-center gap-1.5"><span class="w-3 h-1.5 rounded-full bg-ink/50"></span>Besucher</span>
+            <span class="inline-flex items-center gap-1.5"><span class="w-3 h-0 border-t-2 border-dashed border-ink/50"></span>Besucher</span>
         </div>
     </div>
     <div class="bg-white rounded-2xl border border-black/5 shadow-sm p-4 mb-8">
-        <svg viewBox="0 0 {{ W }} {{ H }}" class="w-full h-auto" preserveAspectRatio="none" role="img" aria-label="Besuchsverlauf der letzten 30 Tage">
-            <defs>
-                <linearGradient id="viewsFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stop-color="#06b0c4" stop-opacity="0.20"/>
-                    <stop offset="100%" stop-color="#06b0c4" stop-opacity="0"/>
-                </linearGradient>
-            </defs>
-            <polygon points="{{ viewsPts|join(' ') }} {{ W }},{{ H }} 0,{{ H }}" fill="url(#viewsFill)"/>
-            <polyline points="{{ viewsPts|join(' ') }}" fill="none" stroke="#06b0c4" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
-            <polyline points="{{ visPts|join(' ') }}" fill="none" stroke="#1b1d1e" stroke-opacity="0.45" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"/>
-            {% for d in series %}
-                {% set x = (loop.index0 / (n - 1) * W)|round(2) %}
-                {% set yv = (H - (d.views / maxViews) * (H - top))|round(2) %}
-                <circle cx="{{ x }}" cy="{{ yv }}" r="6" fill="transparent">
-                    <title>{{ d.day|date('d.m.Y') }} — {{ d.views }} Aufrufe · {{ d.visitors }} Besucher</title>
-                </circle>
-            {% endfor %}
-        </svg>
-        <div class="flex justify-between text-[11px] text-ink/40 tabular-nums mt-1 px-0.5">
-            <span>{{ series|first.day|date('d.m.') }}</span>
-            <span>{{ series[(n // 2)].day|date('d.m.') }}</span>
-            <span>{{ series|last.day|date('d.m.') }}</span>
+        <div class="flex gap-2">
+            {# Linke Achse: Aufrufe #}
+            <div class="flex flex-col justify-between text-right text-[11px] tabular-nums font-medium text-brand-600 shrink-0 w-10" style="height: 200px">
+                <span>{{ maxViews }}</span>
+                <span class="text-brand-600/60">{{ (maxViews / 2)|round }}</span>
+                <span class="text-brand-600/60">0</span>
+            </div>
+            <div class="flex-1 min-w-0">
+                <svg viewBox="0 0 {{ W }} {{ H }}" class="w-full block" style="height: 200px" preserveAspectRatio="none" role="img" aria-label="Besuchsverlauf der letzten 30 Tage">
+                    <defs>
+                        <linearGradient id="viewsFill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stop-color="#06b0c4" stop-opacity="0.20"/>
+                            <stop offset="100%" stop-color="#06b0c4" stop-opacity="0"/>
+                        </linearGradient>
+                    </defs>
+                    <polygon points="{{ viewsPts|join(' ') }} {{ W }},{{ H }} 0,{{ H }}" fill="url(#viewsFill)"/>
+                    <polyline points="{{ viewsPts|join(' ') }}" fill="none" stroke="#06b0c4" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+                    <polyline points="{{ visPts|join(' ') }}" fill="none" stroke="#1b1d1e" stroke-opacity="0.45" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"/>
+                    {% for d in series %}
+                        {% set x = (loop.index0 / (n - 1) * W)|round(2) %}
+                        {% set yv = (H - (d.views / maxViews) * (H - top))|round(2) %}
+                        <circle cx="{{ x }}" cy="{{ yv }}" r="6" fill="transparent">
+                            <title>{{ d.day|date('d.m.Y') }} — {{ d.views }} Aufrufe · {{ d.visitors }} Besucher</title>
+                        </circle>
+                    {% endfor %}
+                </svg>
+            </div>
+            {# Rechte Achse: Besucher #}
+            <div class="flex flex-col justify-between text-left text-[11px] tabular-nums font-medium text-ink/60 shrink-0 w-10" style="height: 200px">
+                <span>{{ maxVisitors }}</span>
+                <span class="text-ink/40">{{ (maxVisitors / 2)|round }}</span>
+                <span class="text-ink/40">0</span>
+            </div>
+        </div>
+        {# Datumsachse (unter dem Chart, mit Abstandshaltern für die Y-Achsen) #}
+        <div class="flex gap-2 mt-1">
+            <div class="w-10 shrink-0"></div>
+            <div class="flex-1 flex justify-between text-[11px] text-ink/40 tabular-nums px-0.5">
+                <span>{{ series|first.day|date('d.m.') }}</span>
+                <span>{{ series[(n // 2)].day|date('d.m.') }}</span>
+                <span>{{ series|last.day|date('d.m.') }}</span>
+            </div>
+            <div class="w-10 shrink-0"></div>
         </div>
     </div>
 
