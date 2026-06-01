@@ -2,10 +2,23 @@
 
 {% block content %}
     {% if groups is empty %}
-        <div class="text-center py-20 text-ink/50 border border-dashed border-black/10 rounded-2xl">
-            <p class="font-medium text-ink/70">Nichts gefunden.</p>
-            <p class="text-sm mt-1">Pass die Filter an oder schau in den <a href="{{ path('event_month', {year: 'now'|date('Y'), month: 'now'|date('n')}) }}" class="text-brand-700 underline">Kalender</a>.</p>
-        </div>
+        {% if filter.onlySaved %}
+            <div class="text-center py-16 px-6 text-ink/50 border border-dashed border-black/10 rounded-2xl">
+                <svg class="w-10 h-10 mx-auto text-brand-500/70" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>
+                <p class="font-medium text-ink/70 mt-3">Noch keine Events gemerkt</p>
+                <p class="text-sm mt-1 max-w-sm mx-auto leading-relaxed">
+                    Tippe bei einer Veranstaltung oben rechts auf das
+                    <svg class="inline-block w-4 h-4 -mt-0.5 text-ink/45" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>
+                    Lesezeichen, um sie hier zu sammeln.
+                </p>
+                <a href="{{ path('event_index') }}" class="inline-flex items-center gap-1 mt-4 text-sm font-semibold text-brand-700 hover:underline">Veranstaltungen entdecken →</a>
+            </div>
+        {% else %}
+            <div class="text-center py-20 text-ink/50 border border-dashed border-black/10 rounded-2xl">
+                <p class="font-medium text-ink/70">Nichts gefunden.</p>
+                <p class="text-sm mt-1">Pass die Filter an oder schau in den <a href="{{ path('event_month', {year: 'now'|date('Y'), month: 'now'|date('n')}) }}" class="text-brand-700 underline">Kalender</a>.</p>
+            </div>
+        {% endif %}
     {% else %}
         {{ include('event/_grouped_list.html.twig') }}
 
