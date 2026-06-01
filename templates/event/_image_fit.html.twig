@@ -24,11 +24,12 @@
 
     /* --- Cards: image right of the text, sized to its own aspect, never upscaled.
        width/height:auto + max-* means the intrinsic (native) size is the ceiling. --- */
-    .card-media{ display:flex; flex-direction:row-reverse; align-items:flex-start; }
-    .card-media>.cm-img{ flex:0 0 auto; padding:.75rem; }
+    .card-media{ display:flex; flex-direction:row-reverse; align-items:stretch; }
+    .card-media>.cm-img{ flex:0 0 auto; padding:.75rem; align-self:flex-start; }
     .card-media .cm-img-el{ display:block; width:auto; height:auto; max-width:8.5rem; max-height:7.5rem; border-radius:.6rem; object-fit:contain; }
     @media (min-width:640px){ .card-media .cm-img-el{ max-width:13rem; max-height:10rem; } }
-    .card-media>.cm-body{ flex:1 1 0; min-width:0; }
+    /* body is a flex column so the location can be pinned to the bottom-left */
+    .card-media>.cm-body{ flex:1 1 0; min-width:0; display:flex; flex-direction:column; }
 
     /* --- "Heute?" single card: contained, never upscaled --- */
     .fitcap{ display:block; margin-inline:auto; width:auto; height:auto; max-width:100%; max-height:18rem; }

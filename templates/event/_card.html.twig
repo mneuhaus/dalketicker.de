@@ -6,25 +6,32 @@
 {% set showUrl = path('event_show', {id: event.id, slug: event.slug}|merge(filter.toQueryParams|default({}))) %}
 {% set soldOut = event.bookingStatus and event.bookingStatus.isSoldOut %}
 
-{% macro meta(event) %}
-    <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink/55">
-        {% for category in event.categories %}
-            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold text-white whitespace-nowrap" style="background-color: {{ category.color }}">{{ category.name }}</span>
-        {% endfor %}
-        {% if event.isCourse %}
-            <span class="inline-flex items-center rounded-full bg-black/5 px-2 py-0.5 text-xs font-semibold text-ink/55 whitespace-nowrap">Kurs</span>
-        {% endif %}
-        {% if event.bookingStatus and event.bookingStatus.showBadge %}
-            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap {{ event.bookingStatus.badgeClasses }}">{{ event.bookingStatus.label }}</span>
-        {% endif %}
-        {% if event.displayLocation %}
-            <span class="inline-flex items-center gap-1 min-w-0 max-w-full">
-                <svg class="w-3.5 h-3.5 shrink-0 text-ink/35" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                <span class="truncate">{{ event.displayLocation }}</span>
-            </span>
-        {% endif %}
-        {% if event.price %}<span class="text-ink/25">·</span><span class="whitespace-nowrap">{{ event.price }}</span>{% endif %}
-    </div>
+{# Status pills shown next to the time: categories + course + booking state. #}
+{% macro tags(event) %}
+    {% for category in event.categories %}
+        <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold text-white whitespace-nowrap" style="background-color: {{ category.color }}">{{ category.name }}</span>
+    {% endfor %}
+    {% if event.isCourse %}
+        <span class="inline-flex items-center rounded-full bg-black/5 px-2 py-0.5 text-xs font-semibold text-ink/55 whitespace-nowrap">Kurs</span>
+    {% endif %}
+    {% if event.bookingStatus and event.bookingStatus.showBadge %}
+        <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap {{ event.bookingStatus.badgeClasses }}">{{ event.bookingStatus.label }}</span>
+    {% endif %}
+{% endmacro %}
+
+{# Location (+ price), pinned to the bottom-left of the card. #}
+{% macro place(event) %}
+    {% if event.displayLocation or event.price %}
+        <div class="mt-auto pt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink/55">
+            {% if event.displayLocation %}
+                <span class="inline-flex items-center gap-1 min-w-0 max-w-full">
+                    <svg class="w-3.5 h-3.5 shrink-0 text-ink/35" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    <span class="truncate">{{ event.displayLocation }}</span>
+                </span>
+            {% endif %}
+            {% if event.price %}<span class="text-ink/25">·</span><span class="whitespace-nowrap">{{ event.price }}</span>{% endif %}
+        </div>
+    {% endif %}
 {% endmacro %}
 
 {% import _self as card %}
@@ -46,7 +53,19 @@
 {# One unified card. The image (when present) sits right of the text and
    breathes to its own aspect (capped, never upscaled); the time is a blue
    line directly under the title, the same on every card. #}
-{% set timeText %}{% if event.allDay %}ganztägig{% else %}{{ event.startsAt|date('H:i') }} Uhr{% endif %}{% if multiDay %} · bis {{ event.endsAt|de_date }}{% endif %}{% endset %}
+{# Recurring series (passed as `series`) collapse to one card with a run label
+   instead of a single time; the concrete time is kept only when meaningful. #}
+{% set hasClock = not event.allDay and event.startsAt|date('H:i') != '00:00' %}
+{% set timeText %}
+    {%- if series -%}
+        {% if hasClock %}{{ event.startsAt|date('H:i') }} Uhr · {% endif %}{{ series.daily ? 'täglich' : series.count ~ ' Termine' }} bis {{ series.last|de_date }}
+    {%- elseif event.allDay -%}
+        ganztägig
+    {%- else -%}
+        {{ event.startsAt|date('H:i') }} Uhr
+    {%- endif -%}
+    {%- if not series and multiDay %} · bis {{ event.endsAt|de_date }}{% endif -%}
+{% endset %}
 <article data-event-card="{{ event.id }}" class="card-media group relative rounded-2xl border border-black/5 bg-white shadow-sm overflow-hidden transition hover:shadow-md hover:border-black/10 {{ soldOut ? 'opacity-60' }}">
     {% if event.imageUrl %}
         <div class="cm-img">
@@ -56,7 +75,10 @@
     {{ bookmark }}
     <div class="cm-body p-4 {{ event.imageUrl ? '' : 'pr-9' }}">
         {{ titleLink }}
-        <div class="mt-1 text-sm font-semibold text-brand-700">{{ timeText }}</div>
-        <div class="mt-1.5">{{ card.meta(event) }}</div>
+        <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1.5">
+            <span class="text-sm font-semibold text-brand-700 whitespace-nowrap">{{ timeText }}</span>
+            {{ card.tags(event) }}
+        </div>
+        {{ card.place(event) }}
     </div>
 </article>
