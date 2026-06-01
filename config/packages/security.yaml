@@ -20,6 +20,13 @@ security:
                 check_path: app_login
                 enable_csrf: true
                 default_target_path: admin_imports
+            # Keep the admin logged in across browser restarts. Strictly a
+            # functional auth cookie (signed, no tracking), only ever set when
+            # the admin logs in — no consent banner needed.
+            remember_me:
+                secret: '%kernel.secret%'
+                lifetime: 2592000 # 30 Tage
+                samesite: lax
             logout:
                 path: app_logout
                 target: event_index

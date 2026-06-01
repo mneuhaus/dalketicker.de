@@ -24,6 +24,12 @@
                        class="w-full rounded-xl border border-black/10 bg-paper px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 outline-none">
             </div>
 
+            <label class="flex items-center gap-2 text-sm text-ink/60 select-none cursor-pointer">
+                <input type="checkbox" name="_remember_me" checked
+                       class="rounded border-black/20 text-brand-600 focus:ring-brand-200">
+                Angemeldet bleiben
+            </label>
+
             <input type="hidden" name="_csrf_token" value="{{ csrf_token('authenticate') }}">
 
             <button type="submit" class="w-full rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 transition">Anmelden</button>
