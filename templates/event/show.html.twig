@@ -42,7 +42,14 @@
     {% set prevUrl = prev ? path('event_show', {id: prev.id, slug: prev.slug}|merge(filter.toQueryParams|default({}))) : '' %}
     {% set nextUrl = next ? path('event_show', {id: next.id, slug: next.slug}|merge(filter.toQueryParams|default({}))) : '' %}
 
-    <a href="{{ path('event_index', filter.toQueryParams|default({})) }}" class="text-sm text-ink/50 hover:text-brand-700 inline-flex items-center gap-1 mb-4">← Alle Veranstaltungen</a>
+    <div class="flex items-center justify-between gap-3 mb-4">
+        <a href="{{ path('event_index', filter.toQueryParams|default({})) }}" class="text-sm text-ink/50 hover:text-brand-700 inline-flex items-center gap-1">← Alle Veranstaltungen</a>
+        {% if is_granted('ROLE_ADMIN') %}
+            <a href="{{ path('admin_event_edit', {id: event.id}) }}" class="text-xs font-medium text-brand-700 hover:underline inline-flex items-center gap-1 rounded-lg bg-brand-50 px-2.5 py-1">
+                Bearbeiten{% if event.lockedFields %} ({{ event.lockedFields|length }} gepinnt){% endif %}
+            </a>
+        {% endif %}
+    </div>
 
     <div data-event-nav data-event-id="{{ event.id }}" data-prev-url="{{ prevUrl }}" data-next-url="{{ nextUrl }}"
          class="lg:grid lg:grid-cols-[minmax(0,1fr)_19rem] lg:gap-6 lg:items-start">
