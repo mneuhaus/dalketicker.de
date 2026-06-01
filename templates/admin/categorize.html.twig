@@ -53,21 +53,19 @@
             <div class="h-full rounded-full bg-brand-500 transition-all" style="width: {{ pct }}%"></div>
         </div>
         <div class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink/55">
-            <span><strong class="text-ink/80">{{ counts.applied }}</strong> gesetzt</span>
-            <span><strong class="text-ink/80">{{ counts.pending }}</strong> offene Vorschläge</span>
+            <span><strong class="text-ink/80">{{ counts.applied }}</strong> gesetzt/überschrieben</span>
             <span><strong class="text-ink/80">{{ counts.agreed }}</strong> bestätigt</span>
-            {% if counts.dismissed %}<span>{{ counts.dismissed }} verworfen</span>{% endif %}
+            {% if counts.pending %}<span><strong class="text-ink/80">{{ counts.pending }}</strong> offen</span>{% endif %}
             {% if counts.undone %}<span>{{ counts.undone }} rückgängig</span>{% endif %}
         </div>
     </div>
 
-    {# Pending suggestions (clear contradictions) #}
-    <h2 class="font-[family-name:var(--font-display)] text-lg font-bold text-brand-800 mb-3">
-        Offene Vorschläge <span class="text-sm font-normal text-ink/40">({{ pending|length }})</span>
-    </h2>
-    {% if pending is empty %}
-        <p class="text-sm text-ink/50 border border-dashed border-black/10 rounded-2xl py-8 text-center mb-10">Nichts zu prüfen – alles sauber.</p>
-    {% else %}
+    {# Pending suggestions only appear if some still exist (legacy); with
+       auto-apply everything is set directly, so this is normally empty. #}
+    {% if pending is not empty %}
+        <h2 class="font-[family-name:var(--font-display)] text-lg font-bold text-brand-800 mb-3">
+            Offene Vorschläge <span class="text-sm font-normal text-ink/40">({{ pending|length }})</span>
+        </h2>
         <div class="space-y-2 mb-10">
             {% for d in pending %}
                 <div class="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-black/5 bg-white p-3">

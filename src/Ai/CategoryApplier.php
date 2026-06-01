@@ -25,30 +25,18 @@ final class CategoryApplier
     }
 
     /**
-     * Event had no real category → set the AI categories straight away.
+     * Set the AI categories on the event straight away (used for both filling a
+     * gap, mode 'fill', and overriding a wrong importer category, mode 'opinion').
+     * The previous categories are recorded so the change can be undone.
      *
      * @param list<string> $slugs
      */
-    public function applyFill(Event $event, array $slugs, string $model, ?string $reason): AiCategoryDecision
+    public function apply(Event $event, array $slugs, string $mode, string $model, ?string $reason): AiCategoryDecision
     {
         $previous = $this->currentSlugs($event);
         $event->setCategories($this->resolve($slugs));
 
-        $decision = new AiCategoryDecision($event, 'fill', 'applied', $previous, $slugs, $model, $reason);
-        $this->em->persist($decision);
-
-        return $decision;
-    }
-
-    /**
-     * Event already had a category and the AI clearly disagrees → record a
-     * pending suggestion for an admin to accept/dismiss (no change yet).
-     *
-     * @param list<string> $slugs
-     */
-    public function recordSuggestion(Event $event, array $slugs, string $model, ?string $reason): AiCategoryDecision
-    {
-        $decision = new AiCategoryDecision($event, 'opinion', 'pending', $this->currentSlugs($event), $slugs, $model, $reason);
+        $decision = new AiCategoryDecision($event, $mode, 'applied', $previous, $slugs, $model, $reason);
         $this->em->persist($decision);
 
         return $decision;

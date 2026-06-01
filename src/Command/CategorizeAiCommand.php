@@ -103,7 +103,7 @@ final class CategorizeAiCommand extends Command
 
         $io->newLine();
         $io->success(sprintf(
-            '%s | KI-Aufrufe: %d · gefüllt: %d · Vorschläge (pending): %d · bestätigt: %d · ohne Vorschlag: %d',
+            '%s | KI-Aufrufe: %d · gefüllt: %d · überschrieben: %d · bestätigt: %d · ohne Vorschlag: %d',
             $apply ? 'Gespeichert' : 'Dry-Run (nichts gespeichert)',
             $calls, $stats['fill'], $stats['suggestions'], $stats['agreed'], $stats['skipped'],
         ));
@@ -138,7 +138,7 @@ final class CategorizeAiCommand extends Command
         if ($uncategorized) {
             ++$stats['fill'];
             if ($apply) {
-                $this->applier->applyFill($event, $proposal['slugs'], $model, $proposal['reason']);
+                $this->applier->apply($event, $proposal['slugs'], 'fill', $model, $proposal['reason']);
             } elseif ($io->isVerbose()) {
                 $io->writeln(sprintf('  fill  #%d "%s" → %s', $event->getId(), $event->getTitle(), implode(',', $proposal['slugs'])));
             }
@@ -146,15 +146,16 @@ final class CategorizeAiCommand extends Command
             return;
         }
 
-        // Opinion pass: clear contradiction = the AI's primary pick isn't among
-        // the event's current categories.
+        // Opinion pass: when the AI's primary pick differs from the event's
+        // current categories, apply it directly (AI wins) — recorded so it can
+        // be undone. When it matches, just mark the event as checked.
         $contradiction = !\in_array($proposal['slugs'][0], $current, true);
         if ($contradiction) {
             ++$stats['suggestions'];
             if ($apply) {
-                $this->applier->recordSuggestion($event, $proposal['slugs'], $model, $proposal['reason']);
+                $this->applier->apply($event, $proposal['slugs'], 'opinion', $model, $proposal['reason']);
             } elseif ($io->isVerbose()) {
-                $io->writeln(sprintf('  ?diff #%d "%s": jetzt %s → KI %s', $event->getId(), $event->getTitle(), implode(',', $current), implode(',', $proposal['slugs'])));
+                $io->writeln(sprintf('  over  #%d "%s": %s → KI %s', $event->getId(), $event->getTitle(), implode(',', $current), implode(',', $proposal['slugs'])));
             }
         } else {
             ++$stats['agreed'];
