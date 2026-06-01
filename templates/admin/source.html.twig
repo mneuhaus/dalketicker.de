@@ -14,6 +14,8 @@
     <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold {{ map[status] ?? 'bg-black/10 text-ink/60' }}">{{ label[status] ?? status }}</span>
 {% endmacro %}
 
+{% block subheader %}{{ include('admin/_nav.html.twig') }}{% endblock %}
+
 {% block body %}
     {% import _self as ui %}
     <a href="{{ path('admin_imports') }}" class="text-sm text-ink/50 hover:text-brand-700 inline-flex items-center gap-1 mb-4">← Monitoring</a>

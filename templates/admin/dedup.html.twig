@@ -35,8 +35,9 @@
 {% endmacro %}
 {% import _self as dd %}
 
+{% block subheader %}{{ include('admin/_nav.html.twig') }}{% endblock %}
+
 {% block body %}
-    <a href="{{ path('admin_imports') }}" class="text-sm text-ink/50 hover:text-brand-700 inline-flex items-center gap-1 mb-4">← Monitoring</a>
 
     <div class="flex items-center justify-between mb-2 gap-4">
         <h1 class="font-[family-name:var(--font-display)] text-2xl font-extrabold tracking-tight text-ink">AI-Deduplizierung</h1>

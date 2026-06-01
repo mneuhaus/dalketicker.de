@@ -2,6 +2,8 @@
 
 {% block title %}Statistik – {{ site_name }}{% endblock %}
 
+{% block subheader %}{{ include('admin/_nav.html.twig') }}{% endblock %}
+
 {% block body %}
     {% set labels = {
         'event_index': 'Liste',
@@ -16,11 +18,6 @@
 
     <div class="flex items-center justify-between mb-6 gap-4">
         <h1 class="font-[family-name:var(--font-display)] text-3xl font-extrabold tracking-tight text-ink">Statistik</h1>
-        <div class="flex items-center gap-3 text-sm">
-            <a href="{{ path('admin_imports') }}" class="chip-muted">Monitoring</a>
-            <a href="{{ path('admin_account') }}" class="chip-muted">Konto</a>
-            <a href="{{ path('app_logout') }}" class="chip-muted">Logout</a>
-        </div>
     </div>
 
     <p class="text-sm text-ink/50 mb-6">

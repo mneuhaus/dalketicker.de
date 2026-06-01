@@ -8,17 +8,12 @@
     <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold {{ map[status] ?? 'bg-black/10 text-ink/60' }}">{{ label[status] ?? status }}</span>
 {% endmacro %}
 
+{% block subheader %}{{ include('admin/_nav.html.twig') }}{% endblock %}
+
 {% block body %}
     {% import _self as ui %}
     <div class="flex items-center justify-between mb-6 gap-4">
         <h1 class="font-[family-name:var(--font-display)] text-3xl font-extrabold tracking-tight text-ink">Import-Monitoring</h1>
-        <div class="flex items-center gap-3 text-sm">
-            <span class="text-ink/50">{{ app.user ? app.user.email }}</span>
-            <a href="{{ path('admin_dedup') }}" class="chip-muted">AI-Dedup</a>
-            <a href="{{ path('admin_stats') }}" class="chip-muted">Statistik</a>
-            <a href="{{ path('admin_account') }}" class="chip-muted">Konto</a>
-            <a href="{{ path('app_logout') }}" class="chip-muted">Logout</a>
-        </div>
     </div>
 
     <p class="text-sm text-ink/50 mb-6">
