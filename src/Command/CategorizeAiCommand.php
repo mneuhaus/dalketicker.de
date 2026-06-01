@@ -69,37 +69,35 @@ final class CategorizeAiCommand extends Command
         $calls = 0;
         $stats = ['fill' => 0, 'suggestions' => 0, 'agreed' => 0, 'skipped' => 0];
 
-        foreach (['fill' => true, 'opinion' => false] as $passName => $uncategorized) {
-            if ($mode !== 'all' && $mode !== $passName) {
-                continue;
+        // One date-ordered pass: soonest events first, then further into the
+        // future. Each event is a "fill" (no real category) or an "opinion"
+        // (already categorized) — decided per event, not in separate phases.
+        $events = $this->events->findUncheckedUpcoming($limit > 0 ? $limit : 100000);
+        $io->writeln(sprintf('%d ungeprüfte Events (nach Datum) …', \count($events)));
+
+        foreach (array_chunk($events, $batch) as $chunk) {
+            if ($maxCalls > 0 && $calls >= $maxCalls) {
+                $io->warning('Budget für KI-Aufrufe erreicht – Stopp.');
+                break;
+            }
+            ++$calls;
+            $proposals = $this->categorizer->classify($chunk)['proposals'];
+
+            foreach ($chunk as $event) {
+                $uncategorized = !$this->hasRealCategory($event);
+                if ($mode !== 'all' && $mode !== ($uncategorized ? 'fill' : 'opinion')) {
+                    continue; // restricted run; leave the other kind for later
+                }
+                $proposal = $proposals[$event->getId()] ?? null;
+                if ($proposal === null) {
+                    ++$stats['skipped'];
+                    continue;
+                }
+                $this->handle($io, $event, $proposal, $uncategorized, $apply, $stats);
             }
 
-            $events = $this->events->findForCategorization($uncategorized, $limit > 0 ? $limit : 100000);
-            if ($events === []) {
-                continue;
-            }
-            $io->section(sprintf('Pass "%s": %d Events', $passName, \count($events)));
-
-            foreach (array_chunk($events, $batch) as $chunk) {
-                if ($maxCalls > 0 && $calls >= $maxCalls) {
-                    $io->warning('Budget für KI-Aufrufe erreicht – Stopp.');
-                    break 2;
-                }
-                ++$calls;
-                $proposals = $this->categorizer->classify($chunk)['proposals'];
-
-                foreach ($chunk as $event) {
-                    $proposal = $proposals[$event->getId()] ?? null;
-                    if ($proposal === null) {
-                        ++$stats['skipped'];
-                        continue;
-                    }
-                    $this->handle($io, $event, $proposal, $uncategorized, $apply, $stats);
-                }
-
-                if ($apply) {
-                    $this->em->flush();
-                }
+            if ($apply) {
+                $this->em->flush();
             }
         }
 
@@ -111,6 +109,18 @@ final class CategorizeAiCommand extends Command
         ));
 
         return Command::SUCCESS;
+    }
+
+    /** A real category = anything other than the "sonstiges" catch-all. */
+    private function hasRealCategory(Event $event): bool
+    {
+        foreach ($event->getCategories() as $category) {
+            if ($category->getSlug() !== 'sonstiges') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

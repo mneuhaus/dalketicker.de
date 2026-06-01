@@ -233,36 +233,23 @@ class EventRepository extends ServiceEntityRepository
     }
 
     /**
-     * Visible, still-upcoming events for the AI categorizer that have NOT yet
-     * been looked at (no {@see \App\Entity\AiCategoryDecision}). When
-     * $uncategorized is true: only events lacking a real category (none, or only
-     * "sonstiges") — the gaps to fill. When false: only events that already have
-     * a real category — for the AI "second opinion" pass.
+     * Upcoming published events the categorizer hasn't looked at yet, ordered by
+     * date (soonest first) — so a run works through the imminent events before
+     * the far-future ones. The command decides per event whether it's a "fill"
+     * (no real category) or an "opinion" (already categorized).
      *
      * @return Event[]
      */
-    public function findForCategorization(bool $uncategorized, int $limit = 50): array
+    public function findUncheckedUpcoming(int $limit = 100000): array
     {
-        $expr = $this->getEntityManager()->getExpressionBuilder();
-        $withRealCategory = $this->createQueryBuilder('ec')
-            ->select('ec.id')
-            ->join('ec.categories', 'cc')
-            ->where("cc.slug != 'sonstiges'");
-
-        $qb = $this->visibleQueryBuilder(new EventFilter())
+        return $this->visibleQueryBuilder(new EventFilter())
             ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :now')
             ->andWhere('e.id NOT IN (SELECT IDENTITY(aicd.event) FROM '.\App\Entity\AiCategoryDecision::class.' aicd)')
             ->setParameter('now', new \DateTimeImmutable('now', new \DateTimeZone('Europe/Berlin')))
             ->orderBy('e.startsAt', 'ASC')
-            ->setMaxResults($limit);
-
-        $qb->andWhere(
-            $uncategorized
-                ? $expr->notIn('e.id', $withRealCategory->getDQL())
-                : $expr->in('e.id', $withRealCategory->getDQL()),
-        );
-
-        return $qb->getQuery()->getResult();
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult();
     }
 
     /** Upcoming published events the categorizer hasn't looked at yet (no decision). */
