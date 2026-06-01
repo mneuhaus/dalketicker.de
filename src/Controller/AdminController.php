@@ -111,11 +111,30 @@ final class AdminController extends AbstractController
     #[Route('/statistik', name: 'admin_stats', methods: ['GET'])]
     public function stats(Connection $db): Response
     {
-        $since = (new \DateTimeImmutable('today', new \DateTimeZone('Europe/Berlin')))->modify('-29 days')->format('Y-m-d');
+        $today = new \DateTimeImmutable('today', new \DateTimeZone('Europe/Berlin'));
+        $since = $today->modify('-29 days')->format('Y-m-d');
 
-        $days = $db->fetchAllAssociative(
-            'SELECT day, views, visitors FROM daily_stat ORDER BY day DESC LIMIT 30',
+        $rows = $db->fetchAllAssociative(
+            'SELECT day, views, visitors FROM daily_stat WHERE day >= :since ORDER BY day ASC',
+            ['since' => $since],
         );
+        $byDay = [];
+        foreach ($rows as $r) {
+            $byDay[(string) $r['day']] = $r;
+        }
+
+        // Continuous 30-day window (oldest → newest), gaps filled with zeros so
+        // the chart has one point per calendar day.
+        $series = [];
+        for ($i = 29; $i >= 0; --$i) {
+            $key = $today->modify('-'.$i.' days')->format('Y-m-d');
+            $series[] = [
+                'day' => $key,
+                'views' => (int) ($byDay[$key]['views'] ?? 0),
+                'visitors' => (int) ($byDay[$key]['visitors'] ?? 0),
+            ];
+        }
+
         $totals = $db->fetchAssociative(
             'SELECT COALESCE(SUM(views), 0) AS views, COALESCE(SUM(visitors), 0) AS visitors FROM daily_stat WHERE day >= :since',
             ['since' => $since],
@@ -125,16 +144,14 @@ final class AdminController extends AbstractController
             ['since' => $since],
         );
 
-        $maxDayViews = 0;
-        foreach ($days as $d) {
-            $maxDayViews = max($maxDayViews, (int) $d['views']);
-        }
+        $maxViews = max(1, max(array_column($series, 'views')));
 
         return $this->render('admin/stats.html.twig', [
-            'days' => $days,
+            'series' => $series,
+            'maxViews' => $maxViews,
+            'todayViews' => end($series)['views'] ?? 0,
             'totals' => $totals,
             'pages' => $pages,
-            'maxDayViews' => $maxDayViews,
         ]);
     }
 

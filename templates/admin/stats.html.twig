@@ -36,41 +36,54 @@
             <div class="text-xs text-ink/50 mt-0.5">Besucher (grob) · 30 Tage</div>
         </div>
         <div class="bg-white rounded-2xl border border-black/5 shadow-sm p-5">
-            <div class="text-3xl font-bold text-ink tabular-nums font-[family-name:var(--font-display)]">{{ days|length ? (days[0].day == 'now'|date('Y-m-d') ? days[0].views : 0) : 0 }}</div>
+            <div class="text-3xl font-bold text-ink tabular-nums font-[family-name:var(--font-display)]">{{ todayViews }}</div>
             <div class="text-xs text-ink/50 mt-0.5">Aufrufe heute</div>
         </div>
     </div>
 
-    {# Per-day #}
-    <h2 class="font-[family-name:var(--font-display)] text-lg font-bold text-ink mb-2">Pro Tag (letzte 30)</h2>
-    <div class="bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden mb-8">
-        {% if days is empty %}
-            <div class="px-4 py-6 text-ink/40 text-sm">Noch keine Daten erfasst.</div>
-        {% else %}
-            <table class="w-full text-sm">
-                <thead class="text-left text-xs uppercase tracking-wide text-ink/40 border-b border-black/5">
-                    <tr>
-                        <th class="px-4 py-3 w-32">Tag</th>
-                        <th class="px-4 py-3">Aufrufe</th>
-                        <th class="px-4 py-3 text-right w-24">Besucher</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-black/5">
-                    {% for d in days %}
-                        <tr>
-                            <td class="px-4 py-2.5 text-ink/60 whitespace-nowrap tabular-nums">{{ d.day|date('d.m.Y') }}</td>
-                            <td class="px-4 py-2.5">
-                                <div class="flex items-center gap-2">
-                                    <div class="h-2 rounded-full bg-brand-500" style="width: {{ maxDayViews > 0 ? (d.views / maxDayViews * 100)|round : 0 }}%; min-width: 2px;"></div>
-                                    <span class="tabular-nums text-ink/70">{{ d.views }}</span>
-                                </div>
-                            </td>
-                            <td class="px-4 py-2.5 text-right tabular-nums text-ink/60">{{ d.visitors }}</td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        {% endif %}
+    {# Verlauf (letzte 30 Tage) als SVG-Chart: Aufrufe (gefüllt) + Besucher (Linie) #}
+    {% set W = 720 %}{% set H = 180 %}{% set top = 8 %}
+    {% set n = series|length %}
+    {% set viewsPts = [] %}{% set visPts = [] %}
+    {% for d in series %}
+        {% set x = (loop.index0 / (n - 1) * W)|round(2) %}
+        {% set yv = (H - (d.views / maxViews) * (H - top))|round(2) %}
+        {% set yp = (H - (d.visitors / maxViews) * (H - top))|round(2) %}
+        {% set viewsPts = viewsPts|merge([x ~ ',' ~ yv]) %}
+        {% set visPts = visPts|merge([x ~ ',' ~ yp]) %}
+    {% endfor %}
+
+    <div class="flex items-baseline justify-between mb-2">
+        <h2 class="font-[family-name:var(--font-display)] text-lg font-bold text-ink">Verlauf (letzte 30 Tage)</h2>
+        <div class="flex items-center gap-4 text-xs text-ink/55">
+            <span class="inline-flex items-center gap-1.5"><span class="w-3 h-1.5 rounded-full bg-brand-500"></span>Aufrufe</span>
+            <span class="inline-flex items-center gap-1.5"><span class="w-3 h-1.5 rounded-full bg-ink/50"></span>Besucher</span>
+        </div>
+    </div>
+    <div class="bg-white rounded-2xl border border-black/5 shadow-sm p-4 mb-8">
+        <svg viewBox="0 0 {{ W }} {{ H }}" class="w-full h-auto" preserveAspectRatio="none" role="img" aria-label="Besuchsverlauf der letzten 30 Tage">
+            <defs>
+                <linearGradient id="viewsFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#06b0c4" stop-opacity="0.20"/>
+                    <stop offset="100%" stop-color="#06b0c4" stop-opacity="0"/>
+                </linearGradient>
+            </defs>
+            <polygon points="{{ viewsPts|join(' ') }} {{ W }},{{ H }} 0,{{ H }}" fill="url(#viewsFill)"/>
+            <polyline points="{{ viewsPts|join(' ') }}" fill="none" stroke="#06b0c4" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+            <polyline points="{{ visPts|join(' ') }}" fill="none" stroke="#1b1d1e" stroke-opacity="0.45" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"/>
+            {% for d in series %}
+                {% set x = (loop.index0 / (n - 1) * W)|round(2) %}
+                {% set yv = (H - (d.views / maxViews) * (H - top))|round(2) %}
+                <circle cx="{{ x }}" cy="{{ yv }}" r="6" fill="transparent">
+                    <title>{{ d.day|date('d.m.Y') }} — {{ d.views }} Aufrufe · {{ d.visitors }} Besucher</title>
+                </circle>
+            {% endfor %}
+        </svg>
+        <div class="flex justify-between text-[11px] text-ink/40 tabular-nums mt-1 px-0.5">
+            <span>{{ series|first.day|date('d.m.') }}</span>
+            <span>{{ series[(n // 2)].day|date('d.m.') }}</span>
+            <span>{{ series|last.day|date('d.m.') }}</span>
+        </div>
     </div>
 
     {# Top pages #}
