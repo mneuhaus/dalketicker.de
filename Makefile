@@ -154,6 +154,9 @@ dedup: ## AI dedup pass (after import)
 categorize: ## AI categorization pass (after import/dedup)
 	@$(CONSOLE) dalketicker:categorize-ai --apply
 
+summarize: ## AI short-teaser pass (after categorization)
+	@$(CONSOLE) dalketicker:summarize-ai --apply
+
 dedup/dry: ## AI dedup pass, propose only (no changes)
 	@$(CONSOLE) dalketicker:dedup-ai --dry-run
 
@@ -218,3 +221,6 @@ deploy/dedup: ## Run the AI dedup pass on the server
 
 deploy/categorize: ## Run the AI categorization pass on the server
 	ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && $(PROD) exec -T app php bin/console dalketicker:categorize-ai --apply'
+
+deploy/summarize: ## Run the AI teaser pass on the server
+	ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && $(PROD) exec -T app php bin/console dalketicker:summarize-ai --apply'

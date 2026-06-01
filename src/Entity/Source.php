@@ -42,6 +42,16 @@ class Source
     #[ORM\Column]
     private bool $enabled = true;
 
+    /**
+     * Legal safeguard for third-party aggregator sources: when true, only FACTS
+     * are shown (title, date/time, place, price) plus a link to the original —
+     * NOT the creative parts (description text, images, AI summary derived from
+     * the text). True for competitor/aggregator feeds; false for the original
+     * organizer/venue (where we may show their content).
+     */
+    #[ORM\Column]
+    private bool $factsOnly = false;
+
     /** Free-form per-source importer configuration (selectors, mappings, ...). */
     #[ORM\Column(type: Types::JSON)]
     private array $config = [];
@@ -126,6 +136,18 @@ class Source
     public function setEnabled(bool $enabled): static
     {
         $this->enabled = $enabled;
+
+        return $this;
+    }
+
+    public function isFactsOnly(): bool
+    {
+        return $this->factsOnly;
+    }
+
+    public function setFactsOnly(bool $factsOnly): static
+    {
+        $this->factsOnly = $factsOnly;
 
         return $this;
     }

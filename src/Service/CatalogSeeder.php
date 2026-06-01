@@ -23,6 +23,13 @@ use Symfony\Component\String\Slugger\SluggerInterface;
  */
 final class CatalogSeeder
 {
+    /**
+     * Aggregator/competitor feeds that re-bundle other people's events. For
+     * these we only show facts (title/date/place/price) + a link, never their
+     * description text or images. {@see Source::isFactsOnly()}.
+     */
+    private const FACTS_ONLY_SOURCES = ['auf_schluer', 'radio_gt', 'erfolgskreis_gt', 'marktcom', 'flowl'];
+
     /** @var array<string, Category> */
     private array $categories = [];
     /** @var array<string, Venue> */
@@ -62,9 +69,12 @@ final class CatalogSeeder
                 $config['city'] = $city;
                 $source->setConfig($config);
             }
-            // Don't override an operator's enable/disable choice on re-seed:
+            // Don't override an operator's choices on re-seed:
             if ($isNew) {
                 $source->setEnabled($enabled);
+                // Aggregators that bundle third-party events → facts only (no
+                // foreign description text/images), per the legal safeguard.
+                $source->setFactsOnly(\in_array($key, self::FACTS_ONLY_SOURCES, true));
             }
             $this->em->persist($source);
             $this->sources[$key] = $source;

@@ -103,13 +103,18 @@ final class IcsFeedBuilder
         }
     }
 
-    /** Plain-text description: strip HTML, then append the dalketicker link. */
+    /**
+     * Plain-text description + the dalketicker link. For facts-only (aggregator)
+     * sources the foreign description text is omitted — only the link remains.
+     */
     private function descriptionFor(Event $event): string
     {
         $parts = [];
-        $text = trim(html_entity_decode(strip_tags((string) $event->getDescription()), \ENT_QUOTES | \ENT_HTML5, 'UTF-8'));
-        if ($text !== '') {
-            $parts[] = $text;
+        if (!$event->isFactsOnly()) {
+            $text = trim(html_entity_decode(strip_tags((string) $event->getDescription()), \ENT_QUOTES | \ENT_HTML5, 'UTF-8'));
+            if ($text !== '') {
+                $parts[] = $text;
+            }
         }
         $parts[] = 'Mehr Infos: '.$this->detailUrl($event);
 

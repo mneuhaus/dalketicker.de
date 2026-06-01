@@ -37,7 +37,9 @@ final class ImageProxyController extends AbstractController
     public function image(int $id): Response
     {
         $event = $this->events->find($id);
-        $url = $event?->getImageUrl();
+        // Facts-only (aggregator) sources: never serve their images, even if a
+        // URL is guessed directly — the legal safeguard holds at every layer.
+        $url = ($event !== null && !$event->isFactsOnly()) ? $event->getImageUrl() : null;
         if ($url === null || $url === '' || !$this->isSafeUrl($url)) {
             return $this->transparentPixel();
         }

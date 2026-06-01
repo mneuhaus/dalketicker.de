@@ -252,6 +252,27 @@ class EventRepository extends ServiceEntityRepository
             ->getResult();
     }
 
+    /**
+     * Upcoming published events that still need an AI teaser: have an original
+     * description but no summary yet. Date-ordered (soonest first).
+     *
+     * @return Event[]
+     */
+    public function findWithoutSummary(int $limit = 100000): array
+    {
+        return $this->visibleQueryBuilder(new EventFilter())
+            ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :now')
+            ->andWhere('e.summary IS NULL')
+            ->andWhere("e.description IS NOT NULL AND e.description != ''")
+            // Never summarize foreign aggregator text (legal safeguard).
+            ->andWhere('s.factsOnly = false')
+            ->setParameter('now', new \DateTimeImmutable('now', new \DateTimeZone('Europe/Berlin')))
+            ->orderBy('e.startsAt', 'ASC')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult();
+    }
+
     /** Upcoming published events the categorizer hasn't looked at yet (no decision). */
     public function countWithoutCategoryDecision(): int
     {

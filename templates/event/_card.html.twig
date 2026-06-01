@@ -67,23 +67,29 @@
     {%- if not series and multiDay %} · bis {{ event.endsAt|de_date }}{% endif -%}
 {% endset %}
 <article data-event-card="{{ event.id }}" class="card-media group relative rounded-2xl border border-black/5 bg-white shadow-sm overflow-hidden transition hover:shadow-md hover:border-black/10 {{ soldOut ? 'opacity-60' }}">
-    {% if event.imageUrl %}
+    {# Facts-only (aggregator) sources: no foreign image or text — just facts. #}
+    {% set showImage = event.imageUrl and not event.isFactsOnly %}
+    {% if showImage %}
         <div class="cm-img">
             <img src="{{ path('image_proxy', {id: event.id}) }}" alt="" loading="lazy" class="cm-img-el">
         </div>
     {% endif %}
     {{ bookmark }}
-    <div class="cm-body p-4 {{ event.imageUrl ? '' : 'pr-9' }}">
+    <div class="cm-body p-4 {{ showImage ? '' : 'pr-9' }}">
         {{ titleLink }}
         <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1.5">
             <span class="text-sm font-semibold text-brand-700 whitespace-nowrap">{{ timeText }}</span>
             {{ card.tags(event) }}
         </div>
-        {# Fill the whitespace next to a tall image with the start of the
-           description — clipped to whatever space is left (faded out), so the
-           card never grows beyond the image height. #}
-        {% if event.imageUrl and event.description %}
-            <p class="cm-desc mt-2 text-[13px] leading-snug text-ink/55">{{ event.description|striptags }}</p>
+        {# Teaser: AI summary preferred, else the start of the description. Never
+           for facts-only sources (their text isn't ours to show). #}
+        {% if not event.isFactsOnly %}
+            {% set teaser = event.summary ?: (event.description ? event.description|striptags : null) %}
+            {% if showImage and teaser %}
+                <p class="cm-desc mt-2 text-[13px] leading-snug text-ink/55">{{ teaser }}</p>
+            {% elseif event.summary %}
+                <p class="mt-1.5 text-sm text-ink/55 leading-snug line-clamp-2">{{ event.summary }}</p>
+            {% endif %}
         {% endif %}
         {{ card.place(event) }}
     </div>

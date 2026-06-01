@@ -16,7 +16,7 @@
                     {% set color = event.category ? event.category.color : 'var(--color-brand-600)' %}
                     <article data-surprise-card data-url="{{ path('event_show', {id: event.id, slug: event.slug}) }}"
                              class="surprise-card rounded-2xl border border-black/5 bg-white shadow-sm overflow-hidden">
-                        {% if event.imageUrl %}
+                        {% if event.imageUrl and not event.isFactsOnly %}
                             <div class="bg-black/[0.03] flex items-center justify-center">
                                 <img data-fitcap src="{{ path('image_proxy', {id: event.id}) }}" alt="" loading="lazy" class="fitcap">
                             </div>
@@ -50,7 +50,7 @@
                                 {% if event.organizer %}
                                     <p class="text-sm text-ink/55">Veranstalter: {{ event.organizer }}</p>
                                 {% endif %}
-                                {% if event.description %}
+                                {% if event.description and not event.isFactsOnly %}
                                     <div class="prose prose-sm max-w-none text-ink/80 whitespace-pre-line">{{ event.description|sanitize_html('event_description') }}</div>
                                 {% endif %}
                                 <div class="flex flex-wrap items-center gap-3 pt-1">

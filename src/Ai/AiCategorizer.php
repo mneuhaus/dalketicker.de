@@ -89,6 +89,9 @@ final class AiCategorizer
             - Kurse/Seminare/Vorträge → meist "bildung".
             - Floh-/Wochen-/Weihnachtsmärkte, Feste, Kirmes → "markt".
             - Theater/Lesung/Kabarett/Comedy → "buehne"; Konzerte/Live-Musik → "musik".
+            - "familie" großzügig als ZWEITkategorie vergeben, wenn die Veranstaltung
+              klar familientauglich ist (Märkte, Feste, Kirmes, Open-Air, Mitmach-Aktionen,
+              Mittelaltermärkte usw.) – auch wenn die Hauptkategorie eine andere ist.
             - Für JEDES Event genau einen Aufruf von classify_event.
             TXT;
 

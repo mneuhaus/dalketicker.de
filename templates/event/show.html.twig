@@ -57,7 +57,7 @@
         {# Left column: the detail box + the previous/next row beneath it #}
         <div class="min-w-0">
             <article data-evdetail class="evdetail bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden">
-                {% if event.imageUrl %}
+                {% if event.imageUrl and not event.isFactsOnly %}
                     <div class="evimg-wrap">
                         <img data-evimg src="{{ path('image_proxy', {id: event.id}) }}" alt="" class="evimg">
                     </div>
@@ -102,8 +102,10 @@
                         </div>
                     {% endif %}
 
-                    {% if event.description %}
+                    {% if event.description and not event.isFactsOnly %}
                         <div class="prose prose-sm max-w-none mt-6 text-ink/80 whitespace-pre-line">{{ event.description|sanitize_html('event_description') }}</div>
+                    {% elseif event.isFactsOnly %}
+                        <p class="mt-6 text-sm text-ink/50">Beschreibung und Bild findest du beim Veranstalter – siehe „Zur Veranstaltungsseite".</p>
                     {% endif %}
 
                     <div class="mt-8 pt-5 border-t border-black/5 flex justify-end gap-2">

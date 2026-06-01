@@ -44,6 +44,10 @@ class Event
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $description = null;
 
+    /** AI-generated 1–2 sentence teaser derived from the description (list view). */
+    #[ORM\Column(type: Types::TEXT, nullable: true)]
+    private ?string $summary = null;
+
     #[ORM\Column(type: Types::DATETIME_IMMUTABLE)]
     private \DateTimeImmutable $startsAt;
 
@@ -188,6 +192,18 @@ class Event
         return $this;
     }
 
+    public function getSummary(): ?string
+    {
+        return $this->summary;
+    }
+
+    public function setSummary(?string $summary): static
+    {
+        $this->summary = $summary;
+
+        return $this;
+    }
+
     public function getStartsAt(): \DateTimeImmutable
     {
         return $this->startsAt;
@@ -317,6 +333,16 @@ class Event
         $this->source = $source;
 
         return $this;
+    }
+
+    /**
+     * True when only facts may be shown for this event (third-party aggregator
+     * source): hide the description text, image and AI summary; keep title,
+     * date/time, place, price + the link to the original. {@see Source::isFactsOnly()}
+     */
+    public function isFactsOnly(): bool
+    {
+        return $this->source->isFactsOnly();
     }
 
     public function getSourceUrl(): ?string

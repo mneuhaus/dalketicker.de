@@ -47,12 +47,18 @@ final class CategorizeAiCommand extends Command
             ->addOption('mode', null, InputOption::VALUE_REQUIRED, 'fill | opinion | all', 'all')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Max. Events pro Pass (0 = alle)', '0')
             ->addOption('batch', null, InputOption::VALUE_REQUIRED, 'Events pro KI-Aufruf', '25')
-            ->addOption('max-calls', null, InputOption::VALUE_REQUIRED, 'Max. KI-Aufrufe insgesamt (0 = unbegrenzt)', '0');
+            ->addOption('max-calls', null, InputOption::VALUE_REQUIRED, 'Max. KI-Aufrufe insgesamt (0 = unbegrenzt)', '0')
+            ->addOption('reset', null, InputOption::VALUE_NONE, 'Alle KI-Kategorie-Entscheidungen zurücksetzen (für sauberen Neulauf nach Prompt-Änderung)');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
+
+        if ($input->getOption('reset')) {
+            return $this->reset($io);
+        }
+
         $apply = (bool) $input->getOption('apply');
         $mode = (string) $input->getOption('mode');
         $limit = max(0, (int) $input->getOption('limit'));
@@ -107,6 +113,21 @@ final class CategorizeAiCommand extends Command
             $apply ? 'Gespeichert' : 'Dry-Run (nichts gespeichert)',
             $calls, $stats['fill'], $stats['suggestions'], $stats['agreed'], $stats['skipped'],
         ));
+
+        return Command::SUCCESS;
+    }
+
+    /** Restore pre-AI categories (undo applied decisions) and drop all decisions. */
+    private function reset(SymfonyStyle $io): int
+    {
+        $repo = $this->em->getRepository(\App\Entity\AiCategoryDecision::class);
+        $decisions = $repo->findAll();
+        foreach ($decisions as $decision) {
+            $this->applier->undo($decision); // restores previousSlugs for applied ones
+            $this->em->remove($decision);
+        }
+        $this->em->flush();
+        $io->success(sprintf('%d Entscheidungen zurückgesetzt – nächster Lauf kategorisiert neu.', \count($decisions)));
 
         return Command::SUCCESS;
     }
