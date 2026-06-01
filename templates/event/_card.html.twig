@@ -79,6 +79,12 @@
             <span class="text-sm font-semibold text-brand-700 whitespace-nowrap">{{ timeText }}</span>
             {{ card.tags(event) }}
         </div>
+        {# Fill the whitespace next to a tall image with the start of the
+           description — clipped to whatever space is left (faded out), so the
+           card never grows beyond the image height. #}
+        {% if event.imageUrl and event.description %}
+            <p class="cm-desc mt-2 text-[13px] leading-snug text-ink/55">{{ event.description|striptags }}</p>
+        {% endif %}
         {{ card.place(event) }}
     </div>
 </article>
