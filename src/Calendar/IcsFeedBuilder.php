@@ -5,13 +5,19 @@ declare(strict_types=1);
 namespace App\Calendar;
 
 use App\Entity\Event;
+use Sabre\VObject\Component\VCalendar;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
 /**
  * Builds an RFC 5545 iCalendar (.ics) document from a set of {@see Event}s, so
  * visitors can subscribe to the (optionally filtered) programme in their own
- * calendar app. Timed events are emitted in UTC (so no VTIMEZONE is needed and
- * DST is always correct); all-day events use VALUE=DATE with an exclusive DTEND.
+ * calendar app.
+ *
+ * Generation is delegated to sabre/vobject (the de-facto PHP iCalendar library,
+ * also used by CalDAV servers) — it handles line folding, escaping, CRLF and
+ * value typing per spec. Timed events are emitted in UTC (so no VTIMEZONE is
+ * needed and DST is always correct); all-day events use VALUE=DATE with an
+ * exclusive DTEND.
  */
 final class IcsFeedBuilder
 {
@@ -27,68 +33,60 @@ final class IcsFeedBuilder
      */
     public function build(array $events, string $calName): string
     {
-        $utc = new \DateTimeZone('UTC');
-
-        $lines = [
-            'BEGIN:VCALENDAR',
-            'VERSION:2.0',
-            'PRODID:'.self::PRODID,
-            'CALSCALE:GREGORIAN',
-            'METHOD:PUBLISH',
-            // Hint clients to re-poll roughly twice a day (matches the import cron).
-            'REFRESH-INTERVAL;VALUE=DURATION:PT12H',
-            'X-PUBLISHED-TTL:PT12H',
-            'X-WR-CALNAME:'.$this->escapeText($calName),
-            'X-WR-TIMEZONE:Europe/Berlin',
-        ];
+        $calendar = new VCalendar();
+        $calendar->PRODID = self::PRODID;
+        $calendar->add('METHOD', 'PUBLISH');
+        // Auto-refresh hints (RFC 7986 + the Apple/Microsoft extension), ~twice a
+        // day to match the import cron.
+        $calendar->add('REFRESH-INTERVAL', 'PT12H', ['VALUE' => 'DURATION']);
+        $calendar->add('X-PUBLISHED-TTL', 'PT12H');
+        $calendar->add('X-WR-CALNAME', $calName);
+        $calendar->add('X-WR-TIMEZONE', 'Europe/Berlin');
 
         foreach ($events as $event) {
-            array_push($lines, ...$this->vevent($event, $utc));
+            $this->addEvent($calendar, $event);
         }
 
-        $lines[] = 'END:VCALENDAR';
-
-        // RFC 5545: lines are CRLF-separated and folded at 75 octets.
-        return implode("\r\n", array_map($this->fold(...), $lines))."\r\n";
+        return $calendar->serialize();
     }
 
-    /**
-     * @return string[] the VEVENT block lines (unfolded)
-     */
-    private function vevent(Event $event, \DateTimeZone $utc): array
+    private function addEvent(VCalendar $calendar, Event $event): void
     {
-        $stamp = $event->getLastSeenAt()->setTimezone($utc)->format('Ymd\THis\Z');
+        $utc = new \DateTimeZone('UTC');
+        $stamp = $event->getLastSeenAt()->setTimezone($utc);
 
-        $lines = [
-            'BEGIN:VEVENT',
-            'UID:event-'.$event->getId().'@dalketicker.de',
-            'DTSTAMP:'.$stamp,
-            'LAST-MODIFIED:'.$stamp,
-            'SUMMARY:'.$this->escapeText($event->getTitle()),
-        ];
+        $vevent = $calendar->add('VEVENT', [
+            'UID' => 'event-'.$event->getId().'@dalketicker.de',
+            'DTSTAMP' => $stamp,
+            'LAST-MODIFIED' => $stamp,
+            'SUMMARY' => $event->getTitle(),
+            'STATUS' => 'CONFIRMED',
+            'URL' => $this->detailUrl($event),
+        ]);
 
-        // Start / end. All-day → DATE values with an exclusive end day.
+        // Start / end. All-day → DATE values with an exclusive end day; timed →
+        // UTC instants (Z suffix, no VTIMEZONE required).
         if ($event->isAllDay()) {
-            $tz = new \DateTimeZone('Europe/Berlin');
-            $start = $event->getStartsAt()->setTimezone($tz);
-            $endExclusive = ($event->getEndsAt() ?? $event->getStartsAt())->setTimezone($tz)->modify('+1 day');
-            $lines[] = 'DTSTART;VALUE=DATE:'.$start->format('Ymd');
-            $lines[] = 'DTEND;VALUE=DATE:'.$endExclusive->format('Ymd');
+            $berlin = new \DateTimeZone('Europe/Berlin');
+            $start = $event->getStartsAt()->setTimezone($berlin);
+            $endExclusive = ($event->getEndsAt() ?? $event->getStartsAt())->setTimezone($berlin)->modify('+1 day');
+            $vevent->add('DTSTART', $start, ['VALUE' => 'DATE']);
+            $vevent->add('DTEND', $endExclusive, ['VALUE' => 'DATE']);
         } else {
-            $lines[] = 'DTSTART:'.$event->getStartsAt()->setTimezone($utc)->format('Ymd\THis\Z');
+            $vevent->add('DTSTART', $event->getStartsAt()->setTimezone($utc));
             if ($event->getEndsAt() !== null) {
-                $lines[] = 'DTEND:'.$event->getEndsAt()->setTimezone($utc)->format('Ymd\THis\Z');
+                $vevent->add('DTEND', $event->getEndsAt()->setTimezone($utc));
             }
         }
 
         $location = $event->getVenue()?->getFullAddress() ?: $event->getDisplayLocation();
         if ($location !== null && $location !== '') {
-            $lines[] = 'LOCATION:'.$this->escapeText($location);
+            $vevent->add('LOCATION', $location);
         }
 
         $description = $this->descriptionFor($event);
         if ($description !== '') {
-            $lines[] = 'DESCRIPTION:'.$this->escapeText($description);
+            $vevent->add('DESCRIPTION', $description);
         }
 
         $categories = [];
@@ -96,19 +94,13 @@ final class IcsFeedBuilder
             $categories[] = $category->getName();
         }
         if ($categories !== []) {
-            $lines[] = 'CATEGORIES:'.$this->escapeText(implode(',', $categories));
+            $vevent->add('CATEGORIES', $categories);
         }
 
         $venue = $event->getVenue();
         if ($venue?->getLatitude() !== null && $venue->getLongitude() !== null) {
-            $lines[] = sprintf('GEO:%s;%s', $venue->getLatitude(), $venue->getLongitude());
+            $vevent->add('GEO', [$venue->getLatitude(), $venue->getLongitude()]);
         }
-
-        $lines[] = 'URL:'.$this->detailUrl($event);
-        $lines[] = 'STATUS:CONFIRMED';
-        $lines[] = 'END:VEVENT';
-
-        return $lines;
     }
 
     /** Plain-text description: strip HTML, then append the dalketicker link. */
@@ -131,49 +123,5 @@ final class IcsFeedBuilder
             ['id' => $event->getId(), 'slug' => $event->getSlug()],
             UrlGeneratorInterface::ABSOLUTE_URL,
         );
-    }
-
-    /** Escape a TEXT value per RFC 5545 §3.3.11. */
-    private function escapeText(string $value): string
-    {
-        return str_replace(
-            ['\\', "\r\n", "\n", "\r", ';', ','],
-            ['\\\\', '\\n', '\\n', '\\n', '\\;', '\\,'],
-            $value,
-        );
-    }
-
-    /**
-     * Fold a content line to <=75 octets, continuing with CRLF + a leading space
-     * (RFC 5545 §3.1). Folding is byte-aware so multibyte UTF-8 isn't split.
-     */
-    private function fold(string $line): string
-    {
-        if (strlen($line) <= 75) {
-            return $line;
-        }
-
-        $out = '';
-        $current = 0;
-        $len = strlen($line);
-        for ($i = 0; $i < $len;) {
-            // Width of the next UTF-8 code point in bytes.
-            $byte = \ord($line[$i]);
-            $width = match (true) {
-                $byte >= 0xF0 => 4,
-                $byte >= 0xE0 => 3,
-                $byte >= 0xC0 => 2,
-                default => 1,
-            };
-            if ($current + $width > 73) { // leave room; continuation adds a space
-                $out .= "\r\n ";
-                $current = 1;
-            }
-            $out .= substr($line, $i, $width);
-            $current += $width;
-            $i += $width;
-        }
-
-        return $out;
     }
 }
