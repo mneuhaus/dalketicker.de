@@ -7,9 +7,19 @@
 
     <div class="flex items-center justify-between mb-2 gap-4">
         <h1 class="font-[family-name:var(--font-display)] text-2xl font-extrabold tracking-tight text-ink">AI-Deduplizierung</h1>
-        <span class="text-xs text-ink/40">{{ decisions|length }} aktive Merges</span>
+        <div class="flex items-center gap-3 shrink-0">
+            <span class="text-xs text-ink/40">{{ decisions|length }} aktive Merges</span>
+            {% if configured %}
+                <form method="post" action="{{ path('admin_dedup_run') }}">
+                    <input type="hidden" name="_token" value="{{ csrf_token('dedup_run') }}">
+                    <button type="submit" class="rounded-full bg-brand-700 text-white text-xs font-semibold px-3.5 py-1.5 hover:bg-brand-800 transition-colors">Jetzt prüfen</button>
+                </form>
+            {% else %}
+                <span class="text-xs text-rose-600">Kein API-Key gesetzt</span>
+            {% endif %}
+        </div>
     </div>
-    <p class="text-sm text-ink/50 mb-6">Vom KI-Pass zusammengeführte Duplikate. „Rückgängig" macht das ausgeblendete Event wieder sichtbar.</p>
+    <p class="text-sm text-ink/50 mb-6">Vom KI-Pass zusammengeführte Duplikate. „Rückgängig" macht das ausgeblendete Event wieder sichtbar.{% if configured %} „Jetzt prüfen" startet einen Durchlauf der nächsten 60 Tage im Hintergrund (Modell {{ model }}).{% endif %}</p>
 
     {% for label, messages in app.flashes %}
         {% for message in messages %}

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Ai\AiDeduper;
 use App\Ai\DuplicateMerger;
 use App\Entity\AiDedupDecision;
 use App\Entity\User;
@@ -20,6 +21,8 @@ use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
+use Symfony\Component\Process\Process;
 use Symfony\Component\Routing\Attribute\Route;
 
 #[Route('/admin')]
@@ -137,7 +140,7 @@ final class AdminController extends AbstractController
 
     /** Review the AI deduplication merges and undo them if needed. */
     #[Route('/dedup', name: 'admin_dedup', methods: ['GET'])]
-    public function dedup(EntityManagerInterface $em): Response
+    public function dedup(EntityManagerInterface $em, AiDeduper $deduper): Response
     {
         $decisions = $em->getRepository(AiDedupDecision::class)->findBy(
             ['active' => true],
@@ -145,7 +148,52 @@ final class AdminController extends AbstractController
             100,
         );
 
-        return $this->render('admin/dedup.html.twig', ['decisions' => $decisions]);
+        return $this->render('admin/dedup.html.twig', [
+            'decisions' => $decisions,
+            'configured' => $deduper->isConfigured(),
+            'model' => $deduper->getModel(),
+        ]);
+    }
+
+    /**
+     * Trigger the AI dedup pass by hand. A live run can do a dozen sequential
+     * LLM calls (~a minute), so we launch it detached in the background and let
+     * the results trickle into the list above — keeps the request snappy and
+     * dodges max_execution_time.
+     */
+    #[Route('/dedup/run', name: 'admin_dedup_run', methods: ['POST'])]
+    public function dedupRun(
+        Request $request,
+        AiDeduper $deduper,
+        #[Autowire('%kernel.project_dir%')] string $projectDir,
+    ): RedirectResponse {
+        if (!$this->isCsrfTokenValid('dedup_run', (string) $request->request->get('_token'))) {
+            $this->addFlash('error', 'Ungültiges Formular.');
+
+            return $this->redirectToRoute('admin_dedup');
+        }
+        if (!$deduper->isConfigured()) {
+            $this->addFlash('error', 'AI-Dedup ist nicht konfiguriert (OPENROUTER_API_KEY fehlt).');
+
+            return $this->redirectToRoute('admin_dedup');
+        }
+
+        $log = $projectDir.'/var/log/dedup-manual.log';
+        // Trailing "&" lets the shell return immediately; nohup detaches the run
+        // from the web request so it survives the response.
+        $cmd = sprintf(
+            'nohup php %s/bin/console dalketicker:dedup-ai --days=60 --max-ai-calls=80 >> %s 2>&1 &',
+            escapeshellarg($projectDir),
+            escapeshellarg($log),
+        );
+        $process = Process::fromShellCommandline($cmd, $projectDir);
+        $process->setTimeout(null);
+        $process->disableOutput();
+        $process->run();
+
+        $this->addFlash('success', 'AI-Dedup gestartet – läuft im Hintergrund. Liste in ~1 Minute aktualisieren.');
+
+        return $this->redirectToRoute('admin_dedup');
     }
 
     /** Undo a single AI merge: restore the duplicate to Published. */
