@@ -19,6 +19,8 @@ services:
       DATABASE_URL: "postgresql://dalke:${DB_PASSWORD}@database:5432/dalketicker?serverVersion=16&charset=utf8"
       MAILER_DSN: null://null
       DEFAULT_URI: https://dalketicker.de
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      DEDUP_AI_MODEL: ${DEDUP_AI_MODEL:-anthropic/claude-sonnet-4}
     depends_on:
       database:
         condition: service_healthy

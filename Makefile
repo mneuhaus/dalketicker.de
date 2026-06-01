@@ -148,6 +148,12 @@ import: ## Run all source importers
 import/dry: ## Run importers without writing (dry run)
 	@$(CONSOLE) dalketicker:import --all --dry-run
 
+dedup: ## AI dedup pass (after import)
+	@$(CONSOLE) dalketicker:dedup-ai
+
+dedup/dry: ## AI dedup pass, propose only (no changes)
+	@$(CONSOLE) dalketicker:dedup-ai --dry-run
+
 # ======================================================================#
 # Deployment (dalketicker.neuhaus.nrw)                                  #
 # ======================================================================#
@@ -179,3 +185,6 @@ deploy/migrate: ## Run migrations on the server
 
 deploy/import: ## Run importers on the server
 	ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && $(PROD) exec -T app php bin/console dalketicker:import --all'
+
+deploy/dedup: ## Run the AI dedup pass on the server
+	ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && $(PROD) exec -T app php bin/console dalketicker:dedup-ai'

@@ -7,6 +7,9 @@ doctrine:
         #server_version: '16'
 
         profiling_collect_backtrace: '%kernel.debug%'
+        # daily_stat/page_stat/visitor_day are DBAL-only (VisitCounter), not ORM
+        # entities — exclude them so migrations:diff never tries to drop them.
+        schema_filter: '~^(?!daily_stat$|page_stat$|visitor_day$).+$~'
     orm:
         validate_xml_mapping: true
         naming_strategy: doctrine.orm.naming_strategy.underscore

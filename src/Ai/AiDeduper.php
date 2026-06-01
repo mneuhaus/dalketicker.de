@@ -1,0 +1,149 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Ai;
+
+use App\Entity\Event;
+use Psr\Log\LoggerInterface;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
+use Symfony\Contracts\HttpClient\HttpClientInterface;
+
+/**
+ * Asks an LLM (via OpenRouter, OpenAI-compatible API — model configurable,
+ * e.g. a Claude Sonnet) which events on a given day are true duplicates.
+ * Uses function/tool calling: the model "calls" mark_duplicate(...); we harvest
+ * those calls and return them as proposals (applying happens elsewhere, so a
+ * dry-run is trivial and the AI never writes to the DB directly).
+ */
+final class AiDeduper
+{
+    private const ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
+    private const SYSTEM = <<<'TXT'
+        Du findest DUPLIKATE in einer Veranstaltungsliste eines Tages (Eventkalender Kreis Gütersloh).
+        Zwei Einträge sind nur dann Duplikate, wenn sie DIESELBE reale Veranstaltung beschreiben
+        (gleiches Geschehen, gleicher Ort, gleiche Zeit) – auch wenn Titel/Schreibweise/Quelle abweichen
+        (z. B. "Repair-Café" vs. "Reparatur-Café im Bürgerhaus" derselben Sache).
+        Führe NICHT zusammen: bloß ähnliche, aber eigenständige Events (zwei verschiedene Konzerte,
+        zwei getrennte Kurstermine/Sessions einer Reihe, gleicher Veranstaltungsort aber andere Veranstaltung).
+        Für jedes Duplikat-Paar rufe das Tool mark_duplicate auf: duplicate_event_id = der auszublendende
+        Eintrag, canonical_event_id = der zu behaltende. Behalte den mit den reicheren Infos (Beschreibung/Bild)
+        bzw. der offizielleren Quelle. Im Zweifel NICHTS tun.
+        TXT;
+
+    public function __construct(
+        private readonly HttpClientInterface $http,
+        private readonly LoggerInterface $logger,
+        #[Autowire('%env(OPENROUTER_API_KEY)%')] private readonly string $apiKey,
+        #[Autowire('%env(DEDUP_AI_MODEL)%')] private readonly string $model,
+    ) {
+    }
+
+    public function isConfigured(): bool
+    {
+        return trim($this->apiKey) !== '';
+    }
+
+    public function getModel(): string
+    {
+        return $this->model;
+    }
+
+    /**
+     * @param Event[] $events all visible events of one day
+     *
+     * @return list<array{duplicate:int, canonical:int, reason:string}>
+     */
+    public function findDuplicates(\DateTimeImmutable $day, array $events): array
+    {
+        if (!$this->isConfigured() || \count($events) < 2) {
+            return [];
+        }
+
+        $lines = [];
+        foreach ($events as $e) {
+            $time = $e->isAllDay() ? 'ganztägig' : $e->getStartsAt()->format('H:i');
+            $loc = $e->getDisplayLocation() ?: '—';
+            $desc = $e->getDescription() ? mb_substr(preg_replace('/\s+/', ' ', strip_tags($e->getDescription())) ?? '', 0, 200) : '';
+            $lines[] = sprintf(
+                'id=%d | %s | "%s" | %s | Veranstalter: %s | Quelle: %s%s',
+                $e->getId(),
+                $time,
+                $e->getTitle(),
+                $loc,
+                $e->getOrganizer() ?: '—',
+                $e->getSource()->getKey(),
+                $desc !== '' ? ' | '.$desc : '',
+            );
+        }
+
+        $payload = [
+            'model' => $this->model,
+            'max_tokens' => 2048,
+            'tool_choice' => 'auto',
+            'tools' => [[
+                'type' => 'function',
+                'function' => [
+                    'name' => 'mark_duplicate',
+                    'description' => 'Markiert ein Event als Duplikat eines anderen (zu behaltenden) Events desselben Tages.',
+                    'parameters' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'duplicate_event_id' => ['type' => 'integer', 'description' => 'ID des auszublendenden Duplikats'],
+                            'canonical_event_id' => ['type' => 'integer', 'description' => 'ID des zu behaltenden Events'],
+                            'reason' => ['type' => 'string', 'description' => 'Kurze Begründung (1 Satz)'],
+                        ],
+                        'required' => ['duplicate_event_id', 'canonical_event_id', 'reason'],
+                    ],
+                ],
+            ]],
+            'messages' => [
+                ['role' => 'system', 'content' => self::SYSTEM],
+                ['role' => 'user', 'content' => 'Veranstaltungen am '.$day->format('d.m.Y').":\n".implode("\n", $lines)],
+            ],
+        ];
+
+        try {
+            $res = $this->http->request('POST', self::ENDPOINT, [
+                'auth_bearer' => $this->apiKey,
+                'headers' => [
+                    'Content-Type' => 'application/json',
+                    'HTTP-Referer' => 'https://dalketicker.de',
+                    'X-Title' => 'dalketicker',
+                ],
+                'json' => $payload,
+                'timeout' => 60,
+            ]);
+            $data = $res->toArray(false);
+        } catch (\Throwable $e) {
+            $this->logger->error('AI dedup request failed: '.$e->getMessage(), ['day' => $day->format('Y-m-d')]);
+
+            return [];
+        }
+
+        if (isset($data['error'])) {
+            $this->logger->error('AI dedup API error', ['error' => $data['error']]);
+
+            return [];
+        }
+
+        $out = [];
+        $toolCalls = $data['choices'][0]['message']['tool_calls'] ?? [];
+        foreach ($toolCalls as $call) {
+            if (($call['function']['name'] ?? null) !== 'mark_duplicate') {
+                continue;
+            }
+            $args = json_decode((string) ($call['function']['arguments'] ?? '{}'), true);
+            if (!\is_array($args)) {
+                continue;
+            }
+            $dup = (int) ($args['duplicate_event_id'] ?? 0);
+            $can = (int) ($args['canonical_event_id'] ?? 0);
+            if ($dup > 0 && $can > 0 && $dup !== $can) {
+                $out[] = ['duplicate' => $dup, 'canonical' => $can, 'reason' => trim((string) ($args['reason'] ?? ''))];
+            }
+        }
+
+        return $out;
+    }
+}

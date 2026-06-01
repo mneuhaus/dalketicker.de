@@ -1,0 +1,50 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}AI-Dedup – {{ site_name }}{% endblock %}
+
+{% block body %}
+    <a href="{{ path('admin_imports') }}" class="text-sm text-ink/50 hover:text-brand-700 inline-flex items-center gap-1 mb-4">← Monitoring</a>
+
+    <div class="flex items-center justify-between mb-2 gap-4">
+        <h1 class="font-[family-name:var(--font-display)] text-2xl font-extrabold tracking-tight text-ink">AI-Deduplizierung</h1>
+        <span class="text-xs text-ink/40">{{ decisions|length }} aktive Merges</span>
+    </div>
+    <p class="text-sm text-ink/50 mb-6">Vom KI-Pass zusammengeführte Duplikate. „Rückgängig" macht das ausgeblendete Event wieder sichtbar.</p>
+
+    {% for label, messages in app.flashes %}
+        {% for message in messages %}
+            <div class="mb-4 rounded-xl px-4 py-2.5 text-sm {{ label == 'success' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-700' }}">{{ message }}</div>
+        {% endfor %}
+    {% endfor %}
+
+    {% if decisions is empty %}
+        <div class="text-center py-16 text-ink/50 border border-dashed border-black/10 rounded-2xl">
+            <p class="font-medium text-ink/70">Noch keine KI-Merges.</p>
+        </div>
+    {% else %}
+        <div class="bg-white rounded-2xl border border-black/5 shadow-sm divide-y divide-black/5">
+            {% for d in decisions %}
+                <div class="flex items-start gap-4 px-4 py-3 text-sm">
+                    <span class="text-ink/40 text-xs w-24 shrink-0">{{ d.day|date('d.m.Y') }}</span>
+                    <div class="min-w-0 flex-1">
+                        <div class="text-ink">
+                            <span class="line-through text-ink/50">{{ d.duplicateEvent ? d.duplicateEvent.title : '(gelöscht)' }}</span>
+                            <span class="text-ink/30 mx-1">→</span>
+                            {% if d.canonicalEvent %}
+                                <a href="{{ path('event_show', {id: d.canonicalEvent.id, slug: d.canonicalEvent.slug}) }}" class="font-medium text-brand-700 hover:underline">{{ d.canonicalEvent.title }}</a>
+                            {% else %}<span class="text-ink/40">(gelöscht)</span>{% endif %}
+                        </div>
+                        {% if d.reason %}<div class="text-xs text-ink/45 mt-0.5">{{ d.reason }}</div>{% endif %}
+                        <div class="text-[11px] text-ink/30 mt-0.5">{{ d.model }} · {{ d.createdAt|date('d.m.Y H:i') }}</div>
+                    </div>
+                    {% if d.duplicateEvent %}
+                        <form method="post" action="{{ path('admin_dedup_undo', {id: d.id}) }}" class="shrink-0">
+                            <input type="hidden" name="_token" value="{{ csrf_token('dedup_undo') }}">
+                            <button type="submit" class="chip-muted text-xs">Rückgängig</button>
+                        </form>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+{% endblock %}

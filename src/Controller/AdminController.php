@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Ai\DuplicateMerger;
+use App\Entity\AiDedupDecision;
 use App\Entity\User;
 use App\Importer\ImporterRegistry;
 use App\Repository\EventRepository;
@@ -131,6 +133,38 @@ final class AdminController extends AbstractController
             'pages' => $pages,
             'maxDayViews' => $maxDayViews,
         ]);
+    }
+
+    /** Review the AI deduplication merges and undo them if needed. */
+    #[Route('/dedup', name: 'admin_dedup', methods: ['GET'])]
+    public function dedup(EntityManagerInterface $em): Response
+    {
+        $decisions = $em->getRepository(AiDedupDecision::class)->findBy(
+            ['active' => true],
+            ['createdAt' => 'DESC'],
+            100,
+        );
+
+        return $this->render('admin/dedup.html.twig', ['decisions' => $decisions]);
+    }
+
+    /** Undo a single AI merge: restore the duplicate to Published. */
+    #[Route('/dedup/{id}/undo', name: 'admin_dedup_undo', requirements: ['id' => '\d+'], methods: ['POST'])]
+    public function dedupUndo(int $id, Request $request, EntityManagerInterface $em, DuplicateMerger $merger): RedirectResponse
+    {
+        if (!$this->isCsrfTokenValid('dedup_undo', (string) $request->request->get('_token'))) {
+            $this->addFlash('error', 'Ungültiges Formular.');
+
+            return $this->redirectToRoute('admin_dedup');
+        }
+        $decision = $em->getRepository(AiDedupDecision::class)->find($id);
+        if ($decision !== null && $decision->isActive()) {
+            $merger->undo($decision);
+            $em->flush();
+            $this->addFlash('success', 'Merge rückgängig gemacht – Event wieder sichtbar.');
+        }
+
+        return $this->redirectToRoute('admin_dedup');
     }
 
     /** Change the logged-in admin's e-mail and/or password. */
