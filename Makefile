@@ -201,7 +201,8 @@ deploy/rollout: ## Blue-green swap: start new container, wait until healthy, the
 	    $(PROD) up -d --no-deps --scale app=1 --no-recreate app; \
 	    exit 1; \
 	  fi; \
-	  echo "neuer Container gesund - alten entfernen"; \
+	  echo "neuer Container gesund - kurz drainen, dann alten entfernen"; \
+	  sleep 3; \
 	  docker stop "$$OLD" >/dev/null && docker rm "$$OLD" >/dev/null; \
 	  $(PROD) up -d --no-deps --scale app=1 --no-recreate app; \
 	  echo "Swap abgeschlossen"'

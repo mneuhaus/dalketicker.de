@@ -139,17 +139,27 @@
         {# Right column: where + organizer link #}
         <aside class="mt-6 lg:mt-0 space-y-4">
             {% if event.displayLocation %}
-                <div class="bg-white rounded-2xl border border-black/5 shadow-sm p-5">
-                    <h2 class="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">Ort</h2>
+                {# Name + ONE address line, de-duplicated: when a venue has no
+                   street, fullAddress is just the city, so we'd otherwise print
+                   the city twice (e.g. "Versmold / Versmold"). #}
+                {% set venueName = event.venue ? event.venue.name : event.locationText %}
+                {% set hasStreet = event.venue and event.venue.fullAddress != event.venue.city %}
+                {% set addrLine = hasStreet ? event.venue.fullAddress : (event.venue and event.venue.city != venueName ? event.venue.city : null) %}
+                {% set mapsQuery = hasStreet ? event.venue.fullAddress : (event.venue ? venueName ~ ', ' ~ event.venue.city : event.displayLocation) %}
+                <a href="https://www.google.com/maps/search/?api=1&query={{ mapsQuery|url_encode }}" target="_blank" rel="noopener"
+                   class="group block bg-white rounded-2xl border border-black/5 shadow-sm p-5 hover:border-brand-200 hover:shadow-md transition">
+                    <h2 class="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2 flex items-center justify-between">
+                        <span>Ort</span>
+                        <span class="text-ink/30 group-hover:text-brand-600 transition normal-case font-normal">Karte ↗</span>
+                    </h2>
                     <div class="flex items-start gap-2 text-sm">
                         <span class="text-brand-600 mt-0.5">{{ ui.meta_icon('pin') }}</span>
                         <div class="min-w-0">
-                            <div class="text-ink font-medium">{{ event.venue ? event.venue.name : event.locationText }}</div>
-                            {% if event.venue and event.venue.city %}<div class="text-ink/60">{{ event.venue.city }}</div>{% endif %}
-                            {% if event.venue and event.venue.fullAddress %}<div class="text-ink/45 text-xs mt-0.5">{{ event.venue.fullAddress }}</div>{% endif %}
+                            <div class="text-ink font-medium group-hover:text-brand-700 transition">{{ venueName }}</div>
+                            {% if addrLine %}<div class="text-ink/60">{{ addrLine }}</div>{% endif %}
                         </div>
                     </div>
-                </div>
+                </a>
             {% endif %}
 
             {% if event.sourceUrl %}

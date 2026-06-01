@@ -43,12 +43,18 @@ services:
       - "traefik.http.routers.dalketicker.tls=true"
       - "traefik.http.routers.dalketicker.tls.certresolver=neuhaus"
       - "traefik.http.routers.dalketicker.rule=Host(`dalketicker.de`)"
+      # Retry on the healthy replica if a request hits the old container while
+      # it's being torn down during a blue-green swap → no visible 502/504.
+      - "traefik.http.routers.dalketicker.middlewares=dalketicker-retry"
+      - "traefik.http.middlewares.dalketicker-retry.retry.attempts=3"
+      - "traefik.http.middlewares.dalketicker-retry.retry.initialinterval=120ms"
       - "traefik.http.services.dalketicker.loadbalancer.server.port=80"
       - "traefik.http.services.dalketicker.loadbalancer.passhostheader=true"
       # Only route to a backend that passes /healthz — during a blue-green swap
-      # the new replica receives traffic only once it's actually serving.
+      # the new replica receives traffic only once it's actually serving, and a
+      # stopped one is dropped within ~1s.
       - "traefik.http.services.dalketicker.loadbalancer.healthcheck.path=/healthz"
-      - "traefik.http.services.dalketicker.loadbalancer.healthcheck.interval=3s"
+      - "traefik.http.services.dalketicker.loadbalancer.healthcheck.interval=1s"
       - "traefik.http.services.dalketicker.loadbalancer.healthcheck.timeout=2s"
       # Aliases (www + old test domain) → 301 to the canonical apex domain.
       - "traefik.http.routers.dalketicker-redirect.entrypoints=websecure"
