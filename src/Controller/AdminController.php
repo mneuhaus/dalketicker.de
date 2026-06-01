@@ -7,6 +7,8 @@ namespace App\Controller;
 use App\Ai\AiDeduper;
 use App\Ai\DuplicateMerger;
 use App\Entity\AiDedupDecision;
+use App\Entity\ContactMessage;
+use App\Repository\ContactMessageRepository;
 use App\Entity\User;
 use App\Importer\ImporterRegistry;
 use App\Repository\EventRepository;
@@ -237,6 +239,66 @@ final class AdminController extends AbstractController
         }
 
         return $this->redirectToRoute('admin_dedup');
+    }
+
+    /** Contact-form inbox: real enquiries and AI-flagged spam, separately. */
+    #[Route('/kontakt', name: 'admin_contact', methods: ['GET'])]
+    public function contact(Request $request, ContactMessageRepository $repo, EntityManagerInterface $em): Response
+    {
+        $view = $request->query->get('filter') === 'spam' ? 'spam' : 'real';
+        $messages = $repo->findBySpam($view === 'spam');
+
+        // Mark the real inbox as seen on view (clears the unread badge).
+        if ($view === 'real') {
+            $changed = false;
+            foreach ($messages as $m) {
+                if (!$m->isSeen()) {
+                    $m->setSeen(true);
+                    $changed = true;
+                }
+            }
+            if ($changed) {
+                $em->flush();
+            }
+        }
+
+        return $this->render('admin/contact.html.twig', [
+            'messages' => $messages,
+            'view' => $view,
+            'counts' => $repo->counts(),
+        ]);
+    }
+
+    /** Flip the spam flag on a message the AI mis-judged. */
+    #[Route('/kontakt/{id}/toggle', name: 'admin_contact_toggle', requirements: ['id' => '\d+'], methods: ['POST'])]
+    public function contactToggle(int $id, Request $request, EntityManagerInterface $em): RedirectResponse
+    {
+        if (!$this->isCsrfTokenValid('contact_admin', (string) $request->request->get('_token'))) {
+            return $this->redirectToRoute('admin_contact');
+        }
+        $msg = $em->getRepository(ContactMessage::class)->find($id);
+        if ($msg !== null) {
+            $msg->setSpam(!$msg->isSpam(), $msg->isSpam() ? 'manuell als kein Spam markiert' : 'manuell als Spam markiert');
+            $em->flush();
+        }
+
+        return $this->redirectToRoute('admin_contact', ['filter' => $request->request->get('from')]);
+    }
+
+    /** Delete a contact message. */
+    #[Route('/kontakt/{id}/delete', name: 'admin_contact_delete', requirements: ['id' => '\d+'], methods: ['POST'])]
+    public function contactDelete(int $id, Request $request, EntityManagerInterface $em): RedirectResponse
+    {
+        if (!$this->isCsrfTokenValid('contact_admin', (string) $request->request->get('_token'))) {
+            return $this->redirectToRoute('admin_contact');
+        }
+        $msg = $em->getRepository(ContactMessage::class)->find($id);
+        if ($msg !== null) {
+            $em->remove($msg);
+            $em->flush();
+        }
+
+        return $this->redirectToRoute('admin_contact', ['filter' => $request->request->get('from')]);
     }
 
     /** Change the logged-in admin's e-mail and/or password. */
