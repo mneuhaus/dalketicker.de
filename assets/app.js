@@ -3,5 +3,6 @@ import './event_keys.js';
 import './filters.js';
 import './filter_form.js';
 import './surprise.js';
+import './share.js';
 import './pwa.js';
 import './styles/app.css';

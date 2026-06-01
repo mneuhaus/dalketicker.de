@@ -2,6 +2,9 @@
 
 {% block title %}{{ event.title }} – {{ site_name }}{% endblock %}
 {% block meta_description %}{{ event.description ? event.description|striptags|slice(0, 160) : event.title }}{% endblock %}
+{# Share preview: this event's own image + title. #}
+{% block og_title %}{{ event.title }}{% endblock %}
+{% block og_image %}{% if event.imageUrl %}{{ app.request.schemeAndHttpHost }}{{ path('image_proxy', {id: event.id}) }}{% else %}{{ parent() }}{% endif %}{% endblock %}
 
 {% macro meta_icon(name) %}
     {% set paths = {
@@ -96,7 +99,14 @@
                         <div class="prose prose-sm max-w-none mt-6 text-ink/80 whitespace-pre-line">{{ event.description|striptags("<br><p><a><strong><em><ul><ol><li>")|raw }}</div>
                     {% endif %}
 
-                    <div class="mt-8 pt-5 border-t border-black/5 flex justify-end">
+                    <div class="mt-8 pt-5 border-t border-black/5 flex justify-end gap-2">
+                        <button type="button" data-share
+                                data-share-title="{{ event.title }}"
+                                data-share-url="{{ app.request.schemeAndHttpHost }}{{ path('event_show', {id: event.id, slug: event.slug}) }}"
+                                class="inline-flex items-center gap-2 rounded-xl border border-black/10 px-4 py-2.5 text-sm font-semibold text-ink/70 hover:border-brand-300 hover:text-brand-700 transition">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z"/></svg>
+                            <span data-share-label>Teilen</span>
+                        </button>
                         <button type="button" data-save-btn data-event-id="{{ event.id }}" aria-pressed="false"
                                 class="save-btn inline-flex items-center gap-2 rounded-xl border border-black/10 px-4 py-2.5 text-sm font-semibold text-ink/70 hover:border-brand-300 hover:text-brand-700 transition">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>
