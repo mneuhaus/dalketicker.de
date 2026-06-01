@@ -9,7 +9,6 @@
     {label: 'AI-Kategorien', route: 'admin_categorize', match: ['admin_categorize']},
     {label: 'Statistik', route: 'admin_stats', match: ['admin_stats']},
     {label: 'Kontakt', route: 'admin_contact', match: ['admin_contact'], badge: unread},
-    {label: 'Konto', route: 'admin_account', match: ['admin_account']},
 ] %}
 <div class="border-b border-black/5 bg-paper/95 backdrop-blur">
     <div class="mx-auto max-w-6xl px-4 py-2 flex items-center gap-1.5 text-sm">
@@ -24,7 +23,22 @@
             </a>
         {% endfor %}
         <span class="hidden sm:inline text-ink/15" aria-hidden="true">|</span>
-        {% if app.user %}<span class="hidden md:inline text-ink/40">{{ app.user.email }}</span>{% endif %}
-        <a href="{{ path('app_logout') }}" class="px-2.5 py-1 rounded-lg text-ink/60 hover:bg-black/5 transition">Logout</a>
+        {% if app.user %}
+            {# User-Menü: E-Mail als Dropdown-Trigger, Konto + Logout darin (<details>, kein JS). #}
+            <details class="relative ml-0.5">
+                <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition {{ route == 'admin_account' ? 'bg-brand-600 text-white' : 'text-ink/60 hover:bg-black/5' }}">
+                    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                    <span class="hidden sm:inline max-w-[12rem] truncate">{{ app.user.email }}</span>
+                    <svg class="w-3.5 h-3.5 shrink-0 opacity-60" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                </summary>
+                <div class="absolute right-0 mt-1.5 w-48 rounded-xl border border-black/5 bg-white shadow-lg py-1 z-50">
+                    <div class="px-3 py-1.5 text-xs text-ink/40 truncate border-b border-black/5 sm:hidden">{{ app.user.email }}</div>
+                    <a href="{{ path('admin_account') }}" class="block px-3 py-2 text-sm text-ink/70 hover:bg-black/5 {{ route == 'admin_account' ? 'font-semibold text-brand-700' }}">Konto</a>
+                    <a href="{{ path('app_logout') }}" class="block px-3 py-2 text-sm text-rose-600 hover:bg-rose-50">Logout</a>
+                </div>
+            </details>
+        {% else %}
+            <a href="{{ path('app_logout') }}" class="px-2.5 py-1 rounded-lg text-ink/60 hover:bg-black/5 transition">Logout</a>
+        {% endif %}
     </div>
 </div>
