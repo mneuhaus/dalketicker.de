@@ -2,6 +2,39 @@
 
 {% block title %}AI-Dedup – {{ site_name }}{% endblock %}
 
+{# A small event preview, styled like a list card. `kept` = the canonical event
+   (normal colours); otherwise the hidden duplicate (greyed + struck through). #}
+{% macro preview(event, kept) %}
+    <div class="relative rounded-xl border border-black/5 overflow-hidden bg-white {{ kept ? '' : 'opacity-55 grayscale' }}">
+        <span class="absolute top-2 left-2 z-10 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold {{ kept ? 'bg-emerald-600 text-white' : 'bg-black/60 text-white' }}">
+            {{ kept ? 'Behalten' : 'Ausgeblendet' }}
+        </span>
+        {% if event %}
+            <div class="aspect-[16/9] bg-black/5">
+                {% if event.imageUrl %}
+                    <img src="{{ path('image_proxy', {id: event.id}) }}" alt="" loading="lazy" class="w-full h-full object-cover">
+                {% else %}
+                    <div class="w-full h-full flex items-center justify-center text-ink/25 text-xs">kein Bild</div>
+                {% endif %}
+            </div>
+            <div class="p-3">
+                <div class="flex flex-wrap items-center gap-1.5 mb-1">
+                    {% if event.category %}
+                        <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold text-white whitespace-nowrap" style="background-color: {{ event.category.color }}">{{ event.category.name }}</span>
+                    {% endif %}
+                </div>
+                <h3 class="font-[family-name:var(--font-display)] text-sm font-bold text-ink leading-snug line-clamp-2 {{ kept ? '' : 'line-through' }}">{{ event.title }}</h3>
+                <div class="mt-0.5 text-xs font-semibold text-brand-700">{% if event.allDay %}ganztägig{% else %}{{ event.startsAt|date('H:i') }} Uhr{% endif %}</div>
+                {% if event.displayLocation %}<div class="mt-0.5 text-xs text-ink/50 truncate">{{ event.displayLocation }}</div>{% endif %}
+                <div class="mt-1 text-[10px] text-ink/30">{{ event.source.key }}</div>
+            </div>
+        {% else %}
+            <div class="aspect-[16/9] bg-black/5 flex items-center justify-center text-ink/30 text-xs">gelöscht</div>
+        {% endif %}
+    </div>
+{% endmacro %}
+{% import _self as dd %}
+
 {% block body %}
     <a href="{{ path('admin_imports') }}" class="text-sm text-ink/50 hover:text-brand-700 inline-flex items-center gap-1 mb-4">← Monitoring</a>
 
@@ -32,27 +65,26 @@
             <p class="font-medium text-ink/70">Noch keine KI-Merges.</p>
         </div>
     {% else %}
-        <div class="bg-white rounded-2xl border border-black/5 shadow-sm divide-y divide-black/5">
+        <div class="space-y-4">
             {% for d in decisions %}
-                <div class="flex items-start gap-4 px-4 py-3 text-sm">
-                    <span class="text-ink/40 text-xs w-24 shrink-0">{{ d.day|date('d.m.Y') }}</span>
-                    <div class="min-w-0 flex-1">
-                        <div class="text-ink">
-                            <span class="line-through text-ink/50">{{ d.duplicateEvent ? d.duplicateEvent.title : '(gelöscht)' }}</span>
-                            <span class="text-ink/30 mx-1">→</span>
-                            {% if d.canonicalEvent %}
-                                <a href="{{ path('event_show', {id: d.canonicalEvent.id, slug: d.canonicalEvent.slug}) }}" class="font-medium text-brand-700 hover:underline">{{ d.canonicalEvent.title }}</a>
-                            {% else %}<span class="text-ink/40">(gelöscht)</span>{% endif %}
+                <div class="bg-white rounded-2xl border border-black/5 shadow-sm p-4">
+                    <div class="flex items-start justify-between gap-3 mb-3">
+                        <div class="min-w-0">
+                            <span class="text-xs font-semibold text-ink/50">{{ d.day|date('d.m.Y') }}</span>
+                            {% if d.reason %}<p class="text-sm text-ink/55 mt-0.5">{{ d.reason }}</p>{% endif %}
                         </div>
-                        {% if d.reason %}<div class="text-xs text-ink/45 mt-0.5">{{ d.reason }}</div>{% endif %}
-                        <div class="text-[11px] text-ink/30 mt-0.5">{{ d.model }} · {{ d.createdAt|date('d.m.Y H:i') }}</div>
+                        {% if d.duplicateEvent %}
+                            <form method="post" action="{{ path('admin_dedup_undo', {id: d.id}) }}" class="shrink-0">
+                                <input type="hidden" name="_token" value="{{ csrf_token('dedup_undo') }}">
+                                <button type="submit" class="chip-muted text-xs">Rückgängig</button>
+                            </form>
+                        {% endif %}
                     </div>
-                    {% if d.duplicateEvent %}
-                        <form method="post" action="{{ path('admin_dedup_undo', {id: d.id}) }}" class="shrink-0">
-                            <input type="hidden" name="_token" value="{{ csrf_token('dedup_undo') }}">
-                            <button type="submit" class="chip-muted text-xs">Rückgängig</button>
-                        </form>
-                    {% endif %}
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {{ dd.preview(d.canonicalEvent, true) }}
+                        {{ dd.preview(d.duplicateEvent, false) }}
+                    </div>
+                    <div class="text-[11px] text-ink/30 mt-2">{{ d.model }} · {{ d.createdAt|date('d.m.Y H:i') }}</div>
                 </div>
             {% endfor %}
         </div>
