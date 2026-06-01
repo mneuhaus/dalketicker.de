@@ -1,0 +1,26 @@
+framework:
+    html_sanitizer:
+        sanitizers:
+            # Used to render imported event descriptions (third-party, untrusted).
+            # Keeps the same formatting tags we allowed before, but — unlike the
+            # old striptags()|raw — also strips dangerous attributes (on*, style)
+            # and unsafe href schemes (javascript:, data:); only http/https/mailto
+            # links survive. See templates/event/show + surprise.
+            event_description:
+                allow_elements:
+                    a: ['href', 'title']
+                    p: []
+                    br: []
+                    strong: []
+                    b: []
+                    em: []
+                    i: []
+                    ul: []
+                    ol: []
+                    li: []
+                force_attributes:
+                    a:
+                        rel: 'noopener noreferrer'
+                        target: '_blank'
+                allow_relative_links: false
+                allow_relative_medias: false

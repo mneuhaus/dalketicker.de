@@ -96,7 +96,7 @@
                     {% endif %}
 
                     {% if event.description %}
-                        <div class="prose prose-sm max-w-none mt-6 text-ink/80 whitespace-pre-line">{{ event.description|striptags("<br><p><a><strong><em><ul><ol><li>")|raw }}</div>
+                        <div class="prose prose-sm max-w-none mt-6 text-ink/80 whitespace-pre-line">{{ event.description|sanitize_html('event_description') }}</div>
                     {% endif %}
 
                     <div class="mt-8 pt-5 border-t border-black/5 flex justify-end gap-2">
@@ -162,14 +162,15 @@
                 </a>
             {% endif %}
 
-            {% if event.sourceUrl %}
+            {# Only render imported links when they're real http(s) URLs (no javascript:/data:). #}
+            {% if event.sourceUrl matches '#^https?://#' %}
                 <a href="{{ event.sourceUrl }}" target="_blank" rel="noopener"
                    class="block text-center rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white hover:bg-brand-700 transition">Zur Veranstaltungsseite ↗</a>
             {% endif %}
 
             <p class="text-xs text-ink/40 px-1">
                 Quelle:
-                {% if sourceHome %}
+                {% if sourceHome matches '#^https?://#' %}
                     <a href="{{ sourceHome }}" target="_blank" rel="noopener" class="hover:text-ink/60 hover:underline">{{ event.source.name }}</a>
                 {% else %}
                     {{ event.source.name }}

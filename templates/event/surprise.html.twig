@@ -51,10 +51,10 @@
                                     <p class="text-sm text-ink/55">Veranstalter: {{ event.organizer }}</p>
                                 {% endif %}
                                 {% if event.description %}
-                                    <div class="prose prose-sm max-w-none text-ink/80 whitespace-pre-line">{{ event.description|striptags("<br><p><a><strong><em><ul><ol><li>")|raw }}</div>
+                                    <div class="prose prose-sm max-w-none text-ink/80 whitespace-pre-line">{{ event.description|sanitize_html('event_description') }}</div>
                                 {% endif %}
                                 <div class="flex flex-wrap items-center gap-3 pt-1">
-                                    {% if event.sourceUrl %}
+                                    {% if event.sourceUrl matches '#^https?://#' %}
                                         <a href="{{ event.sourceUrl }}" target="_blank" rel="noopener" class="inline-flex items-center rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 transition">Zur Veranstaltungsseite ↗</a>
                                     {% endif %}
                                     <button type="button" data-save-btn data-event-id="{{ event.id }}" aria-pressed="false"
