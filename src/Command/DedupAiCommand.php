@@ -7,6 +7,7 @@ namespace App\Command;
 use App\Ai\AiDeduper;
 use App\Ai\DuplicateMerger;
 use App\Entity\AiDedupDay;
+use App\Entity\AiDedupDecision;
 use App\Entity\Event;
 use App\Enum\EventStatus;
 use App\Importer\ImportedEvent;
@@ -52,6 +53,7 @@ final class DedupAiCommand extends Command
             ->addOption('from', null, InputOption::VALUE_REQUIRED, 'Startdatum YYYY-MM-DD (Standard: heute)')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Nur vorschlagen, nichts ändern')
             ->addOption('force', null, InputOption::VALUE_NONE, 'Fingerprint-Skip ignorieren (alle Tage prüfen)')
+            ->addOption('reset', null, InputOption::VALUE_NONE, 'Alle bestehenden AI-Merges erst rückgängig machen, dann frisch neu bewerten')
             ->addOption('max-ai-calls', null, InputOption::VALUE_REQUIRED, 'Obergrenze AI-Aufrufe pro Lauf', '200');
     }
 
@@ -81,6 +83,21 @@ final class DedupAiCommand extends Command
         }
 
         $io->title('AI-Dedup'.($dryRun ? ' (dry-run)' : ''));
+
+        // --reset: undo all active merges and wipe the per-day fingerprints, so
+        // the whole window is re-decided from scratch with the current prompt
+        // (e.g. after improving the "which one to keep" logic). Implies --force.
+        if ($input->getOption('reset') && !$dryRun) {
+            $active = $this->em->getRepository(AiDedupDecision::class)->findBy(['active' => true]);
+            foreach ($active as $decision) {
+                $this->merger->undo($decision);
+            }
+            $this->em->createQuery('DELETE FROM '.AiDedupDay::class.' d')->execute();
+            $this->em->flush();
+            $io->note(sprintf('%d bestehende Merges zurückgesetzt – alles wird neu bewertet.', \count($active)));
+            $force = true;
+        }
+
         $dayRepo = $this->em->getRepository(AiDedupDay::class);
         $aiCalls = 0;
         $merges = 0;
