@@ -40,6 +40,28 @@
             {{ f.field(event, 'description', 'Beschreibung', event.description, true) }}
             {{ f.field(event, 'imageUrl', 'Bild-URL', event.imageUrl, false) }}
 
+            <div>
+                <div class="flex items-center justify-between mb-1.5">
+                    <label class="block text-xs font-semibold uppercase tracking-wide text-ink/40">Kategorien</label>
+                    <label class="inline-flex items-center gap-1.5 text-xs text-ink/55 cursor-pointer select-none">
+                        <input type="checkbox" name="lock_categories" {{ event.isFieldLocked('categories') ? 'checked' }}
+                               class="rounded border-black/20 text-brand-600 focus:ring-brand-200">
+                        gepinnt (nicht aus Quelle aktualisieren)
+                    </label>
+                </div>
+                {% set currentSlugs = event.categories|map(c => c.slug) %}
+                <div class="flex flex-wrap gap-2">
+                    {% for category in allCategories %}
+                        <label class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm cursor-pointer hover:bg-black/[0.02]" style="border-color: {{ category.color }}66">
+                            <input type="checkbox" name="categories[]" value="{{ category.slug }}" {{ category.slug in currentSlugs ? 'checked' }}
+                                   class="rounded border-black/20 text-brand-600 focus:ring-brand-200">
+                            <span class="w-2.5 h-2.5 rounded-full" style="background:{{ category.color }}"></span>
+                            {{ category.name }}
+                        </label>
+                    {% endfor %}
+                </div>
+            </div>
+
             {% if event.imageUrl %}
                 <div>
                     <span class="block text-xs font-semibold uppercase tracking-wide text-ink/40 mb-1">Bild-Vorschau</span>

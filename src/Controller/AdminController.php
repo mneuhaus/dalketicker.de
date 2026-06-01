@@ -14,6 +14,7 @@ use App\Entity\ContactMessage;
 use App\Repository\ContactMessageRepository;
 use App\Entity\User;
 use App\Importer\ImporterRegistry;
+use App\Repository\CategoryRepository;
 use App\Repository\EventRepository;
 use App\Repository\ImportRunRepository;
 use App\Repository\SourceRepository;
@@ -337,18 +338,21 @@ final class AdminController extends AbstractController
 
     /** Edit & pin individual event fields so a correction survives re-imports. */
     #[Route('/events/{id}/edit', name: 'admin_event_edit', requirements: ['id' => '\d+'], methods: ['GET'])]
-    public function eventEdit(int $id, EventRepository $events): Response
+    public function eventEdit(int $id, EventRepository $events, CategoryRepository $categories): Response
     {
         $event = $events->find($id);
         if ($event === null) {
             throw $this->createNotFoundException('Event nicht gefunden.');
         }
 
-        return $this->render('admin/event_edit.html.twig', ['event' => $event]);
+        return $this->render('admin/event_edit.html.twig', [
+            'event' => $event,
+            'allCategories' => $categories->findAllOrdered(),
+        ]);
     }
 
     #[Route('/events/{id}', name: 'admin_event_update', requirements: ['id' => '\d+'], methods: ['POST'])]
-    public function eventUpdate(int $id, Request $request, EventRepository $events, EntityManagerInterface $em): RedirectResponse
+    public function eventUpdate(int $id, Request $request, EventRepository $events, CategoryRepository $categories, EntityManagerInterface $em): RedirectResponse
     {
         $event = $events->find($id);
         if ($event === null) {
@@ -365,8 +369,17 @@ final class AdminController extends AbstractController
         $event->setDescription($this->blankToNull(trim((string) $request->request->get('description', ''))));
         $event->setImageUrl($this->blankToNull(mb_substr(trim((string) $request->request->get('imageUrl', '')), 0, 1024)));
 
+        $cats = [];
+        foreach ((array) $request->request->all('categories') as $slug) {
+            $cat = is_string($slug) ? $categories->findBySlug($slug) : null;
+            if ($cat !== null) {
+                $cats[] = $cat;
+            }
+        }
+        $event->setCategories($cats);
+
         // A field is "pinned" (kept across re-imports) when its checkbox is set.
-        foreach (['title', 'organizer', 'description', 'imageUrl'] as $field) {
+        foreach (['title', 'organizer', 'description', 'imageUrl', 'categories'] as $field) {
             $event->setFieldLocked($field, $request->request->getBoolean('lock_'.$field));
         }
         $em->flush();

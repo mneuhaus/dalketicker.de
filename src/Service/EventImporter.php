@@ -164,14 +164,16 @@ final class EventImporter
         }
         $event->setLocationText($dto->locationText !== null ? mb_substr($dto->locationText, 0, 255) : null);
         $event->setVenue($this->venues->findOrCreate($dto->venueName, $dto->city));
-        $cats = [];
-        foreach ($dto->allCategorySlugs() as $slug) {
-            $category = $this->categories->findBySlug($slug);
-            if ($category !== null) {
-                $cats[] = $category;
+        if (!$event->isFieldLocked('categories')) {
+            $cats = [];
+            foreach ($dto->allCategorySlugs() as $slug) {
+                $category = $this->categories->findBySlug($slug);
+                if ($category !== null) {
+                    $cats[] = $category;
+                }
             }
+            $event->setCategories($cats);
         }
-        $event->setCategories($cats);
         $event->setSourceUrl($dto->sourceUrl !== null ? substr($dto->sourceUrl, 0, 1024) : null);
         $event->setImageUrl($dto->imageUrl !== null ? substr($dto->imageUrl, 0, 1024) : null);
         $event->setPrice($dto->price !== null ? mb_substr($dto->price, 0, 120) : null);
