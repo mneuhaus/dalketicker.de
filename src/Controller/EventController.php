@@ -36,9 +36,14 @@ final class EventController extends AbstractController
         $events = $this->events->findUpcoming($filter, self::PER_PAGE, $offset);
         $total = $this->events->countUpcoming($filter);
         $today = $this->clock->now()->setTimezone(new \DateTimeZone('Europe/Berlin'));
+        // Group multi-day events that span into the window under the window start
+        // (e.g. a Thu–Sun market shows on Saturday for the "Wochenende" filter).
+        $floor = $filter->onlySaved
+            ? null
+            : (($filter->from !== null && $filter->from > $today) ? $filter->from : $today);
 
         return $this->render('event/index.html.twig', [
-            'groups' => $this->groupByDay($events, $filter->onlySaved ? null : $today),
+            'groups' => $this->groupByDay($events, $floor),
             'total' => $total,
             'page' => $page,
             'pages' => max(1, (int) ceil($total / self::PER_PAGE)),

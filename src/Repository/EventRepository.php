@@ -303,13 +303,14 @@ class EventRepository extends ServiceEntityRepository
         $tz = new \DateTimeZone('Europe/Berlin');
         $now = new \DateTimeImmutable('now', $tz);
 
-        // Default lower bound: things that haven't ended yet. An explicit
-        // "von" filter overrides the floor; "Meine Events" drops it entirely so
+        // Lower bound on OVERLAP, not on start: an event counts as inside the
+        // window if it hasn't ended before it begins. So a multi-day event that
+        // starts before the window (e.g. a Thu–Sun market) still shows up under
+        // "Wochenende". "Von" overrides the floor; "Meine Events" drops it so
         // saved past events still show up.
-        if ($filter->from !== null) {
-            $qb->andWhere('e.startsAt >= :from')->setParameter('from', $filter->from);
-        } elseif (!$filter->onlySaved) {
-            $qb->andWhere('COALESCE(e.endsAt, e.startsAt) >= :now')->setParameter('now', $now);
+        $floor = $filter->from ?? (!$filter->onlySaved ? $now : null);
+        if ($floor !== null) {
+            $qb->andWhere('COALESCE(e.endsAt, e.startsAt) >= :floor')->setParameter('floor', $floor);
         }
 
         if ($filter->to !== null) {
