@@ -109,6 +109,7 @@
                     <th class="px-4 py-3">Ort</th>
                     <th class="px-4 py-3">Kategorie</th>
                     <th class="px-4 py-3 text-right">Status</th>
+                    <th class="px-4 py-3"></th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-black/5">
@@ -134,9 +135,12 @@
                             {% else %}<span class="text-ink/30">–</span>{% endfor %}
                         </td>
                         <td class="px-4 py-2.5 text-right">{{ ui.event_badge(event.status.value) }}</td>
+                        <td class="px-4 py-2.5 text-right whitespace-nowrap">
+                            <a href="{{ path('admin_event_edit', {id: event.id}) }}" class="text-xs text-brand-700 hover:underline">bearbeiten{% if event.lockedFields %} <span class="text-ink/45" title="gepinnte Felder">({{ event.lockedFields|length }} gepinnt)</span>{% endif %}</a>
+                        </td>
                     </tr>
                 {% else %}
-                    <tr><td colspan="5" class="px-4 py-6 text-ink/40 text-sm">Noch keine Events aus dieser Quelle.</td></tr>
+                    <tr><td colspan="6" class="px-4 py-6 text-ink/40 text-sm">Noch keine Events aus dieser Quelle.</td></tr>
                 {% endfor %}
             </tbody>
         </table>

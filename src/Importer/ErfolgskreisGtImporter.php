@@ -280,17 +280,19 @@ final class ErfolgskreisGtImporter implements SourceImporter
     /** @param array<string, mixed> $item */
     private function extractDescription(array $item): ?string
     {
-        $text = $this->extractText($item, 'teaser') ?? $this->extractText($item, 'details');
+        // Prefer the full details text over the short teaser so descriptions
+        // aren't cut off mid-sentence; fall back to the teaser if there are no details.
+        $text = $this->extractText($item, 'details') ?? $this->extractText($item, 'teaser');
         if ($text === null) {
             return null;
         }
-        // Keep it short to stay well clear of reproducing source copy.
         $text = trim(preg_replace('/\s+/', ' ', strip_tags($text)) ?? '');
         if ($text === '') {
             return null;
         }
-        if (mb_strlen($text) > 400) {
-            $text = mb_substr($text, 0, 397).'...';
+        // Generous cap: full event descriptions fit, only truly huge ones are trimmed.
+        if (mb_strlen($text) > 2000) {
+            $text = mb_substr($text, 0, 1997).'...';
         }
 
         return $text;

@@ -152,11 +152,16 @@ final class EventImporter
         $event = $existing ?? new Event($dto->title, $dto->startsAt, $source);
         $isNew = $existing === null;
 
-        $event->setTitle(mb_substr($dto->title, 0, 300));
+        // Admin-pinned fields keep their corrected value across re-imports.
+        if (!$event->isFieldLocked('title')) {
+            $event->setTitle(mb_substr($dto->title, 0, 300));
+        }
         $event->setStartsAt($dto->startsAt);
         $event->setEndsAt($dto->endsAt);
         $event->setAllDay($dto->allDay);
-        $event->setDescription($dto->description);
+        if (!$event->isFieldLocked('description')) {
+            $event->setDescription($dto->description);
+        }
         $event->setLocationText($dto->locationText !== null ? mb_substr($dto->locationText, 0, 255) : null);
         $event->setVenue($this->venues->findOrCreate($dto->venueName, $dto->city));
         $cats = [];
@@ -178,7 +183,10 @@ final class EventImporter
         $event->setDedupKey($dedupKey);
         $event->setRaw($dto->raw);
         $event->setLastSeenAt($now);
-        $event->setSlug($this->buildSlug($dto));
+        // Keep the existing slug when the title is pinned (it reflects the override).
+        if (!$event->isFieldLocked('title') || $event->getSlug() === '') {
+            $event->setSlug($this->buildSlug($dto));
+        }
 
         if ($isNew) {
             $event->setFirstSeenAt($now);

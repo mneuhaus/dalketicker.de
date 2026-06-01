@@ -119,6 +119,16 @@ class Event
     #[ORM\Column(type: Types::JSON)]
     private array $raw = [];
 
+    /**
+     * Admin-pinned fields (e.g. "title", "organizer", "description", "imageUrl")
+     * that the importer must NOT overwrite on re-import — used to correct a
+     * source's data and have the fix survive future imports.
+     *
+     * @var list<string>
+     */
+    #[ORM\Column(type: Types::JSON)]
+    private array $lockedFields = [];
+
     #[ORM\Column(type: Types::DATETIME_IMMUTABLE)]
     private \DateTimeImmutable $firstSeenAt;
 
@@ -449,6 +459,28 @@ class Event
     public function setRaw(array $raw): static
     {
         $this->raw = $raw;
+
+        return $this;
+    }
+
+    /** @return list<string> */
+    public function getLockedFields(): array
+    {
+        return $this->lockedFields;
+    }
+
+    public function isFieldLocked(string $field): bool
+    {
+        return \in_array($field, $this->lockedFields, true);
+    }
+
+    public function setFieldLocked(string $field, bool $locked): static
+    {
+        $set = array_values(array_filter($this->lockedFields, static fn (string $f) => $f !== $field));
+        if ($locked) {
+            $set[] = $field;
+        }
+        $this->lockedFields = $set;
 
         return $this;
     }

@@ -241,6 +241,52 @@ final class AdminController extends AbstractController
         return $this->redirectToRoute('admin_dedup');
     }
 
+    /** Edit & pin individual event fields so a correction survives re-imports. */
+    #[Route('/events/{id}/edit', name: 'admin_event_edit', requirements: ['id' => '\d+'], methods: ['GET'])]
+    public function eventEdit(int $id, EventRepository $events): Response
+    {
+        $event = $events->find($id);
+        if ($event === null) {
+            throw $this->createNotFoundException('Event nicht gefunden.');
+        }
+
+        return $this->render('admin/event_edit.html.twig', ['event' => $event]);
+    }
+
+    #[Route('/events/{id}', name: 'admin_event_update', requirements: ['id' => '\d+'], methods: ['POST'])]
+    public function eventUpdate(int $id, Request $request, EventRepository $events, EntityManagerInterface $em): RedirectResponse
+    {
+        $event = $events->find($id);
+        if ($event === null) {
+            throw $this->createNotFoundException('Event nicht gefunden.');
+        }
+        if (!$this->isCsrfTokenValid('event_edit', (string) $request->request->get('_token'))) {
+            $this->addFlash('error', 'Ungültiges Formular.');
+
+            return $this->redirectToRoute('admin_event_edit', ['id' => $id]);
+        }
+
+        $event->setTitle(mb_substr(trim((string) $request->request->get('title', '')), 0, 300) ?: $event->getTitle());
+        $event->setOrganizer($this->blankToNull(mb_substr(trim((string) $request->request->get('organizer', '')), 0, 200)));
+        $event->setDescription($this->blankToNull(trim((string) $request->request->get('description', ''))));
+        $event->setImageUrl($this->blankToNull(mb_substr(trim((string) $request->request->get('imageUrl', '')), 0, 1024)));
+
+        // A field is "pinned" (kept across re-imports) when its checkbox is set.
+        foreach (['title', 'organizer', 'description', 'imageUrl'] as $field) {
+            $event->setFieldLocked($field, $request->request->getBoolean('lock_'.$field));
+        }
+        $em->flush();
+
+        $this->addFlash('success', 'Event gespeichert. Gepinnte Felder bleiben beim nächsten Import erhalten.');
+
+        return $this->redirectToRoute('admin_event_edit', ['id' => $id]);
+    }
+
+    private function blankToNull(string $v): ?string
+    {
+        return $v === '' ? null : $v;
+    }
+
     /** Contact-form inbox: real enquiries and AI-flagged spam, separately. */
     #[Route('/kontakt', name: 'admin_contact', methods: ['GET'])]
     public function contact(Request $request, ContactMessageRepository $repo, EntityManagerInterface $em): Response
