@@ -50,12 +50,11 @@ final class RededupCommand extends Command
         $dryRun = (bool) $input->getOption('dry-run');
         $now = $this->clock->now()->setTimezone(new \DateTimeZone('Europe/Berlin'));
 
-        // Events the AI deduper manages must not be re-published by this pass.
-        $aiDup = array_flip(array_map('intval', $this->db->fetchFirstColumn(
-            'SELECT duplicate_event_id FROM ai_dedup_decision WHERE active = true'
-        )));
-
         // Upcoming, key-deduplicatable events (published or key-duplicate).
+        // We group by dedup key — events sharing an exact key are definitely the
+        // same event, so key-based dedup is authoritative and may override a
+        // same-key AI merge. Fuzzy AI merges use *different* keys, so they land
+        // in single-member groups below and stay untouched.
         /** @var Event[] $events */
         $events = $this->em->createQueryBuilder()
             ->select('e', 's')
@@ -70,9 +69,6 @@ final class RededupCommand extends Command
         /** @var array<string, Event[]> $groups */
         $groups = [];
         foreach ($events as $e) {
-            if (isset($aiDup[$e->getId()])) {
-                continue; // leave AI-managed duplicates alone
-            }
             $groups[$e->getDedupKey()][] = $e;
         }
 
@@ -84,6 +80,24 @@ final class RededupCommand extends Command
             }
             usort($group, $this->compare(...));
             $winner = $group[0];
+
+            // The primary winner borrows image/text/organizer it lacks from the
+            // richer (often aggregator) copies, so we keep the primary source as
+            // canonical without losing the flyer image. Re-applied every run, so
+            // it survives the import overwriting the primary's empty fields.
+            if (!$dryRun) {
+                foreach (\array_slice($group, 1) as $loser) {
+                    if ($winner->getImageUrl() === null && $loser->getImageUrl() !== null) {
+                        $winner->setImageUrl($loser->getImageUrl());
+                    }
+                    if (($winner->getDescription() === null || $winner->getDescription() === '') && (string) $loser->getDescription() !== '') {
+                        $winner->setDescription($loser->getDescription());
+                    }
+                    if ($winner->getOrganizer() === null && (string) $loser->getOrganizer() !== '') {
+                        $winner->setOrganizer($loser->getOrganizer());
+                    }
+                }
+            }
 
             foreach ($group as $i => $e) {
                 $shouldBeDuplicate = $i !== 0;
@@ -107,6 +121,12 @@ final class RededupCommand extends Command
 
         if (!$dryRun) {
             $this->em->flush();
+            // Retire AI-dedup decisions whose canonical we just demoted — the
+            // key-based primary decision supersedes them (and keeps the AI pass
+            // from flip-flopping the pair next run).
+            $this->db->executeStatement(
+                "UPDATE ai_dedup_decision SET active = false WHERE active = true AND canonical_event_id IN (SELECT id FROM event WHERE status = 'duplicate')"
+            );
         }
 
         foreach (\array_slice($promoted, 0, 15) as $line) {
