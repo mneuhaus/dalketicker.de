@@ -29,7 +29,11 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     {% block head_links %}{% endblock %}
-    {% block stylesheets %}{% endblock %}
+    {% block stylesheets %}
+        {# Linked directly (not imported via JS) so the browser applies it
+           immediately and no data:-URI CSS module ends up in the importmap. #}
+        <link rel="stylesheet" href="{{ asset('styles/app.css') }}">
+    {% endblock %}
     {% block javascripts %}
         {% block importmap %}{{ importmap('app') }}{% endblock %}
     {% endblock %}
