@@ -5,8 +5,14 @@ vendor/
 node_modules/
 public/assets/
 assets/vendor/
-.env.local
-.env.*.local
+# Never bake real/secret dotenv files into the image. The sibling .env (used
+# only for compose ${VAR} substitution) holds real secrets and must stay out of
+# image layers; prod gets its real values via the compose `environment:` block.
+# Symfony still needs *a* dotenv file at boot, so the secret-free .env.dist is
+# kept (re-included) as the in-image fallback.
+.env
+.env.*
+!.env.dist
 .docker-initialized
 docker-compose*.yml
 compose*.yaml

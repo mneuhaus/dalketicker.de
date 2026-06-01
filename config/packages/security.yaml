@@ -20,13 +20,20 @@ security:
                 check_path: app_login
                 enable_csrf: true
                 default_target_path: admin_imports
+            # Throttle brute-force against the single admin login (per IP +
+            # username). Requires symfony/rate-limiter.
+            login_throttling:
+                max_attempts: 5 # pro Minute
             # Keep the admin logged in across browser restarts. Strictly a
             # functional auth cookie (signed, no tracking), only ever set when
-            # the admin logs in — no consent banner needed.
+            # the admin logs in — no consent banner needed. secure: only sent
+            # over HTTPS (Traefik terminates TLS; trusted_proxies lets the app
+            # see the request as secure).
             remember_me:
                 secret: '%kernel.secret%'
                 lifetime: 2592000 # 30 Tage
                 samesite: lax
+                secure: true
             logout:
                 path: app_logout
                 target: event_index

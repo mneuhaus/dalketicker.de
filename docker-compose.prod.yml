@@ -26,6 +26,7 @@ services:
       TRUSTED_PROXIES: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
       DATABASE_URL: "postgresql://dalke:${DB_PASSWORD}@database:5432/dalketicker?serverVersion=16&charset=utf8"
       MAILER_DSN: null://null
+      MESSENGER_TRANSPORT_DSN: "doctrine://default?auto_setup=0"
       DEFAULT_URI: https://dalketicker.de
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
       DEDUP_AI_MODEL: ${DEDUP_AI_MODEL:-anthropic/claude-sonnet-4}
