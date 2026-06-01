@@ -186,9 +186,11 @@ deploy/migrate: ## Run migrations in a one-off container on the freshly built im
 deploy/rollout: ## Blue-green swap: start new container, wait until healthy, then drop the old one
 	ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && \
 	  OLD=$$($(PROD) ps -q app | head -1); \
+	  if [ -z "$$OLD" ]; then echo "kein laufender app-Container - Erststart"; $(PROD) up -d --no-deps app; exit $$?; fi; \
 	  echo "alter Container: $$OLD"; \
 	  $(PROD) up -d --no-deps --no-recreate --scale app=2 app; \
 	  NEW=$$($(PROD) ps -q app | grep -v "$$OLD" | head -1); \
+	  if [ -z "$$NEW" ]; then echo "ABBRUCH: neuer Container nicht gestartet - alter bleibt aktiv"; exit 1; fi; \
 	  echo "neuer Container: $$NEW"; \
 	  for i in $$(seq 1 45); do \
 	    s=$$(docker inspect -f "{{.State.Health.Status}}" "$$NEW" 2>/dev/null || echo none); \
@@ -197,14 +199,12 @@ deploy/rollout: ## Blue-green swap: start new container, wait until healthy, the
 	  done; \
 	  if [ "$$(docker inspect -f "{{.State.Health.Status}}" "$$NEW")" != "healthy" ]; then \
 	    echo "ABBRUCH: neuer Container nicht gesund - alter bleibt aktiv"; \
-	    docker rm -f "$$NEW"; \
-	    $(PROD) up -d --no-deps --scale app=1 --no-recreate app; \
+	    docker rm -f "$$NEW" >/dev/null 2>&1 || true; \
 	    exit 1; \
 	  fi; \
 	  echo "neuer Container gesund - kurz drainen, dann alten entfernen"; \
 	  sleep 3; \
 	  docker stop "$$OLD" >/dev/null && docker rm "$$OLD" >/dev/null; \
-	  $(PROD) up -d --no-deps --scale app=1 --no-recreate app; \
 	  echo "Swap abgeschlossen"'
 
 deploy/import: ## Run importers on the server
