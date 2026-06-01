@@ -164,9 +164,9 @@ DEPLOY_HOST = root@neuhaus.nrw
 DEPLOY_PATH = /opt/dalketicker.neuhaus.nrw
 PROD = docker compose -f docker-compose.prod.yml
 
-.PHONY: deploy deploy/sync deploy/build deploy/migrate
+.PHONY: deploy deploy/sync deploy/build deploy/migrate deploy/rollout
 
-deploy: deploy/sync deploy/build deploy/migrate ## Sync, rebuild and migrate on the server
+deploy: deploy/sync deploy/build deploy/migrate deploy/rollout ## Sync, build, migrate, zero-downtime swap
 	@echo "Deployed -> https://dalketicker.neuhaus.nrw"
 
 deploy/sync: ## rsync code to the server (excludes .env and build artifacts)
@@ -177,11 +177,34 @@ deploy/sync: ## rsync code to the server (excludes .env and build artifacts)
 	  -e 'ssh -o BatchMode=yes' \
 	  ./ $(DEPLOY_HOST):$(DEPLOY_PATH)/
 
-deploy/build: ## Rebuild and (re)start the prod containers on the server
-	ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && $(PROD) up -d --build'
+deploy/build: ## Build the new prod image (the running container keeps serving)
+	ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && $(PROD) build app'
 
-deploy/migrate: ## Run migrations on the server
-	ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && $(PROD) exec -T app php bin/console doctrine:migrations:migrate --no-interaction'
+deploy/migrate: ## Run migrations in a one-off container on the freshly built image
+	ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && $(PROD) run --rm --no-deps app php bin/console doctrine:migrations:migrate --no-interaction'
+
+deploy/rollout: ## Blue-green swap: start new container, wait until healthy, then drop the old one
+	ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && \
+	  OLD=$$($(PROD) ps -q app | head -1); \
+	  echo "alter Container: $$OLD"; \
+	  $(PROD) up -d --no-deps --no-recreate --scale app=2 app; \
+	  NEW=$$($(PROD) ps -q app | grep -v "$$OLD" | head -1); \
+	  echo "neuer Container: $$NEW"; \
+	  for i in $$(seq 1 45); do \
+	    s=$$(docker inspect -f "{{.State.Health.Status}}" "$$NEW" 2>/dev/null || echo none); \
+	    [ "$$s" = "healthy" ] && break; \
+	    echo "warte auf Health ($$s)..."; sleep 2; \
+	  done; \
+	  if [ "$$(docker inspect -f "{{.State.Health.Status}}" "$$NEW")" != "healthy" ]; then \
+	    echo "ABBRUCH: neuer Container nicht gesund - alter bleibt aktiv"; \
+	    docker rm -f "$$NEW"; \
+	    $(PROD) up -d --no-deps --scale app=1 --no-recreate app; \
+	    exit 1; \
+	  fi; \
+	  echo "neuer Container gesund - alten entfernen"; \
+	  docker stop "$$OLD" >/dev/null && docker rm "$$OLD" >/dev/null; \
+	  $(PROD) up -d --no-deps --scale app=1 --no-recreate app; \
+	  echo "Swap abgeschlossen"'
 
 deploy/import: ## Run importers on the server
 	ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && $(PROD) exec -T app php bin/console dalketicker:import --all'
