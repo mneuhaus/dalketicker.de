@@ -48,6 +48,8 @@ final class CategorizeAiCommand extends Command
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Max. Events pro Pass (0 = alle)', '0')
             ->addOption('batch', null, InputOption::VALUE_REQUIRED, 'Events pro KI-Aufruf', '25')
             ->addOption('max-calls', null, InputOption::VALUE_REQUIRED, 'Max. KI-Aufrufe insgesamt (0 = unbegrenzt)', '0')
+            ->addOption('shards', null, InputOption::VALUE_REQUIRED, 'Gesamtzahl paralleler Läufe (für Sharding)', '1')
+            ->addOption('shard', null, InputOption::VALUE_REQUIRED, 'Index dieses Laufs (0..shards-1)', '0')
             ->addOption('reset', null, InputOption::VALUE_NONE, 'Alle KI-Kategorie-Entscheidungen zurücksetzen (für sauberen Neulauf nach Prompt-Änderung)');
     }
 
@@ -75,10 +77,13 @@ final class CategorizeAiCommand extends Command
         $calls = 0;
         $stats = ['fill' => 0, 'suggestions' => 0, 'agreed' => 0, 'skipped' => 0];
 
+        $shards = max(1, (int) $input->getOption('shards'));
+        $shard = max(0, (int) $input->getOption('shard'));
+
         // One date-ordered pass: soonest events first, then further into the
         // future. Each event is a "fill" (no real category) or an "opinion"
         // (already categorized) — decided per event, not in separate phases.
-        $events = $this->events->findUncheckedUpcoming($limit > 0 ? $limit : 100000);
+        $events = $this->events->findUncheckedUpcoming($limit > 0 ? $limit : 100000, $shards, $shard);
         $io->writeln(sprintf('%d ungeprüfte Events (nach Datum) …', \count($events)));
 
         foreach (array_chunk($events, $batch) as $chunk) {

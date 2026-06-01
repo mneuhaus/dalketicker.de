@@ -39,7 +39,9 @@ final class SummarizeAiCommand extends Command
             ->addOption('apply', null, InputOption::VALUE_NONE, 'Zusammenfassungen speichern (sonst Dry-Run)')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Max. Events (0 = alle)', '0')
             ->addOption('batch', null, InputOption::VALUE_REQUIRED, 'Events pro KI-Aufruf', '20')
-            ->addOption('max-calls', null, InputOption::VALUE_REQUIRED, 'Max. KI-Aufrufe (0 = unbegrenzt)', '0');
+            ->addOption('max-calls', null, InputOption::VALUE_REQUIRED, 'Max. KI-Aufrufe (0 = unbegrenzt)', '0')
+            ->addOption('shards', null, InputOption::VALUE_REQUIRED, 'Gesamtzahl paralleler Läufe', '1')
+            ->addOption('shard', null, InputOption::VALUE_REQUIRED, 'Index dieses Laufs (0..shards-1)', '0');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -57,7 +59,9 @@ final class SummarizeAiCommand extends Command
             return Command::FAILURE;
         }
 
-        $events = $this->events->findWithoutSummary($limit > 0 ? $limit : 100000);
+        $shards = max(1, (int) $input->getOption('shards'));
+        $shard = max(0, (int) $input->getOption('shard'));
+        $events = $this->events->findWithoutSummary($limit > 0 ? $limit : 100000, $shards, $shard);
         if ($events === []) {
             $io->success('Keine Events ohne Vorschau.');
 

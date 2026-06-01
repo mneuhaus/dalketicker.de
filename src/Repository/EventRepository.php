@@ -240,16 +240,27 @@ class EventRepository extends ServiceEntityRepository
      *
      * @return Event[]
      */
-    public function findUncheckedUpcoming(int $limit = 100000): array
+    public function findUncheckedUpcoming(int $limit = 100000, int $shards = 1, int $shard = 0): array
     {
-        return $this->visibleQueryBuilder(new EventFilter())
+        $qb = $this->visibleQueryBuilder(new EventFilter())
             ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :now')
             ->andWhere('e.id NOT IN (SELECT IDENTITY(aicd.event) FROM '.\App\Entity\AiCategoryDecision::class.' aicd)')
             ->setParameter('now', new \DateTimeImmutable('now', new \DateTimeZone('Europe/Berlin')))
             ->orderBy('e.startsAt', 'ASC')
-            ->setMaxResults($limit)
-            ->getQuery()
-            ->getResult();
+            ->setMaxResults($limit);
+        $this->applyShard($qb, $shards, $shard);
+
+        return $qb->getQuery()->getResult();
+    }
+
+    /** Split work across parallel runs by event id (disjoint sets, no races). */
+    private function applyShard(QueryBuilder $qb, int $shards, int $shard): void
+    {
+        if ($shards > 1) {
+            $qb->andWhere('MOD(e.id, :shards) = :shard')
+                ->setParameter('shards', $shards)
+                ->setParameter('shard', $shard);
+        }
     }
 
     /**
@@ -258,9 +269,9 @@ class EventRepository extends ServiceEntityRepository
      *
      * @return Event[]
      */
-    public function findWithoutSummary(int $limit = 100000): array
+    public function findWithoutSummary(int $limit = 100000, int $shards = 1, int $shard = 0): array
     {
-        return $this->visibleQueryBuilder(new EventFilter())
+        $qb = $this->visibleQueryBuilder(new EventFilter())
             ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :now')
             ->andWhere('e.summary IS NULL')
             ->andWhere("e.description IS NOT NULL AND e.description != ''")
@@ -268,9 +279,34 @@ class EventRepository extends ServiceEntityRepository
             ->andWhere('s.factsOnly = false')
             ->setParameter('now', new \DateTimeImmutable('now', new \DateTimeZone('Europe/Berlin')))
             ->orderBy('e.startsAt', 'ASC')
-            ->setMaxResults($limit)
-            ->getQuery()
-            ->getResult();
+            ->setMaxResults($limit);
+        $this->applyShard($qb, $shards, $shard);
+
+        return $qb->getQuery()->getResult();
+    }
+
+    /** Events that already have an AI teaser (for admin progress). */
+    public function countWithSummary(): int
+    {
+        return (int) $this->visibleQueryBuilder(new EventFilter())
+            ->select('COUNT(e.id)')
+            ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :now')
+            ->andWhere('e.summary IS NOT NULL')
+            ->andWhere('s.factsOnly = false')
+            ->setParameter('now', new \DateTimeImmutable('now', new \DateTimeZone('Europe/Berlin')))
+            ->getQuery()->getSingleScalarResult();
+    }
+
+    /** Events eligible for a teaser (own source, upcoming, has description). */
+    public function countSummaryEligible(): int
+    {
+        return (int) $this->visibleQueryBuilder(new EventFilter())
+            ->select('COUNT(e.id)')
+            ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :now')
+            ->andWhere("e.description IS NOT NULL AND e.description != ''")
+            ->andWhere('s.factsOnly = false')
+            ->setParameter('now', new \DateTimeImmutable('now', new \DateTimeZone('Europe/Berlin')))
+            ->getQuery()->getSingleScalarResult();
     }
 
     /** Upcoming published events the categorizer hasn't looked at yet (no decision). */
