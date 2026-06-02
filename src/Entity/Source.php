@@ -52,6 +52,18 @@ class Source
     #[ORM\Column]
     private bool $factsOnly = false;
 
+    /** When we recorded a publishing permission ("Freigabe") from the source. */
+    #[ORM\Column(type: Types::DATETIME_IMMUTABLE, nullable: true)]
+    private ?\DateTimeImmutable $approvedAt = null;
+
+    /** Note on the approval (who/how, e.g. "Mail von … am …"). */
+    #[ORM\Column(type: Types::TEXT, nullable: true)]
+    private ?string $approvalNote = null;
+
+    /** Filename of an uploaded approval proof (e-mail screenshot), in var/uploads/freigaben. */
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $approvalImage = null;
+
     /** Free-form per-source importer configuration (selectors, mappings, ...). */
     #[ORM\Column(type: Types::JSON)]
     private array $config = [];
@@ -148,6 +160,47 @@ class Source
     public function setFactsOnly(bool $factsOnly): static
     {
         $this->factsOnly = $factsOnly;
+
+        return $this;
+    }
+
+    public function isApproved(): bool
+    {
+        return $this->approvedAt !== null;
+    }
+
+    public function getApprovedAt(): ?\DateTimeImmutable
+    {
+        return $this->approvedAt;
+    }
+
+    public function setApprovedAt(?\DateTimeImmutable $approvedAt): static
+    {
+        $this->approvedAt = $approvedAt;
+
+        return $this;
+    }
+
+    public function getApprovalNote(): ?string
+    {
+        return $this->approvalNote;
+    }
+
+    public function setApprovalNote(?string $note): static
+    {
+        $this->approvalNote = $note;
+
+        return $this;
+    }
+
+    public function getApprovalImage(): ?string
+    {
+        return $this->approvalImage;
+    }
+
+    public function setApprovalImage(?string $filename): static
+    {
+        $this->approvalImage = $filename;
 
         return $this;
     }

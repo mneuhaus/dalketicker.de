@@ -113,6 +113,81 @@ final class AdminController extends AbstractController
         ]);
     }
 
+    /** Enable/disable a source (won't be imported while disabled). */
+    #[Route('/sources/{id}/toggle', name: 'admin_source_toggle', requirements: ['id' => '\d+'], methods: ['POST'])]
+    public function sourceToggle(int $id, Request $request, SourceRepository $sources, EntityManagerInterface $em): RedirectResponse
+    {
+        $source = $sources->find($id);
+        if ($source !== null && $this->isCsrfTokenValid('source_toggle', (string) $request->request->get('_token'))) {
+            $source->setEnabled(!$source->isEnabled());
+            $em->flush();
+            $this->addFlash('success', $source->isEnabled() ? 'Quelle aktiviert.' : 'Quelle deaktiviert.');
+        }
+
+        return $this->redirectToRoute('admin_source', ['id' => $id]);
+    }
+
+    /** Record/clear a publishing permission ("Freigabe") incl. an optional proof image. */
+    #[Route('/sources/{id}/freigabe', name: 'admin_source_approval', requirements: ['id' => '\d+'], methods: ['POST'])]
+    public function sourceApproval(int $id, Request $request, SourceRepository $sources, EntityManagerInterface $em, #[Autowire('%kernel.project_dir%')] string $projectDir): RedirectResponse
+    {
+        $source = $sources->find($id);
+        if ($source === null || !$this->isCsrfTokenValid('source_approval', (string) $request->request->get('_token'))) {
+            return $this->redirectToRoute('admin_source', ['id' => $id]);
+        }
+
+        $dir = $projectDir.'/var/uploads/freigaben';
+
+        if ($request->request->get('action') === 'clear') {
+            if ($source->getApprovalImage() !== null) {
+                @unlink($dir.'/'.$source->getApprovalImage());
+            }
+            $source->setApprovedAt(null)->setApprovalNote(null)->setApprovalImage(null);
+            $em->flush();
+            $this->addFlash('success', 'Freigabe entfernt.');
+
+            return $this->redirectToRoute('admin_source', ['id' => $id]);
+        }
+
+        $approved = $request->request->getBoolean('approved');
+        $source->setApprovedAt($approved ? ($source->getApprovedAt() ?? new \DateTimeImmutable('now')) : null);
+        $source->setApprovalNote($this->blankToNull(trim((string) $request->request->get('note', ''))));
+
+        $file = $request->files->get('image');
+        if ($file instanceof \Symfony\Component\HttpFoundation\File\UploadedFile && $file->isValid()) {
+            if (!str_starts_with((string) $file->getMimeType(), 'image/')) {
+                $this->addFlash('error', 'Nur Bilddateien erlaubt.');
+
+                return $this->redirectToRoute('admin_source', ['id' => $id]);
+            }
+            @mkdir($dir, 0775, true);
+            if ($source->getApprovalImage() !== null) {
+                @unlink($dir.'/'.$source->getApprovalImage());
+            }
+            $name = $source->getKey().'-'.bin2hex(random_bytes(6)).'.'.($file->guessExtension() ?: 'png');
+            $file->move($dir, $name);
+            $source->setApprovalImage($name);
+        }
+
+        $em->flush();
+        $this->addFlash('success', 'Freigabe gespeichert.');
+
+        return $this->redirectToRoute('admin_source', ['id' => $id]);
+    }
+
+    /** Stream the uploaded approval proof image (admin only). */
+    #[Route('/sources/{id}/freigabe-bild', name: 'admin_source_approval_image', requirements: ['id' => '\d+'], methods: ['GET'])]
+    public function sourceApprovalImage(int $id, SourceRepository $sources, #[Autowire('%kernel.project_dir%')] string $projectDir): Response
+    {
+        $source = $sources->find($id);
+        $path = $source?->getApprovalImage() !== null ? $projectDir.'/var/uploads/freigaben/'.$source->getApprovalImage() : null;
+        if ($path === null || !is_file($path)) {
+            throw $this->createNotFoundException();
+        }
+
+        return new \Symfony\Component\HttpFoundation\BinaryFileResponse($path);
+    }
+
     /** Cookieless visit statistics: per-day views/visitors + top pages. */
     #[Route('/statistik', name: 'admin_stats', methods: ['GET'])]
     public function stats(Connection $db): Response
