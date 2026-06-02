@@ -348,6 +348,26 @@ class EventRepository extends ServiceEntityRepository
             ->getSingleScalarResult();
     }
 
+    /**
+     * Lightweight list (id, slug, lastmod) of upcoming published events for the
+     * XML sitemap. Array hydration — no entities.
+     *
+     * @return list<array{id:int, slug:string, lastmod:\DateTimeImmutable}>
+     */
+    public function findForSitemap(int $limit = 20000): array
+    {
+        return $this->createQueryBuilder('e')
+            ->select('e.id AS id, e.slug AS slug, e.lastSeenAt AS lastmod')
+            ->andWhere('e.status = :published')
+            ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :now')
+            ->setParameter('published', EventStatus::Published)
+            ->setParameter('now', new \DateTimeImmutable('now', new \DateTimeZone('Europe/Berlin')))
+            ->orderBy('e.startsAt', 'ASC')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getArrayResult();
+    }
+
     public function findVisible(int $id): ?Event
     {
         return $this->createQueryBuilder('e')

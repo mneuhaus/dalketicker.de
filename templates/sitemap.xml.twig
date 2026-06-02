@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url><loc>{{ url('event_index') }}</loc><changefreq>hourly</changefreq><priority>1.0</priority></url>
+    <url><loc>{{ url('event_month', {year: 'now'|date('Y'), month: 'now'|date('n')}) }}</loc><changefreq>daily</changefreq><priority>0.7</priority></url>
+    <url><loc>{{ url('event_surprise') }}</loc><changefreq>daily</changefreq><priority>0.5</priority></url>
+    <url><loc>{{ url('page_quellen') }}</loc><changefreq>monthly</changefreq><priority>0.3</priority></url>
+    <url><loc>{{ url('page_datenschutz') }}</loc><changefreq>yearly</changefreq><priority>0.1</priority></url>
+    <url><loc>{{ url('page_impressum') }}</loc><changefreq>yearly</changefreq><priority>0.1</priority></url>
+{% for e in events %}
+    <url><loc>{{ url('event_show', {id: e.id, slug: e.slug}) }}</loc><lastmod>{{ e.lastmod|date('Y-m-d') }}</lastmod><changefreq>weekly</changefreq><priority>0.6</priority></url>
+{% endfor %}
+</urlset>

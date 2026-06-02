@@ -28,6 +28,7 @@
     <meta name="apple-mobile-web-app-title" content="dalketicker">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
+    <link rel="canonical" href="{{ app.request.schemeAndHttpHost }}{{ app.request.pathInfo }}">
     {% block head_links %}{% endblock %}
     {% block stylesheets %}
         {# Linked directly (not imported via JS) so the browser applies it

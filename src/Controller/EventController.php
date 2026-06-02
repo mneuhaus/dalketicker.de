@@ -14,6 +14,7 @@ use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
 final class EventController extends AbstractController
 {
@@ -223,7 +224,56 @@ final class EventController extends AbstractController
             'after' => $around['after'],
             'filter' => $filter,
             'sourceHome' => $this->homepageOf($event->getSource()->getUrl()),
+            'jsonLd' => $this->eventJsonLd($event),
         ]);
+    }
+
+    /**
+     * schema.org/Event JSON-LD for rich results in Google. Only facts for
+     * facts-only (aggregator) sources; description/image only where we may show
+     * the creative content (own/licensed sources).
+     */
+    private function eventJsonLd(Event $event): string
+    {
+        $url = $this->generateUrl('event_show', ['id' => $event->getId(), 'slug' => $event->getSlug()], UrlGeneratorInterface::ABSOLUTE_URL);
+        $data = [
+            '@context' => 'https://schema.org',
+            '@type' => 'Event',
+            'name' => $event->getTitle(),
+            'startDate' => $event->getStartsAt()->format('Y-m-d\TH:i:s'),
+            'eventStatus' => 'https://schema.org/EventScheduled',
+            'eventAttendanceMode' => 'https://schema.org/OfflineEventAttendanceMode',
+            'url' => $url,
+        ];
+        if ($event->getEndsAt() !== null) {
+            $data['endDate'] = $event->getEndsAt()->format('Y-m-d\TH:i:s');
+        }
+        $venue = $event->getVenue();
+        if ($venue !== null) {
+            $place = ['@type' => 'Place', 'name' => $venue->getName()];
+            if ($venue->getFullAddress() !== '') {
+                $place['address'] = $venue->getFullAddress();
+            }
+            $data['location'] = $place;
+        } elseif ($event->getLocationText() !== null) {
+            $data['location'] = ['@type' => 'Place', 'name' => $event->getLocationText()];
+        }
+        if ($event->getOrganizer() !== null) {
+            $data['organizer'] = ['@type' => 'Organization', 'name' => $event->getOrganizer()];
+        }
+        if (!$event->isFactsOnly()) {
+            if ($event->getImageUrl() !== null) {
+                $data['image'] = $this->generateUrl('image_proxy', ['id' => $event->getId()], UrlGeneratorInterface::ABSOLUTE_URL);
+            }
+            $desc = $event->getSummary() ?: ($event->getDescription() !== null ? trim(strip_tags($event->getDescription())) : null);
+            if ($desc !== null && $desc !== '') {
+                $data['description'] = mb_substr($desc, 0, 500);
+            }
+        }
+
+        // Keep slashes escaped (\/) so a "</script>" in any value can't break out
+        // of the inline JSON-LD <script> block.
+        return json_encode($data, \JSON_UNESCAPED_UNICODE) ?: '{}';
     }
 
     /** Reduce a source URL to its bare homepage (scheme + host) for linking. */

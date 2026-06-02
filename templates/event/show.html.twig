@@ -4,7 +4,10 @@
 {% block meta_description %}{{ event.description ? event.description|striptags|slice(0, 160) : event.title }}{% endblock %}
 {# Share preview: this event's own image + title. #}
 {% block og_title %}{{ event.title }}{% endblock %}
-{% block og_image %}{% if event.imageUrl %}{{ app.request.schemeAndHttpHost }}{{ path('image_proxy', {id: event.id}) }}{% else %}{{ parent() }}{% endif %}{% endblock %}
+{% block og_image %}{% if event.imageUrl and not event.isFactsOnly %}{{ app.request.schemeAndHttpHost }}{{ path('image_proxy', {id: event.id}) }}{% else %}{{ parent() }}{% endif %}{% endblock %}
+
+{# Structured data for Google's event rich results. #}
+{% block head_links %}<script type="application/ld+json">{{ jsonLd|raw }}</script>{% endblock %}
 
 {% macro meta_icon(name) %}
     {% set paths = {
