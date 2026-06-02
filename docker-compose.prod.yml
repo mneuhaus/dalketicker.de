@@ -33,6 +33,9 @@ services:
     depends_on:
       database:
         condition: service_healthy
+    volumes:
+      # Persist admin uploads (Freigabe-Nachweise) across container rebuilds.
+      - dalketicker-uploads:/app/var/uploads
     networks:
       - web
       - internal
@@ -109,3 +112,4 @@ networks:
 
 volumes:
   dalketicker-db-data:
+  dalketicker-uploads:
