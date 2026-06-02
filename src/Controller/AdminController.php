@@ -320,9 +320,9 @@ final class AdminController extends AbstractController
         return $this->redirectToRoute('admin_dedup');
     }
 
-    /** Review AI categorization: pending suggestions (accept/dismiss) + applied (undo). */
+    /** Review AI categorization: progress, pending suggestions, and a full paginated log. */
     #[Route('/kategorien', name: 'admin_categorize', methods: ['GET'])]
-    public function categorize(EntityManagerInterface $em, AiCategorizer $categorizer, EventRepository $events): Response
+    public function categorize(Request $request, EntityManagerInterface $em, AiCategorizer $categorizer, EventRepository $events): Response
     {
         $repo = $em->getRepository(AiCategoryDecision::class);
 
@@ -338,9 +338,17 @@ final class AdminController extends AbstractController
         $lastAt = $em->createQuery('SELECT MAX(d.createdAt) FROM '.AiCategoryDecision::class.' d')->getSingleScalarResult();
         $active = $lastAt !== null && new \DateTimeImmutable((string) $lastAt) > new \DateTimeImmutable('-2 minutes');
 
+        // Full paginated log: what the categories were vs what the AI proposed/applied.
+        $perPage = 50;
+        $page = max(1, $request->query->getInt('seite', 1));
+        $total = (int) $repo->count([]);
+
         return $this->render('admin/categorize.html.twig', [
             'pending' => $repo->findBy(['status' => 'pending'], ['createdAt' => 'DESC'], 200),
-            'applied' => $repo->findBy(['status' => 'applied'], ['createdAt' => 'DESC'], 60),
+            'log' => $repo->findBy([], ['createdAt' => 'DESC'], $perPage, ($page - 1) * $perPage),
+            'page' => $page,
+            'pages' => max(1, (int) ceil($total / $perPage)),
+            'logTotal' => $total,
             'configured' => $categorizer->isConfigured(),
             'model' => $categorizer->getModel(),
             'counts' => $counts,
@@ -349,6 +357,22 @@ final class AdminController extends AbstractController
             'active' => $active,
             'summaryDone' => $events->countWithSummary(),
             'summaryEligible' => $events->countSummaryEligible(),
+        ]);
+    }
+
+    /** Review the AI short-teasers: source text vs generated summary, paginated. */
+    #[Route('/vorschau', name: 'admin_summaries', methods: ['GET'])]
+    public function summaries(Request $request, EventRepository $events): Response
+    {
+        $perPage = 25;
+        $page = max(1, $request->query->getInt('seite', 1));
+        $total = $events->countSummarized();
+
+        return $this->render('admin/summaries.html.twig', [
+            'events' => $events->findSummarized($perPage, ($page - 1) * $perPage),
+            'page' => $page,
+            'pages' => max(1, (int) ceil($total / $perPage)),
+            'total' => $total,
         ]);
     }
 

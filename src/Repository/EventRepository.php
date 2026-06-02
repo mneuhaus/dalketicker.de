@@ -285,6 +285,33 @@ class EventRepository extends ServiceEntityRepository
         return $qb->getQuery()->getResult();
     }
 
+    /**
+     * Summarized events (own sources) for the admin review list: source text +
+     * generated teaser, soonest first. Empty summaries (AI had nothing to add)
+     * are skipped so the list shows actual teasers.
+     *
+     * @return Event[]
+     */
+    public function findSummarized(int $limit, int $offset): array
+    {
+        return $this->visibleQueryBuilder(new EventFilter())
+            ->andWhere("e.summary IS NOT NULL AND e.summary != ''")
+            ->andWhere('s.factsOnly = false')
+            ->orderBy('e.startsAt', 'ASC')
+            ->setMaxResults($limit)
+            ->setFirstResult($offset)
+            ->getQuery()->getResult();
+    }
+
+    public function countSummarized(): int
+    {
+        return (int) $this->visibleQueryBuilder(new EventFilter())
+            ->select('COUNT(e.id)')
+            ->andWhere("e.summary IS NOT NULL AND e.summary != ''")
+            ->andWhere('s.factsOnly = false')
+            ->getQuery()->getSingleScalarResult();
+    }
+
     /** Events that already have an AI teaser (for admin progress). */
     public function countWithSummary(): int
     {

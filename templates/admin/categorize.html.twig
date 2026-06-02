@@ -108,25 +108,41 @@
         </div>
     {% endif %}
 
-    {# Recently auto-applied (fills + accepted), with undo #}
+    {# Full log: was → KI-Vorschlag/eingesetzt, paginiert #}
+    {% set statusLabel = {'applied': 'eingesetzt', 'agreed': 'bestätigt', 'pending': 'offen', 'dismissed': 'kein/abgelehnt', 'undone': 'rückgängig'} %}
     <h2 class="font-[family-name:var(--font-display)] text-lg font-bold text-brand-800 mb-3">
-        Zuletzt automatisch gesetzt <span class="text-sm font-normal text-ink/40">({{ applied|length }})</span>
+        Verlauf <span class="text-sm font-normal text-ink/40">({{ logTotal }} Entscheidungen)</span>
     </h2>
-    {% if applied is empty %}
-        <p class="text-sm text-ink/50">Noch nichts angewendet.</p>
+    {% if log is empty %}
+        <p class="text-sm text-ink/50">Noch nichts.</p>
     {% else %}
-        <div class="space-y-1.5">
-            {% for d in applied %}
-                <div class="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-black/5 bg-white px-3 py-2 text-sm">
+        <div class="bg-white rounded-2xl border border-black/5 shadow-sm divide-y divide-black/5">
+            {% for d in log %}
+                <div class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 text-sm">
                     <a href="{{ path('event_show', {id: d.event.id, slug: d.event.slug}) }}" target="_blank" rel="noopener" class="min-w-0 flex-1 font-medium text-ink hover:text-brand-700 line-clamp-1">{{ d.event.title }}</a>
-                    <span class="flex flex-wrap gap-1">{{ ui.slugchips(d.proposedSlugs) }}</span>
-                    <span class="text-[11px] text-ink/30">{{ d.mode }}</span>
-                    <form method="post" action="{{ path('admin_categorize_decide', {id: d.id, action: 'undo'}) }}">
-                        <input type="hidden" name="_token" value="{{ csrf_token('categorize') }}">
-                        <button class="text-xs text-ink/45 hover:text-rose-600 transition">rückgängig</button>
-                    </form>
+                    <span class="flex items-center gap-1.5">
+                        <span class="flex flex-wrap gap-1">{{ d.previousSlugs ? ui.slugchips(d.previousSlugs) : '<span class="text-ink/30">—</span>'|raw }}</span>
+                        <span class="text-ink/30">→</span>
+                        <span class="flex flex-wrap gap-1">{{ d.proposedSlugs ? ui.slugchips(d.proposedSlugs) : '<span class="text-ink/30">—</span>'|raw }}</span>
+                    </span>
+                    <span class="text-[11px] px-1.5 py-0.5 rounded-full bg-black/5 text-ink/50 whitespace-nowrap">{{ statusLabel[d.status] ?? d.status }}</span>
+                    {% if d.reason %}<span class="text-[11px] text-ink/40 w-full sm:w-auto sm:basis-full">{{ d.reason }}</span>{% endif %}
+                    {% if d.status in ['applied', 'agreed'] %}
+                        <form method="post" action="{{ path('admin_categorize_decide', {id: d.id, action: 'undo'}) }}">
+                            <input type="hidden" name="_token" value="{{ csrf_token('categorize') }}">
+                            <button class="text-xs text-ink/45 hover:text-rose-600 transition">rückgängig</button>
+                        </form>
+                    {% endif %}
                 </div>
             {% endfor %}
         </div>
+
+        {% if pages > 1 %}
+            <div class="flex items-center justify-center gap-3 mt-4 text-sm">
+                {% if page > 1 %}<a href="?seite={{ page - 1 }}" class="chip-muted">← Zurück</a>{% endif %}
+                <span class="text-ink/50">Seite {{ page }} / {{ pages }}</span>
+                {% if page < pages %}<a href="?seite={{ page + 1 }}" class="chip-muted">Weiter →</a>{% endif %}
+            </div>
+        {% endif %}
     {% endif %}
 {% endblock %}

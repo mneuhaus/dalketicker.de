@@ -1,0 +1,46 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Vorschau-Texte – {{ site_name }}{% endblock %}
+
+{% block subheader %}{{ include('admin/_nav.html.twig') }}{% endblock %}
+
+{% block body %}
+    <div class="flex items-center justify-between mb-2 gap-4">
+        <h1 class="font-[family-name:var(--font-display)] text-2xl font-extrabold tracking-tight text-ink">Vorschau-Texte</h1>
+        <span class="text-xs text-ink/40">{{ total }} mit Vorschau</span>
+    </div>
+    <p class="text-sm text-ink/50 mb-6">KI-Kurzvorschau für die Listenansicht: links das Ausgangsmaterial (Beschreibung), rechts die erzeugte Zusammenfassung.</p>
+
+    {% if events is empty %}
+        <div class="text-center py-16 text-ink/50 border border-dashed border-black/10 rounded-2xl">Noch keine Vorschau-Texte.</div>
+    {% else %}
+        <div class="space-y-3">
+            {% for event in events %}
+                <div class="bg-white rounded-2xl border border-black/5 shadow-sm p-4">
+                    <div class="flex items-baseline justify-between gap-3 mb-2">
+                        <a href="{{ path('event_show', {id: event.id, slug: event.slug}) }}" target="_blank" class="font-semibold text-ink hover:text-brand-700 hover:underline">{{ event.title }}</a>
+                        <span class="text-xs text-ink/40 whitespace-nowrap shrink-0">{{ event.startsAt|de_date }} · {{ event.source.name }}</span>
+                    </div>
+                    <div class="grid md:grid-cols-2 gap-4 text-sm">
+                        <div>
+                            <div class="text-[11px] font-semibold uppercase tracking-wide text-ink/35 mb-1">Ausgangstext</div>
+                            <div class="text-ink/60 leading-snug line-clamp-6">{{ event.description|striptags }}</div>
+                        </div>
+                        <div>
+                            <div class="text-[11px] font-semibold uppercase tracking-wide text-brand-700/70 mb-1">Vorschau (KI)</div>
+                            <div class="text-ink/80 leading-snug">{{ event.summary }}</div>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+
+        {% if pages > 1 %}
+            <div class="flex items-center justify-center gap-3 mt-6 text-sm">
+                {% if page > 1 %}<a href="?seite={{ page - 1 }}" class="chip-muted">← Zurück</a>{% endif %}
+                <span class="text-ink/50">Seite {{ page }} / {{ pages }}</span>
+                {% if page < pages %}<a href="?seite={{ page + 1 }}" class="chip-muted">Weiter →</a>{% endif %}
+            </div>
+        {% endif %}
+    {% endif %}
+{% endblock %}
