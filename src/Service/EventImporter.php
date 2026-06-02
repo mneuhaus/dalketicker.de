@@ -156,9 +156,13 @@ final class EventImporter
         if (!$event->isFieldLocked('title')) {
             $event->setTitle(mb_substr($dto->title, 0, 300));
         }
-        $event->setStartsAt($dto->startsAt);
-        $event->setEndsAt($dto->endsAt);
-        $event->setAllDay($dto->allDay);
+        // Date/time can be admin-pinned too (e.g. a source lists a bogus
+        // multi-month span for a single concert) — then keep the corrected value.
+        if (!$event->isFieldLocked('datum')) {
+            $event->setStartsAt($dto->startsAt);
+            $event->setEndsAt($dto->endsAt);
+            $event->setAllDay($dto->allDay);
+        }
         if (!$event->isFieldLocked('description')) {
             $event->setDescription($dto->description);
         }

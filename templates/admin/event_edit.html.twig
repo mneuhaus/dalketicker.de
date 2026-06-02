@@ -40,6 +40,32 @@
             {{ f.field(event, 'description', 'Beschreibung', event.description, true) }}
             {{ f.field(event, 'imageUrl', 'Bild-URL', event.imageUrl, false) }}
 
+            {# Date/time — pin to fix sources that list a bogus span for a single event. #}
+            <div>
+                <div class="flex items-center justify-between mb-1">
+                    <label class="block text-xs font-semibold uppercase tracking-wide text-ink/40">Datum & Uhrzeit</label>
+                    <label class="inline-flex items-center gap-1.5 text-xs text-ink/55 cursor-pointer select-none">
+                        <input type="checkbox" name="lock_datum" {{ event.isFieldLocked('datum') ? 'checked' }}
+                               class="rounded border-black/20 text-brand-600 focus:ring-brand-200">
+                        gepinnt (nicht aus Quelle aktualisieren)
+                    </label>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <label class="block text-xs text-ink/45">Beginn
+                        <input type="datetime-local" name="startsAt" value="{{ event.startsAt|date('Y-m-d\\TH:i') }}"
+                               class="mt-0.5 w-full rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm focus:border-brand-500 outline-none">
+                    </label>
+                    <label class="block text-xs text-ink/45">Ende (optional)
+                        <input type="datetime-local" name="endsAt" value="{{ event.endsAt ? event.endsAt|date('Y-m-d\\TH:i') : '' }}"
+                               class="mt-0.5 w-full rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm focus:border-brand-500 outline-none">
+                    </label>
+                </div>
+                <label class="inline-flex items-center gap-1.5 text-sm text-ink/60 mt-2 cursor-pointer select-none">
+                    <input type="checkbox" name="allDay" {{ event.allDay ? 'checked' }} class="rounded border-black/20 text-brand-600 focus:ring-brand-200">
+                    ganztägig
+                </label>
+            </div>
+
             <div>
                 <div class="flex items-center justify-between mb-1.5">
                     <label class="block text-xs font-semibold uppercase tracking-wide text-ink/40">Kategorien</label>

@@ -272,6 +272,8 @@ final class AdminController extends AbstractController
             'processed' => $processed,
             'remaining' => $remaining,
             'active' => $active,
+            'summaryDone' => $events->countWithSummary(),
+            'summaryEligible' => $events->countSummaryEligible(),
         ]);
     }
 
@@ -369,6 +371,17 @@ final class AdminController extends AbstractController
         $event->setDescription($this->blankToNull(trim((string) $request->request->get('description', ''))));
         $event->setImageUrl($this->blankToNull(mb_substr(trim((string) $request->request->get('imageUrl', '')), 0, 1024)));
 
+        // Date/time (datetime-local inputs). Only applied when the start parses.
+        $tz = new \DateTimeZone('Europe/Berlin');
+        $start = \DateTimeImmutable::createFromFormat('Y-m-d\TH:i', (string) $request->request->get('startsAt', ''), $tz);
+        if ($start instanceof \DateTimeImmutable) {
+            $event->setStartsAt($start);
+            $endRaw = trim((string) $request->request->get('endsAt', ''));
+            $end = $endRaw !== '' ? \DateTimeImmutable::createFromFormat('Y-m-d\TH:i', $endRaw, $tz) : null;
+            $event->setEndsAt($end instanceof \DateTimeImmutable ? $end : null);
+            $event->setAllDay($request->request->getBoolean('allDay'));
+        }
+
         $cats = [];
         foreach ((array) $request->request->all('categories') as $slug) {
             $cat = is_string($slug) ? $categories->findBySlug($slug) : null;
@@ -379,7 +392,7 @@ final class AdminController extends AbstractController
         $event->setCategories($cats);
 
         // A field is "pinned" (kept across re-imports) when its checkbox is set.
-        foreach (['title', 'organizer', 'description', 'imageUrl', 'categories'] as $field) {
+        foreach (['title', 'organizer', 'description', 'imageUrl', 'categories', 'datum'] as $field) {
             $event->setFieldLocked($field, $request->request->getBoolean('lock_'.$field));
         }
         $em->flush();
