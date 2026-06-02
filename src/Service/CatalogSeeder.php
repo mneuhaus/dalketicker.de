@@ -195,6 +195,7 @@ final class CatalogSeeder
             ['bambi_kino', 'Bambi & Löwenherz Kino', SourceType::Html, 'https://www.bambikino.de/programm/', 'bambi_kino', 'Gütersloh'],
             ['club_hangover', 'Club Hangover', SourceType::Html, 'https://www.clubhangover.de/events/', 'club_hangover', 'Gütersloh'],
             ['crossnight', 'Crossnight Gütersloh e.V.', SourceType::Html, 'https://crossnight.de/events/', 'tribe_events', 'Gütersloh'],
+            ['stadtschuetzen', 'Gütersloher Schützengesellschaft von 1832', SourceType::Html, 'https://www.stadtschuetzen.de/events/', 'tribe_events', 'Gütersloh'],
             ['filmwerk_gt', 'Filmwerk Gütersloh', SourceType::Html, 'https://web.filmwerk-gt.de/', 'manual', 'Gütersloh'],
             ['stadtbib_gt', 'Stadtbibliothek Gütersloh', SourceType::Html, 'https://stadtbibliothek-guetersloh.easy2book.de/veranstaltungen/', 'stadtbib_gt', 'Gütersloh'],
             ['vhs_gt', 'VHS Gütersloh', SourceType::Html, 'https://www.vhs-gt.de/kurssuche/liste', 'vhs_gt', 'Gütersloh'],
