@@ -3,10 +3,9 @@
    active section is highlighted by the current route. #}
 {% set route = app.request.attributes.get('_route') %}
 {% set unread = unread_contacts() %}
+{% set aiActive = route in ['admin_dedup', 'admin_categorize'] %}
 {% set items = [
     {label: 'Monitoring', route: 'admin_imports', match: ['admin_imports', 'admin_import_run', 'admin_source']},
-    {label: 'AI-Dedup', route: 'admin_dedup', match: ['admin_dedup']},
-    {label: 'AI-Kategorien', route: 'admin_categorize', match: ['admin_categorize']},
     {label: 'Statistik', route: 'admin_stats', match: ['admin_stats']},
     {label: 'Kontakt', route: 'admin_contact', match: ['admin_contact'], badge: unread},
 ] %}
@@ -15,13 +14,28 @@
         <span class="mr-auto inline-flex items-center gap-1.5 text-ink/40 font-medium">
             <span class="w-1.5 h-1.5 rounded-full bg-brand-500"></span> Admin
         </span>
-        {% for it in items %}
-            <a href="{{ path(it.route) }}"
-               class="px-2.5 py-1 rounded-lg transition inline-flex items-center gap-1.5 {{ route in it.match ? 'bg-brand-600 text-white' : 'text-ink/60 hover:bg-black/5' }}">
-                {{ it.label }}
-                {% if it.badge is defined and it.badge > 0 %}<span class="min-w-4 h-4 px-1 inline-flex items-center justify-center rounded-full bg-rose-500 text-white text-[10px] font-bold">{{ it.badge }}</span>{% endif %}
-            </a>
-        {% endfor %}
+        <a href="{{ path('admin_imports') }}"
+           class="px-2.5 py-1 rounded-lg transition {{ route in ['admin_imports','admin_import_run','admin_source'] ? 'bg-brand-600 text-white' : 'text-ink/60 hover:bg-black/5' }}">Monitoring</a>
+
+        {# AI-Werkzeuge gebündelt #}
+        <details class="relative">
+            <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition {{ aiActive ? 'bg-brand-600 text-white' : 'text-ink/60 hover:bg-black/5' }}">
+                AI
+                <svg class="w-3.5 h-3.5 shrink-0 opacity-60" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+            </summary>
+            <div class="absolute left-0 mt-1.5 w-44 rounded-xl border border-black/5 bg-white shadow-lg py-1 z-50">
+                <a href="{{ path('admin_dedup') }}" class="block px-3 py-2 text-sm hover:bg-black/5 {{ route == 'admin_dedup' ? 'font-semibold text-brand-700' : 'text-ink/70' }}">AI-Dedup</a>
+                <a href="{{ path('admin_categorize') }}" class="block px-3 py-2 text-sm hover:bg-black/5 {{ route == 'admin_categorize' ? 'font-semibold text-brand-700' : 'text-ink/70' }}">AI-Kategorien</a>
+            </div>
+        </details>
+
+        <a href="{{ path('admin_stats') }}"
+           class="px-2.5 py-1 rounded-lg transition {{ route == 'admin_stats' ? 'bg-brand-600 text-white' : 'text-ink/60 hover:bg-black/5' }}">Statistik</a>
+        <a href="{{ path('admin_contact') }}"
+           class="px-2.5 py-1 rounded-lg transition inline-flex items-center gap-1.5 {{ route == 'admin_contact' ? 'bg-brand-600 text-white' : 'text-ink/60 hover:bg-black/5' }}">
+            Kontakt
+            {% if unread > 0 %}<span class="min-w-4 h-4 px-1 inline-flex items-center justify-center rounded-full bg-rose-500 text-white text-[10px] font-bold">{{ unread }}</span>{% endif %}
+        </a>
         <span class="hidden sm:inline text-ink/15" aria-hidden="true">|</span>
         {% if app.user %}
             {# User-Menü: E-Mail als Dropdown-Trigger, Konto + Logout darin (<details>, kein JS). #}
