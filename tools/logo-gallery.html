@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dalketicker · 20 Logo-Vorschläge</title>
+<style>
+  @font-face{ font-family:"Space Grotesk"; font-weight:700; font-display:swap; src:url("/SpaceGrotesk-700.woff2") format("woff2"); }
+  @font-face{ font-family:"Space Grotesk"; font-weight:500; font-display:swap; src:url("/SpaceGrotesk-500.woff2") format("woff2"); }
+  :root{
+    --teal:#0a8da3; --teal-d:#117084; --teal-l:#22ccde; --ink:#1b1d1e; --paper:#faf9f6; --line:#e7e3db;
+  }
+  *{box-sizing:border-box}
+  body{ margin:0; background:var(--paper); color:var(--ink);
+        font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  .display{ font-family:"Space Grotesk",ui-sans-serif,system-ui,sans-serif; }
+  header{ max-width:1180px; margin:0 auto; padding:40px 24px 8px; }
+  header h1{ font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:28px; letter-spacing:-.01em; margin:0 0 6px; }
+  header p{ color:#6b6f70; margin:0; font-size:15px; }
+  .toolbar{ max-width:1180px; margin:14px auto 0; padding:0 24px; }
+  .toolbar button{ font:inherit; font-size:13px; border:1px solid var(--line); background:#fff; border-radius:999px; padding:7px 14px; cursor:pointer; color:var(--ink); }
+  .toolbar button:hover{ border-color:var(--teal); }
+  .grid{ max-width:1180px; margin:18px auto 60px; padding:0 24px; display:grid;
+         grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:18px; }
+  .card{ border:1px solid var(--line); border-radius:16px; background:#fff; overflow:hidden; }
+  .stage{ height:150px; display:flex; align-items:center; justify-content:center; background:#fff; transition:background .2s; }
+  body.dark .stage{ background:#0e2a31; }
+  .stage svg{ width:auto; height:64px; }
+  .word{ font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:20px; letter-spacing:-.02em;
+         text-align:center; padding:2px 12px 0; color:var(--ink); }
+  body.dark .word{ color:#fff; }
+  .cap{ padding:8px 14px 14px; border-top:1px solid var(--line); }
+  .cap .n{ font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:13px; color:var(--teal-d); }
+  .cap .t{ font-size:12.5px; color:#6b6f70; margin-top:2px; line-height:1.35; }
+  /* a few wordmark-style cards render their own text in the stage */
+  .stage .lockup{ display:flex; align-items:center; gap:12px; }
+  .stage .wm{ font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:26px; letter-spacing:-.03em; color:var(--ink); }
+  body.dark .stage .wm{ color:#fff; }
+</style>
+</head>
+<body>
+<header>
+  <h1>dalketicker · 20 Logo-Vorschläge</h1>
+  <p>Querbeet: Wellen/Dalke, Ticker-Motive, Monogramme, Wortmarken, Pin/Kalender, Klangwellen, Wappen. Marke: dalketicker (Dalke = Fluss durch Gütersloh).</p>
+</header>
+<div class="toolbar"><button id="bgToggle">Hintergrund: hell ⇄ dunkel</button></div>
+<div class="grid" id="grid"></div>
+
+<script>
+const T='#0a8da3', TD='#117084', TL='#22ccde', INK='#1b1d1e';
+// helper builders
+const S=(inner,vb='0 0 64 64')=>`<svg viewBox="${vb}" xmlns="http://www.w3.org/2000/svg">${inner}</svg>`;
+const wave=(y,w='5',c=T,x0=6,x1=58)=>{const seg=(x1-x0)/4;return `<path d="M${x0} ${y} q${seg/2} -9 ${seg} 0 t${seg} 0 t${seg} 0 t${seg} 0" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`;};
+
+const logos = [
+  // 1
+  {svg:S(`<rect x="6" y="6" width="52" height="52" rx="14" fill="${T}"/>${wave(27,'4.5','#fff',16,48)}${wave(40,'4.5','#fff',16,48)}`),
+   name:'Wellen-Siegel', note:'Zwei Wellen im abgerundeten Quadrat – ruhig, app-icon-tauglich.', word:true},
+  // 2
+  {svg:S(`<circle cx="32" cy="32" r="25" fill="none" stroke="${INK}" stroke-width="3.5"/>${wave(33,'5',T,12,52)}`),
+   name:'Fluss im Kreis', note:'Dünner Ring, eine kräftige Dalke quer hindurch.', word:true},
+  // 3
+  {svg:S(`<circle cx="20" cy="32" r="14" fill="none" stroke="${TL}" stroke-width="2.5" opacity=".5"/><circle cx="20" cy="32" r="7" fill="${T}"/>${wave(32,'5',T,30,58)}`),
+   name:'Live-Ticker', note:'Puls-Punkt mit Wellen-Auslauf – „was läuft jetzt".', word:true},
+  // 4
+  {svg:S(`<text x="14" y="46" font-family="Space Grotesk,sans-serif" font-weight="700" font-size="48" fill="${INK}">d</text>${wave(50,'4.5',T,10,52)}`),
+   name:'Monogramm d + Welle', note:'Großes „d" mit Dalke-Unterstrich.', word:true},
+  // 5
+  {svg:S(`${wave(22,'5',TL,8,56)}${wave(34,'5',T,8,56)}${wave(46,'5',TD,8,56)}`),
+   name:'Wellen-Trio', note:'Drei offene Wellen, Türkis-Verlauf – frei und leicht.', word:true},
+  // 6
+  {svg:S(`<path d="M32 7c-9.4 0-17 7.2-17 16.1C15 35 32 57 32 57s17-22 17-33.9C49 14.2 41.4 7 32 7z" fill="${T}"/>${wave(24,'3.5','#fff',21,43)}`),
+   name:'Pin mit Welle', note:'Standort-Pin (lokal) mit Dalke drin.', word:true},
+  // 7
+  {svg:S(`<circle cx="32" cy="32" r="4" fill="${T}"/><path d="M44 20a17 17 0 010 24" fill="none" stroke="${T}" stroke-width="4" stroke-linecap="round"/><path d="M20 20a17 17 0 000 24" fill="none" stroke="${T}" stroke-width="4" stroke-linecap="round" opacity=".6"/><path d="M52 13a27 27 0 010 38" fill="none" stroke="${T}" stroke-width="3.5" stroke-linecap="round" opacity=".3"/>`),
+   name:'Echo / Ripple', note:'Konzentrische Bögen – Events „strahlen aus".', word:true},
+  // 8
+  {svg:S(`${wave(26,'7',INK,8,56)}${wave(42,'7',T,8,56)}`),
+   name:'Doppelwelle ≈', note:'Das Annäherungs-Zeichen als Marke, ink + türkis.', word:true},
+  // 9
+  {svg:S((()=>{let d='';const pts=[[10,40],[18,30],[26,38],[34,26],[42,34],[50,24],[56,30]];pts.forEach((p,i)=>{d+=`<circle cx="${p[0]}" cy="${p[1]}" r="${i%2?3.2:4.2}" fill="${i%2?TL:T}"/>`;});return d;})()),
+   name:'Punkt-Welle', note:'Punkte tanzen als Welle – Ticker trifft Fluss.', word:true},
+  // 10
+  {svg:S(`<rect x="9" y="12" width="46" height="40" rx="7" fill="none" stroke="${INK}" stroke-width="3"/><line x1="9" y1="23" x2="55" y2="23" stroke="${INK}" stroke-width="3"/>${wave(40,'4.5',T,15,49)}`),
+   name:'Karte / Programm', note:'Aushang/Karte mit Welle – das Programm.', word:true},
+  // 11
+  {svg:S(`<circle cx="32" cy="32" r="25" fill="none" stroke="${INK}" stroke-width="3"/><line x1="14" y1="32" x2="50" y2="32" stroke="${INK}" stroke-width="3" stroke-linecap="round"/><circle cx="40" cy="32" r="6" fill="${T}"/>`),
+   name:'Ticker-Lauf', note:'Laufband mit gleitendem Punkt – Nachrichtenticker.', word:true},
+  // 12
+  {svg:S(`<text x="6" y="46" font-family="Space Grotesk,sans-serif" font-weight="700" font-size="44" fill="${INK}">d</text><text x="30" y="46" font-family="Space Grotesk,sans-serif" font-weight="700" font-size="44" fill="${T}">t</text>`),
+   name:'Monogramm dt', note:'„dt"-Kürzel, zweifarbig.', word:true},
+  // 13
+  {svg:S(`<path d="M12 14h40a6 6 0 016 6v18a6 6 0 01-6 6H28l-12 9 2-9h-6a6 6 0 01-6-6V20a6 6 0 016-6z" fill="${T}"/>${wave(30,'3.8','#fff',18,46)}`),
+   name:'Sprechwelle', note:'Sprechblase mit Welle – Community/„was geht".', word:true},
+  // 14
+  {svg:S(`<rect x="12" y="34" width="7" height="18" rx="3.5" fill="${TD}"/><rect x="23" y="24" width="7" height="28" rx="3.5" fill="${T}"/><rect x="34" y="14" width="7" height="38" rx="3.5" fill="${TL}"/><rect x="45" y="28" width="7" height="24" rx="3.5" fill="${T}"/>`),
+   name:'Equalizer', note:'Steigende Balken – die „Frequenz" der Stadt.', word:true},
+  // 15
+  {svg:S(`<g stroke="${T}" stroke-width="4" stroke-linecap="round"><line x1="32" y1="10" x2="32" y2="22"/><line x1="32" y1="42" x2="32" y2="54"/><line x1="10" y1="32" x2="22" y2="32"/><line x1="42" y1="32" x2="54" y2="32"/></g><circle cx="32" cy="32" r="6" fill="${TD}"/>`),
+   name:'Was-läuft-Stern', note:'Kompass/Burst – Orientierung „wohin heute".', word:true},
+  // 16
+  {svg:S((()=>{let d='';for(let r=0;r<3;r++)for(let c=0;c<4;c++){const on=(r===1&&c===2);d+=`<rect x="${12+c*11}" y="${16+r*12}" width="8" height="8" rx="2.2" fill="${on?T:'#d9d5cd'}"/>`;}return d;})()),
+   name:'Kalender-Punkt', note:'Tage-Raster, ein Tag türkis – heute.', word:true},
+  // 17
+  {svg:S(`<path d="M22 12c14 0 22 8 22 20s-9 20-20 20c8-3 12-9 12-16 0-9-7-15-16-15-3 0-6 .6-8 1.6C16 16 18 12 22 12z" fill="${T}"/><circle cx="40" cy="40" r="4.5" fill="${TL}"/>`),
+   name:'Flow-Ribbon', note:'Geschwungenes Band als angedeutetes „d".', word:true},
+  // 18 — wordmark with wavy underline
+  {lockup:`<span class="wm">dalketicker</span>`,
+   under:true, name:'Wortmarke + Dalke-Unterstrich', note:'Schriftzug mit türkiser Wellen-Linie darunter.', noword:true},
+  // 19 — wordmark with pulse dot on the i
+  {lockup:`<span class="wm">dalke<span style="color:${T}">·</span>ticker</span>`,
+   name:'Wortmarke, Punkt = Puls', note:'Trennpunkt als türkiser Live-Punkt.', noword:true},
+  // 20 — emblem
+  {svg:S(`<circle cx="32" cy="32" r="27" fill="none" stroke="${INK}" stroke-width="2"/><circle cx="32" cy="32" r="22" fill="${T}"/>${wave(28,'3.5','#fff',20,44)}${wave(38,'3.5','#fff',20,44)}`),
+   name:'Wappen / Emblem', note:'Rundes Siegel mit Wellen – lokal & wertig.', word:true},
+];
+
+const grid=document.getElementById('grid');
+logos.forEach((l,i)=>{
+  let stage;
+  if(l.lockup){
+    stage = `<div class="lockup">${l.lockup}</div>`;
+    if(l.under) stage = `<div style="display:flex;flex-direction:column;align-items:center;gap:6px"><span class="wm">dalketicker</span><svg viewBox="0 0 180 14" style="width:150px;height:12px"><path d="M4 8 q11 -8 22 0 t22 0 t22 0 t22 0 t22 0 t22 0 t22 0" fill="none" stroke="${T}" stroke-width="3" stroke-linecap="round"/></svg></div>`;
+  } else {
+    stage = l.svg;
+  }
+  const word = l.noword ? '' : `<div class="word">dalketicker</div>`;
+  grid.insertAdjacentHTML('beforeend', `
+    <div class="card">
+      <div class="stage">${stage}</div>
+      ${word}
+      <div class="cap"><div class="n">${String(i+1).padStart(2,'0')} · ${l.name}</div><div class="t">${l.note}</div></div>
+    </div>`);
+});
+
+document.getElementById('bgToggle').addEventListener('click',()=>document.body.classList.toggle('dark'));
+</script>
+</body>
+</html>

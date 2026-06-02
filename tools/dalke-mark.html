@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dalketicker · Dalke-Mark</title>
+<style>
+  :root{ --brand:#0a8da3; }
+  body{ margin:0; background:#11181b; color:#e7eced; font:14px/1.5 ui-sans-serif,system-ui,sans-serif; display:flex; min-height:100vh; }
+  aside{ width:300px; padding:18px; background:#171d20; border-right:1px solid #283034; }
+  main{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:28px; padding:24px; }
+  h1{ font-size:15px; margin:0 0 12px; }
+  label{ display:block; font-size:12px; color:#8b979c; margin:12px 0 4px; }
+  input[type=range]{ width:100%; accent-color:#22ccde; }
+  input[type=text]{ width:100%; background:#0c1113; border:1px solid #283034; color:#e7eced; border-radius:8px; padding:7px 9px; }
+  .row{ display:flex; align-items:center; gap:8px; } .row .v{ margin-left:auto; font-variant-numeric:tabular-nums; }
+  .chk{ display:flex; gap:8px; align-items:center; margin:10px 0; } .chk input{ accent-color:#22ccde; }
+  button{ width:100%; border:1px solid #283034; background:#0c1113; color:#e7eced; border-radius:9px; padding:9px; font:inherit; font-weight:600; cursor:pointer; margin-top:8px; }
+  button.primary{ background:var(--brand); border-color:var(--brand); color:#fff; }
+  .status{ font-size:12px; color:#8b979c; margin-top:10px; min-height:16px; }
+  .previews{ display:flex; align-items:flex-end; gap:28px; flex-wrap:wrap; justify-content:center; }
+  .prev{ text-align:center; color:#8b979c; font-size:12px; }
+  .box{ display:inline-flex; align-items:center; justify-content:center; background:var(--brand); border-radius:.75rem; }
+  textarea{ width:560px; max-width:90vw; height:130px; background:#0c1113; border:1px solid #283034; color:#9aa; border-radius:8px; padding:8px; font:11px/1.4 ui-monospace,monospace; }
+</style>
+</head>
+<body>
+<aside>
+  <h1>Dalke-Mark</h1>
+  <label>Grenze – Name</label>
+  <input type="text" id="boundary" value="Gütersloh">
+  <label>Ebene (admin_level · 8 = Stadt, 6 = Kreis)</label>
+  <input type="text" id="lvl" value="8">
+  <label>Fluss-Name (enthält)</label>
+  <input type="text" id="river" value="Dalke">
+  <button id="load" class="primary">Laden</button>
+  <button id="endpoint">Server: A</button>
+
+  <div class="chk"><input type="checkbox" id="showB" checked><label for="showB" style="margin:0">Umrandung zeigen</label></div>
+  <label>Umrandung-Stärke</label>
+  <div class="row"><input type="range" id="bw" min="0.5" max="4" step="0.1" value="1.6"><span class="v" id="bwv">1.6</span></div>
+  <label>Dalke-Stärke</label>
+  <div class="row"><input type="range" id="dw" min="0.5" max="4" step="0.1" value="2"><span class="v" id="dwv">2</span></div>
+  <label>Vereinfachen</label>
+  <div class="row"><input type="range" id="simp" min="0" max="1.2" step="0.02" value="0.3"><span class="v" id="simpv">0.3</span></div>
+  <label>Rand</label>
+  <div class="row"><input type="range" id="pad" min="1" max="8" step="0.5" value="3"><span class="v" id="padv">3</span></div>
+  <p class="status" id="status">Bereit.</p>
+</aside>
+<main>
+  <div class="previews">
+    <div class="prev"><div id="boxBig" class="box" style="width:160px;height:160px"></div><div style="margin-top:8px">160 px</div></div>
+    <div class="prev"><div id="box36" class="box" style="width:36px;height:36px"></div><div style="margin-top:8px">36 px (Header)</div></div>
+    <div class="prev"><div id="box16" class="box" style="width:16px;height:16px;border-radius:4px"></div><div style="margin-top:8px">16 px</div></div>
+  </div>
+  <textarea id="out" readonly></textarea>
+  <button id="copy" style="width:200px">SVG-Inhalt kopieren</button>
+</main>
+<script>
+const ENDPOINTS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://overpass.private.coffee/api/interpreter'];
+let ei=0, boundarySegs=null, dalkeSegs=null;
+const $=id=>document.getElementById(id);
+const VB=32;
+
+function q(b,r,lvl){ b=b.replace(/"/g,'\\"'); r=r.replace(/"/g,'\\"'); lvl=(lvl||'8').replace(/[^0-9]/g,'')||'8'; return `[out:json][timeout:90];
+rel["boundary"="administrative"]["admin_level"="${lvl}"]["name"="${b}"];
+out geom;
+rel["boundary"="administrative"]["admin_level"="${lvl}"]["name"="${b}"];
+map_to_area->.a;
+way["waterway"]["name"~"${r}"](area.a);
+out geom;`; }
+
+async function load(){
+  $('status').textContent='Lade von OpenStreetMap …';
+  let data;
+  try{ const res=await fetch(ENDPOINTS[ei],{method:'POST',body:'data='+encodeURIComponent(q($('boundary').value.trim(),$('river').value.trim(),$('lvl').value.trim()))});
+       data=await res.json(); }
+  catch(e){ $('status').textContent='Fehler: '+e.message+' – Server wechseln.'; return; }
+  boundarySegs=[]; dalkeSegs=[];
+  for(const el of data.elements){
+    if(el.type==='relation'&&el.members){ for(const m of el.members){ if(m.type==='way'&&m.geometry&&(m.role==='outer'||m.role===''||m.role==null)) boundarySegs.push(m.geometry.map(p=>({lat:p.lat,lon:p.lon}))); } }
+    else if(el.type==='way'&&el.geometry){ dalkeSegs.push(el.geometry.map(p=>({lat:p.lat,lon:p.lon}))); }
+  }
+  $('status').textContent='Geladen: Grenze '+boundarySegs.length+' Seg., Dalke '+dalkeSegs.length+' Seg.';
+  render();
+}
+
+function merc(lat,lon){ return {x:lon*Math.PI/180, y:Math.log(Math.tan(Math.PI/4+lat*Math.PI/360))}; }
+function near(a,b){ return Math.abs(a.lat-b.lat)<1e-6 && Math.abs(a.lon-b.lon)<1e-6; }
+function chain(list){
+  list=list.map(s=>s.slice()); const used=new Array(list.length).fill(false); const out=[];
+  for(;;){ const s=used.findIndex(u=>!u); if(s<0) break; used[s]=true; let line=list[s].slice(); let go=true;
+    while(go){ go=false; const end=line[line.length-1];
+      for(let j=0;j<list.length;j++){ if(used[j])continue; const a=list[j][0],b=list[j][list[j].length-1];
+        if(near(end,a)){ line=line.concat(list[j].slice(1)); used[j]=true; go=true; break; }
+        if(near(end,b)){ line=line.concat(list[j].slice().reverse().slice(1)); used[j]=true; go=true; break; } } }
+    out.push(line); }
+  out.sort((a,b)=>b.length-a.length); return out;
+}
+function simplify(pts,tol){ if(tol<=0||pts.length<3) return pts; const sq=x=>x*x;
+  function sd(p,a,b){ let x=a.x,y=a.y,dx=b.x-x,dy=b.y-y; if(dx||dy){ const t=((p.x-x)*dx+(p.y-y)*dy)/(dx*dx+dy*dy); if(t>1){x=b.x;y=b.y;}else if(t>0){x+=dx*t;y+=dy*t;} } return sq(p.x-x)+sq(p.y-y); }
+  function dp(s,e,o){ let m=0,i=-1; for(let k=s+1;k<e;k++){ const d=sd(pts[k],pts[s],pts[e]); if(d>m){m=d;i=k;} } if(m>tol*tol){ dp(s,i,o); o.push(pts[i]); dp(i,e,o); } }
+  const o=[pts[0]]; dp(0,pts.length-1,o); o.push(pts[pts.length-1]); return o;
+}
+
+function render(){
+  if(!boundarySegs) return;
+  const rings=chain(boundarySegs);
+  const dalke=chain(dalkeSegs);
+  // bbox over boundary (so the city fills the box, Dalke sits inside)
+  const all=[].concat(...rings.map(r=>r.map(p=>merc(p.lat,p.lon))));
+  let minx=Infinity,miny=Infinity,maxx=-Infinity,maxy=-Infinity;
+  all.forEach(m=>{ if(m.x<minx)minx=m.x; if(m.x>maxx)maxx=m.x; if(m.y<miny)miny=m.y; if(m.y>maxy)maxy=m.y; });
+  const pad=parseFloat($('pad').value);
+  const w=maxx-minx||1,h=maxy-miny||1;
+  const scale=Math.min((VB-2*pad)/w,(VB-2*pad)/h);
+  const ox=(VB-w*scale)/2, oy=(VB-h*scale)/2;
+  const proj=m=>({ x:ox+(m.x-minx)*scale, y:VB-(oy+(m.y-miny)*scale) });
+  const tol=parseFloat($('simp').value);
+  const toPath=(line,close)=>{ const pts=simplify(line.map(p=>proj(merc(p.lat,p.lon))),tol); return 'M'+pts.map(p=>p.x.toFixed(2)+' '+p.y.toFixed(2)).join('L')+(close?'Z':''); };
+
+  let g='';
+  if($('showB').checked){
+    const bw=parseFloat($('bw').value);
+    const dB=rings.map(r=>toPath(r,true)).join('');
+    g+=`<path d="${dB}" fill="none" stroke="white" stroke-width="${bw}" stroke-linejoin="round" stroke-linecap="round" opacity="0.92"/>`;
+  }
+  const dw=parseFloat($('dw').value);
+  const dD=dalke.map(l=>toPath(l,false)).join('');
+  if(dD) g+=`<path d="${dD}" fill="none" stroke="white" stroke-width="${dw}" stroke-linejoin="round" stroke-linecap="round"/>`;
+
+  const svg=vp=>`<svg viewBox="0 0 32 32" style="width:${vp}px;height:${vp}px">${g}</svg>`;
+  $('boxBig').innerHTML=svg(120); $('box36').innerHTML=svg(24); $('box16').innerHTML=svg(12);
+  $('out').value=g;
+}
+
+['bw','dw','simp','pad'].forEach(id=>{ const o=$(id+'v'); $(id).addEventListener('input',()=>{ if(o)o.textContent=$(id).value; render(); }); });
+$('showB').addEventListener('input',render);
+$('load').addEventListener('click',load);
+$('endpoint').addEventListener('click',()=>{ ei=(ei+1)%ENDPOINTS.length; $('endpoint').textContent='Server: '+'ABC'[ei]; });
+$('copy').addEventListener('click',()=>navigator.clipboard.writeText($('out').value));
+load();
+</script>
+</body>
+</html>
