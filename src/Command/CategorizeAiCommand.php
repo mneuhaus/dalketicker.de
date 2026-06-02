@@ -102,6 +102,11 @@ final class CategorizeAiCommand extends Command
                 $proposal = $proposals[$event->getId()] ?? null;
                 if ($proposal === null) {
                     ++$stats['skipped'];
+                    // Mark as checked (no usable proposal) so it doesn't stay
+                    // "unchecked" forever and stall the progress at 99%.
+                    if ($apply) {
+                        $this->applier->recordSkipped($event, $this->categorizer->getModel());
+                    }
                     continue;
                 }
                 $this->handle($io, $event, $proposal, $uncategorized, $apply, $stats);

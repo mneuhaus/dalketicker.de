@@ -52,6 +52,20 @@ final class CategoryApplier
         return $decision;
     }
 
+    /**
+     * Mark an event as checked even though the AI returned no proposal (too
+     * little text to judge). Recorded as "dismissed" so it counts as processed
+     * and isn't retried forever — otherwise the progress bar sticks at 99%.
+     */
+    public function recordSkipped(Event $event, string $model): AiCategoryDecision
+    {
+        $current = $this->currentSlugs($event);
+        $decision = new AiCategoryDecision($event, 'fill', 'dismissed', $current, $current, $model, 'kein KI-Vorschlag');
+        $this->em->persist($decision);
+
+        return $decision;
+    }
+
     /** Admin accepts a pending suggestion → apply the proposed categories. */
     public function acceptSuggestion(AiCategoryDecision $decision): void
     {

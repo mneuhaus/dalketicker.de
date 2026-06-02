@@ -82,6 +82,12 @@ final class SummarizeAiCommand extends Command
             foreach ($chunk as $event) {
                 $summary = $summaries[$event->getId()] ?? null;
                 if ($summary === null) {
+                    // No summary from the AI → mark as checked with an empty
+                    // string (counts as done, won't be retried; the card simply
+                    // falls back to the description teaser). Avoids a 99% stall.
+                    if ($apply) {
+                        $event->setSummary('');
+                    }
                     continue;
                 }
                 ++$done;
