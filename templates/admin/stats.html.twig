@@ -26,19 +26,21 @@
     </p>
 
     {# Totals (last 30 days) #}
-    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-8">
-        <div class="bg-white rounded-2xl border border-black/5 shadow-sm p-5">
-            <div class="text-3xl font-bold text-ink tabular-nums font-[family-name:var(--font-display)]">{{ totals.views }}</div>
-            <div class="text-xs text-ink/50 mt-0.5">Seitenaufrufe · 30 Tage</div>
-        </div>
-        <div class="bg-white rounded-2xl border border-black/5 shadow-sm p-5">
-            <div class="text-3xl font-bold text-ink tabular-nums font-[family-name:var(--font-display)]">{{ totals.visitors }}</div>
-            <div class="text-xs text-ink/50 mt-0.5">Besucher (grob) · 30 Tage</div>
-        </div>
-        <div class="bg-white rounded-2xl border border-black/5 shadow-sm p-5">
-            <div class="text-3xl font-bold text-ink tabular-nums font-[family-name:var(--font-display)]">{{ todayViews }}</div>
-            <div class="text-xs text-ink/50 mt-0.5">Aufrufe heute</div>
-        </div>
+    {# Two rows: Aufrufe / Besucher, each heute · 7 Tage · 30 Tage. #}
+    <div class="space-y-3 mb-8">
+        {% for row in [{label: 'Aufrufe', data: metrics.views}, {label: 'Besucher (grob)', data: metrics.visitors}] %}
+            <div>
+                <div class="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-1.5">{{ row.label }}</div>
+                <div class="grid grid-cols-3 gap-3">
+                    {% for p in [{k: 'heute', l: 'heute'}, {k: '7', l: '7 Tage'}, {k: '30', l: '30 Tage'}] %}
+                        <div class="bg-white rounded-2xl border border-black/5 shadow-sm p-5">
+                            <div class="text-3xl font-bold text-ink tabular-nums font-[family-name:var(--font-display)]">{{ row.data[p.k] }}</div>
+                            <div class="text-xs text-ink/50 mt-0.5">{{ p.l }}</div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        {% endfor %}
     </div>
 
     {# Verlauf (letzte 30 Tage) als SVG-Chart mit zwei Skalen:

@@ -230,12 +230,21 @@ final class AdminController extends AbstractController
         $maxViews = max(1, max(array_column($series, 'views')));
         $maxVisitors = max(1, max(array_column($series, 'visitors')));
 
+        // Headline numbers in two rows (Aufrufe / Besucher) × heute · 7 · 30 Tage,
+        // all derived from the 30-day series (visitors summed daily — "grob").
+        $views = array_column($series, 'views');
+        $visitors = array_column($series, 'visitors');
+        $tail = static fn (array $a, int $n): int => array_sum(\array_slice($a, -$n));
+        $metrics = [
+            'views' => ['heute' => (int) end($views), '7' => $tail($views, 7), '30' => array_sum($views)],
+            'visitors' => ['heute' => (int) end($visitors), '7' => $tail($visitors, 7), '30' => array_sum($visitors)],
+        ];
+
         return $this->render('admin/stats.html.twig', [
             'series' => $series,
             'maxViews' => $maxViews,
             'maxVisitors' => $maxVisitors,
-            'todayViews' => end($series)['views'] ?? 0,
-            'totals' => $totals,
+            'metrics' => $metrics,
             'pages' => $pages,
         ]);
     }
