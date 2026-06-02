@@ -224,6 +224,13 @@ final class AdminController extends AbstractController
             'SELECT route_key, SUM(views) AS views FROM page_stat WHERE day >= :since GROUP BY route_key ORDER BY views DESC LIMIT 15',
             ['since' => $since],
         );
+        // Most popular individual events (detail-page views, last 30 days).
+        $topEvents = $db->fetchAllAssociative(
+            'SELECT e.id, e.slug, e.title, SUM(es.views) AS views
+             FROM event_stat es JOIN event e ON e.id = es.event_id
+             WHERE es.day >= :since GROUP BY e.id, e.slug, e.title ORDER BY views DESC LIMIT 15',
+            ['since' => $since],
+        );
 
         // Independent scales so the (smaller) visitor line is readable against
         // its own right-hand axis rather than hugging the baseline.
@@ -246,6 +253,7 @@ final class AdminController extends AbstractController
             'maxVisitors' => $maxVisitors,
             'metrics' => $metrics,
             'pages' => $pages,
+            'topEvents' => $topEvents,
         ]);
     }
 

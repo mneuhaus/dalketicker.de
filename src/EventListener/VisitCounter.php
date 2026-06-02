@@ -76,6 +76,17 @@ final class VisitCounter
                 ['d' => $day, 'r' => mb_substr($route, 0, 64)],
             );
 
+            // Per-event popularity: count views of individual detail pages too.
+            if ($route === 'event_show') {
+                $eventId = (int) $request->attributes->get('id', 0);
+                if ($eventId > 0) {
+                    $this->db->executeStatement(
+                        'INSERT INTO event_stat (day, event_id, views) VALUES (:d, :e, 1) ON CONFLICT (day, event_id) DO UPDATE SET views = event_stat.views + 1',
+                        ['d' => $day, 'e' => $eventId],
+                    );
+                }
+            }
+
             // Rough unique visitors: a salted, day-scoped hash (never the IP).
             $token = hash('sha256', $this->secret.'|'.$day.'|'.$request->getClientIp().'|'.$ua);
             $isNew = $this->db->executeStatement(

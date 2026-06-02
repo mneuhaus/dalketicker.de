@@ -134,4 +134,18 @@
             <div class="px-4 py-6 text-ink/40 text-sm">Noch keine Daten erfasst.</div>
         {% endfor %}
     </div>
+
+    {# Most popular individual events (detail-page views). #}
+    <h2 class="font-[family-name:var(--font-display)] text-lg font-bold text-ink mb-2 mt-8">Beliebteste Events (30 Tage)</h2>
+    <div class="bg-white rounded-2xl border border-black/5 shadow-sm divide-y divide-black/5">
+        {% for ev in topEvents %}
+            <div class="flex items-center gap-4 px-4 py-2.5 text-sm">
+                <span class="text-ink/30 tabular-nums w-5 text-right">{{ loop.index }}</span>
+                <a href="{{ path('event_show', {id: ev.id, slug: ev.slug}) }}" target="_blank" rel="noopener" class="font-medium text-ink flex-1 line-clamp-1 hover:text-brand-700">{{ ev.title }}</a>
+                <span class="text-ink/50 tabular-nums">{{ ev.views }}</span>
+            </div>
+        {% else %}
+            <div class="px-4 py-6 text-ink/40 text-sm">Noch keine Detailseiten-Aufrufe erfasst.</div>
+        {% endfor %}
+    </div>
 {% endblock %}
