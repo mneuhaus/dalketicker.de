@@ -92,6 +92,25 @@ final class EventImporter
         return $report;
     }
 
+    /**
+     * Manually upsert a single event into a source — e.g. an operator adding a
+     * Facebook-only or flyer event that no automated importer can reach. Runs
+     * through the exact same path as a real import (city normalization,
+     * venue + category resolution, slug, content hash and cross-source dedup),
+     * so a later automated run reconciles cleanly instead of duplicating it.
+     *
+     * @return bool true if a new event was created, false if an existing one was updated/unchanged
+     */
+    public function upsertOne(Source $source, ImportedEvent $dto): bool
+    {
+        $report = new ImportReport($source->getKey());
+        $this->newKeysThisRun = [];
+        $this->upsert($source, $dto, $this->clock->now(), false, $report);
+        $this->em->flush();
+
+        return $report->created > 0;
+    }
+
     /** Persist the run record + everything pending in one flush. */
     private function recordRun(ImportRun $run, ImportReport $report, ?string $fatal): void
     {
