@@ -181,7 +181,7 @@ final class CatalogSeeder
             'stadt_rietberg', 'stadt_shs', 'stadt_verl', 'stadt_versmold', 'gem_steinhagen',
             'gem_langenberg', 'burg_ravensberg', 'owl_arena', 'glanzlichter', 'musikschule_gt',
             'bib_verl', 'bib_borgholzhausen', 'gartenschaupark', 'weberei_fv',
-            'club_hangover', 'kulturig', 'tribe_events', 'gt_isselhorst',
+            'club_hangover', 'kulturig', 'tribe_events', 'gt_isselhorst', 'sv_pavenstaedt',
         ];
 
         // [key => [name, type, url, importer, city]]
@@ -241,6 +241,7 @@ final class CatalogSeeder
             ['marktcom', 'marktcom Marktverzeichnis (Kreis GT)', SourceType::Html, 'https://www.marktcom.de/termine/verzeichnis?q[event_bundesland_matches]=Nordrhein-Westfalen&q[event_landkreis_matches]=Gütersloh', 'marktcom', 'Kreis Gütersloh'],
             ['gtv1879', 'GTV 1879 – Termine', SourceType::Html, 'https://gtv1879.de/termine/', 'gtv1879', 'Gütersloh'],
             ['gt_isselhorst', 'Isselhorster Werbegemeinschaft', SourceType::Html, 'http://www.gt-isselhorst.de/veranstaltungen/', 'gt_isselhorst', 'Gütersloh'],
+            ['sv_pavenstaedt', 'SV Pavenstädt – Termine', SourceType::Html, 'https://www.xn--sv-pavenstdt-pcb.de/index.php?option=com_content&view=article&id=147&Itemid=118', 'sv_pavenstaedt', 'Gütersloh'],
         ];
 
         $out = [];
