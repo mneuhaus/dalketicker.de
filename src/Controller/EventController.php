@@ -258,18 +258,44 @@ final class EventController extends AbstractController
         } elseif ($event->getLocationText() !== null) {
             $data['location'] = ['@type' => 'Place', 'name' => $event->getLocationText()];
         }
+        $home = $this->homepageOf($event->getSource()->getUrl());
         if ($event->getOrganizer() !== null) {
-            $data['organizer'] = ['@type' => 'Organization', 'name' => $event->getOrganizer()];
-        }
-        if (!$event->isFactsOnly()) {
-            if ($event->getImageUrl() !== null) {
-                $data['image'] = $this->generateUrl('image_proxy', ['id' => $event->getId()], UrlGeneratorInterface::ABSOLUTE_URL);
+            $organizer = ['@type' => 'Organization', 'name' => $event->getOrganizer()];
+            if ($home !== null) {
+                $organizer['url'] = $home; // recommended "url" inside organizer
             }
-            $desc = $event->getSummary() ?: ($event->getDescription() !== null ? trim(strip_tags($event->getDescription())) : null);
-            if ($desc !== null && $desc !== '') {
-                $data['description'] = mb_substr($desc, 0, 500);
-            }
+            $data['organizer'] = $organizer;
         }
+
+        // Offer (recommended): the original event/ticket page + price when we can
+        // read it from the free-text price ("Eintritt frei" → 0, "12 €" → 12 EUR).
+        $offerUrl = preg_match('#^https?://#', (string) $event->getSourceUrl()) ? $event->getSourceUrl() : $url;
+        $offer = ['@type' => 'Offer', 'url' => $offerUrl, 'availability' => 'https://schema.org/InStock'];
+        $price = $event->getPrice();
+        if ($price !== null && preg_match('/frei|kostenlos|gratis|umsonst/i', $price)) {
+            $offer['price'] = '0';
+            $offer['priceCurrency'] = 'EUR';
+        } elseif ($price !== null && preg_match('/(\d+(?:[.,]\d{1,2})?)/', $price, $m)) {
+            $offer['price'] = str_replace(',', '.', $m[1]);
+            $offer['priceCurrency'] = 'EUR';
+        }
+        $data['offers'] = $offer;
+
+        // Creative parts only where allowed; otherwise our own fallbacks (logo
+        // image + a factual one-liner) so the recommended fields aren't empty.
+        if (!$event->isFactsOnly() && $event->getImageUrl() !== null) {
+            $data['image'] = $this->generateUrl('image_proxy', ['id' => $event->getId()], UrlGeneratorInterface::ABSOLUTE_URL);
+        } else {
+            $data['image'] = preg_replace('#(https?://[^/]+).*#', '$1', $url).'/share/status.png';
+        }
+        $desc = !$event->isFactsOnly()
+            ? ($event->getSummary() ?: ($event->getDescription() !== null ? trim(strip_tags($event->getDescription())) : null))
+            : null;
+        if ($desc === null || $desc === '') {
+            // Factual fallback (no foreign text): title + place.
+            $desc = $event->getTitle().($event->getDisplayLocation() !== null ? ' – '.$event->getDisplayLocation() : '');
+        }
+        $data['description'] = mb_substr($desc, 0, 500);
 
         // Keep slashes escaped (\/) so a "</script>" in any value can't break out
         // of the inline JSON-LD <script> block.
