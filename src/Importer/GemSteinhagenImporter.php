@@ -159,9 +159,7 @@ final class GemSteinhagenImporter implements SourceImporter
             return null;
         }
 
-        return (new \DateTimeImmutable('now', $tz))
-            ->setDate((int) $m[3], (int) $m[2], (int) $m[1])
-            ->setTime(0, 0);
+        return SafeDate::create((int) $m[3], (int) $m[2], (int) $m[1], 0, 0, $tz);
     }
 
     private function mapCategory(string $title): ?string

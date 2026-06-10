@@ -133,7 +133,7 @@ final class RssImporter implements SourceImporter
         $link = $this->extractLink($node);
 
         // RSS description / WordPress content:encoded / Atom summary+content.
-        $content = trim((string) $node->children('content', true)->encoded ?? '');
+        $content = trim((string) ($node->children('content', true)->encoded ?? ''));
         $description = trim((string) ($node->description ?? ''));
         $summary = trim((string) ($node->summary ?? ''));
         $atomContent = trim((string) ($node->content ?? ''));
@@ -463,17 +463,14 @@ final class RssImporter implements SourceImporter
 
     private function makeDate(int $day, int $month, int $year, ?string $hour, ?string $minute, \DateTimeZone $tz): ?\DateTimeImmutable
     {
-        if ($month < 1 || $month > 12 || $day < 1 || $day > 31 || $year < 2000 || $year > 2100) {
-            return null;
-        }
-        if (!checkdate($month, $day, $year)) {
+        if ($year < 2000 || $year > 2100) {
             return null;
         }
 
         $h = $hour !== null ? max(0, min(23, (int) $hour)) : 0;
         $i = $minute !== null ? max(0, min(59, (int) $minute)) : 0;
 
-        return (new \DateTimeImmutable('now', $tz))->setDate($year, $month, $day)->setTime($h, $i);
+        return SafeDate::create($year, $month, $day, $h, $i, $tz);
     }
 
     private function parsePublished(?string $value): ?\DateTimeImmutable

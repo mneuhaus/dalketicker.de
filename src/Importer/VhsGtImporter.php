@@ -139,11 +139,14 @@ final class VhsGtImporter implements SourceImporter
             if ($detail !== null) {
                 $start = $detail['start'] ?? $start;
                 $end = $detail['end'] ?? null;
-                if (($detail['location'] ?? '') !== '') {
+                if ($detail['location'] !== '') {
                     $location = $detail['location'];
                 }
                 if ($detail['start'] !== null) {
-                    $allDay = false;
+                    // A date-only ICS start must keep allDay=true: the shifted
+                    // DTEND is an inclusive midnight end, and the calendar grid
+                    // only reads it that way for all-day events.
+                    $allDay = $detail['allDay'];
                 }
             }
         }
@@ -217,17 +220,7 @@ final class VhsGtImporter implements SourceImporter
             $minute = (int) $t[2];
         }
 
-        if ($month < 1 || $month > 12 || $day < 1 || $day > 31 || $hour > 23 || $minute > 59) {
-            return null;
-        }
-
-        $date = (new \DateTimeImmutable('now', $tz))->setDate($year, $month, $day)->setTime($hour, $minute);
-        // checkdate-style guard against e.g. 31.02.
-        if ((int) $date->format('d') !== $day || (int) $date->format('n') !== $month) {
-            return null;
-        }
-
-        return $date;
+        return SafeDate::create($year, $month, $day, $hour, $minute, $tz);
     }
 
     private function hasTime(string $text): bool
@@ -236,9 +229,10 @@ final class VhsGtImporter implements SourceImporter
     }
 
     /**
-     * Fetch the per-course ICS export and pull out start/end/location.
+     * Fetch the per-course ICS export and pull out start/end/location plus
+     * whether the start is date-only (allDay).
      *
-     * @return array{start: ?\DateTimeImmutable, end: ?\DateTimeImmutable, location: string}|null
+     * @return array{start: ?\DateTimeImmutable, end: ?\DateTimeImmutable, allDay: bool, location: string}|null
      */
     private function fetchIcsDetail(string $knr, \DateTimeZone $tz): ?array
     {
@@ -257,13 +251,29 @@ final class VhsGtImporter implements SourceImporter
         }
         $block = $vm[1];
 
-        $start = $this->parseIcsDate($this->icsField($block, 'DTSTART'), $tz);
-        $end = $this->parseIcsDate($this->icsField($block, 'DTEND'), $tz);
+        $rawStart = $this->icsField($block, 'DTSTART');
+        $start = $this->parseIcsDate($rawStart, $tz);
+        $rawEnd = $this->icsField($block, 'DTEND');
+        $end = $this->parseIcsDate($rawEnd, $tz);
+        // RFC 5545: a date-only DTEND is exclusive (the day after the last
+        // event day), so shift it back; on or before the start day the event
+        // is single-day and carries no end.
+        if ($end !== null && preg_match('/^\d{8}$/', trim($rawEnd)) === 1) {
+            $end = $end->modify('-1 day');
+            if ($start !== null && $end <= $start) {
+                $end = null;
+            }
+        }
         $location = $this->clean($this->icsField($block, 'LOCATION'));
         // KuferWeb pads LOCATION with trailing ", , " separators — tidy them.
         $location = trim(preg_replace('/(,\s*)+$/', '', $location) ?? $location);
 
-        return ['start' => $start, 'end' => $end, 'location' => $location];
+        return [
+            'start' => $start,
+            'end' => $end,
+            'allDay' => preg_match('/^\d{8}$/', $rawStart) === 1,
+            'location' => $location,
+        ];
     }
 
     private function icsField(string $block, string $name): string

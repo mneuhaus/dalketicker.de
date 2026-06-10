@@ -183,9 +183,7 @@ final class StadtVersmoldImporter implements SourceImporter
             $i = (int) $tm[2];
         }
 
-        return (new \DateTimeImmutable('now', $tz))
-            ->setDate((int) $m[3], (int) $m[2], (int) $m[1])
-            ->setTime($h, $i);
+        return SafeDate::create((int) $m[3], (int) $m[2], (int) $m[1], $h, $i, $tz);
     }
 
     private function imageUrl(Crawler $entry): ?string

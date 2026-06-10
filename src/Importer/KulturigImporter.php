@@ -77,11 +77,11 @@ final class KulturigImporter implements SourceImporter
         if ($year < 100) {
             $year += 2000;
         }
-        if (!checkdate($month, $day, $year)) {
+        $tz = new \DateTimeZone('Europe/Berlin');
+        $start = SafeDate::create($year, $month, $day, 0, 0, $tz);
+        if ($start === null) {
             return null;
         }
-        $tz = new \DateTimeZone('Europe/Berlin');
-        $start = (new \DateTimeImmutable('now', $tz))->setDate($year, $month, $day)->setTime(0, 0);
         $allDay = true;
         if (preg_match('/(\d{1,2})[:.](\d{2})\s*Uhr/u', $itemText, $t) || preg_match('/Beginn[:\s]*?(\d{1,2})[:.](\d{2})/iu', $itemText, $t)) {
             $start = $start->setTime((int) $t[1], (int) $t[2]);

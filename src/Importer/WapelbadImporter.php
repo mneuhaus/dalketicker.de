@@ -72,12 +72,10 @@ final class WapelbadImporter implements SourceImporter
             $year = (int) $m[3];
             $title = $this->cleanTitle($m[4]);
 
-            if ($title === '' || !checkdate($month, $day, $year)) {
+            $start = $title !== '' ? SafeDate::create($year, $month, $day, 0, 0, $tz) : null;
+            if ($start === null) {
                 continue;
             }
-
-            $start = (new \DateTimeImmutable(sprintf('%04d-%02d-%02d', $year, $month, $day), $tz))
-                ->setTime(0, 0);
 
             // externalId: stable per date+title, de-duplicating recurring titles.
             $externalId = sprintf('wapelbad-%04d%02d%02d-%s', $year, $month, $day, ImportedEvent::normalize($title));

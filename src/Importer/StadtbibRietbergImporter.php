@@ -181,9 +181,7 @@ final class StadtbibRietbergImporter implements SourceImporter
         // Fallback: visible dd.mm.yyyy text.
         $text = trim($node->first()->text(''));
         if (preg_match('/(\d{2})\.(\d{2})\.(\d{4})/', $text, $m)) {
-            return (new \DateTimeImmutable('now', $tz))
-                ->setDate((int) $m[3], (int) $m[2], (int) $m[1])
-                ->setTime(0, 0);
+            return SafeDate::create((int) $m[3], (int) $m[2], (int) $m[1], 0, 0, $tz);
         }
 
         return null;

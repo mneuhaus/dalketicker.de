@@ -103,8 +103,21 @@ final class IcsImporter implements SourceImporter
         if ($start === null) {
             return null;
         }
-        $allDay = isset($fields['DTSTART']['params']['VALUE']) && $fields['DTSTART']['params']['VALUE'] === 'DATE';
+        // Same date-only test as for DTEND below: some feeds carry a bare
+        // 8-digit value without the VALUE=DATE param. allDay must match,
+        // otherwise the calendar grid treats the inclusive midnight end as a
+        // timed "until midnight" end and clips the last day.
+        $allDay = $this->isDateOnly($fields['DTSTART']);
         $end = isset($fields['DTEND']) ? $this->parseDate($fields['DTEND']) : null;
+        // RFC 5545: a date-only DTEND is exclusive (the day after the last
+        // event day), so shift it back; on or before the start day the event
+        // is single-day and carries no end.
+        if ($end !== null && $this->isDateOnly($fields['DTEND'])) {
+            $end = $end->modify('-1 day');
+            if ($end <= $start) {
+                $end = null;
+            }
+        }
 
         $location = trim($fields['LOCATION']['value'] ?? '');
 
@@ -134,6 +147,13 @@ final class IcsImporter implements SourceImporter
         }
 
         return $config['category'] ?? null;
+    }
+
+    /** @param array{value: string, params: array<string,string>} $field */
+    private function isDateOnly(array $field): bool
+    {
+        return ($field['params']['VALUE'] ?? null) === 'DATE'
+            || preg_match('/^\d{8}$/', trim($field['value'])) === 1;
     }
 
     /** @param array{value: string, params: array<string,string>} $field */

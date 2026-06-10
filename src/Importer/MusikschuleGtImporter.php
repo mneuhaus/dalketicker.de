@@ -78,7 +78,7 @@ final class MusikschuleGtImporter implements SourceImporter
                 continue;
             }
 
-            $href = $node->getAttribute('href');
+            $href = $anchor->attr('href');
             $detailUrl = $this->absolute($href);
             if ($detailUrl === null) {
                 continue;
@@ -171,9 +171,7 @@ final class MusikschuleGtImporter implements SourceImporter
             }
         }
 
-        return (new \DateTimeImmutable('now', $tz))
-            ->setDate((int) $d[3], (int) $d[2], (int) $d[1])
-            ->setTime($h, $i);
+        return SafeDate::create((int) $d[3], (int) $d[2], (int) $d[1], $h, $i, $tz);
     }
 
     private function description(Crawler $anchor): ?string

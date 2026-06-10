@@ -77,9 +77,6 @@ final class KgbLangenbergImporter implements SourceImporter
         $day = (int) $m[1];
         $month = (int) $m[2];
         $year = (int) $m[3];
-        if (!checkdate($month, $day, $year)) {
-            return null;
-        }
 
         // Artist / event name = everything before the date, with the trailing
         // separator (en-dash, em-dash or hyphen) and whitespace removed.
@@ -93,9 +90,10 @@ final class KgbLangenbergImporter implements SourceImporter
         $content = (string) $this->namespaced($item, 'content', 'encoded');
         [$hour, $minute] = $this->parseStartTime($content);
 
-        $start = (new \DateTimeImmutable('now', $tz))
-            ->setDate($year, $month, $day)
-            ->setTime($hour ?? 0, $minute ?? 0);
+        $start = SafeDate::create($year, $month, $day, $hour ?? 0, $minute ?? 0, $tz);
+        if ($start === null) {
+            return null;
+        }
         $allDay = $hour === null;
 
         $link = trim((string) $item->link);

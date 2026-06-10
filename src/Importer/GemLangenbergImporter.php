@@ -125,8 +125,21 @@ final class GemLangenbergImporter implements SourceImporter
             return null;
         }
 
-        $allDay = ($fields['DTSTART']['params']['VALUE'] ?? null) === 'DATE';
+        // Same date-only test as for DTEND below: a bare 8-digit DTSTART
+        // without VALUE=DATE must also count as all-day, otherwise the
+        // calendar grid treats the inclusive midnight end as a timed "until
+        // midnight" end and clips the last day.
+        $allDay = $this->isDateOnly($fields['DTSTART']);
         $end = isset($fields['DTEND']) ? $this->parseDate($fields['DTEND']) : null;
+        // RFC 5545: a date-only DTEND is exclusive (the day after the last
+        // event day), so shift it back; on or before the start day the event
+        // is single-day and carries no end.
+        if ($end !== null && $this->isDateOnly($fields['DTEND'])) {
+            $end = $end->modify('-1 day');
+            if ($end <= $start) {
+                $end = null;
+            }
+        }
 
         $venueName = trim($fields['X-LOCATION-NAME']['value'] ?? ($fields['LOCATION']['value'] ?? ''));
         $locationText = $this->buildLocationText($fields);
@@ -242,6 +255,13 @@ final class GemLangenbergImporter implements SourceImporter
         }
 
         return 'sonstiges';
+    }
+
+    /** @param array{value: string, params: array<string,string>} $field */
+    private function isDateOnly(array $field): bool
+    {
+        return ($field['params']['VALUE'] ?? null) === 'DATE'
+            || preg_match('/^\d{8}$/', trim($field['value'])) === 1;
     }
 
     /** @param array{value: string, params: array<string,string>} $field */

@@ -154,7 +154,7 @@ final class StadtVerlImporter implements SourceImporter
             [$day, $month, $year] = [(int) $m[1], (int) $m[2], (int) $m[3]];
         }
 
-        if ($day === null || $month === null || $year === null) {
+        if ($day === null) { // day/month/year are always assigned together
             return null;
         }
 
@@ -164,16 +164,7 @@ final class StadtVerlImporter implements SourceImporter
             $minute = (int) $tm[2];
         }
 
-        $start = (new \DateTimeImmutable('now', $tz))
-            ->setDate($year, $month, $day)
-            ->setTime($hour, $minute);
-
-        // Reject obviously broken dates (createFromFormat-style sanity check).
-        if ((int) $start->format('n') !== $month || (int) $start->format('j') !== $day) {
-            return null;
-        }
-
-        return $start;
+        return SafeDate::create($year, $month, $day, $hour, $minute, $tz);
     }
 
     /**

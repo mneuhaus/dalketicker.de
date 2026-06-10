@@ -241,15 +241,7 @@ final class Gtv1879Importer implements SourceImporter
 
     private function makeDate(int $year, int $month, int $day, \DateTimeZone $tz): ?\DateTimeImmutable
     {
-        if (!checkdate($month, $day, $year)) {
-            return null;
-        }
-
-        try {
-            return new \DateTimeImmutable(sprintf('%04d-%02d-%02d 00:00:00', $year, $month, $day), $tz);
-        } catch (\Exception) {
-            return null;
-        }
+        return SafeDate::create($year, $month, $day, 0, 0, $tz);
     }
 
     /**

@@ -184,24 +184,15 @@ final class WolpertingerImporter implements SourceImporter
         [$h, $m] = $time ?? [0, 0];
         $year = (int) $now->format('Y');
 
-        $date = $this->makeDate($year, $month, $day, $h, $m, $tz);
+        $date = SafeDate::create($year, $month, $day, $h, $m, $tz);
         if ($date === null) {
             return null;
         }
         if ($date < $now->modify('-1 day')) {
-            $date = $this->makeDate($year + 1, $month, $day, $h, $m, $tz) ?? $date;
+            $date = SafeDate::create($year + 1, $month, $day, $h, $m, $tz) ?? $date;
         }
 
         return $date;
-    }
-
-    private function makeDate(int $year, int $month, int $day, int $h, int $m, \DateTimeZone $tz): ?\DateTimeImmutable
-    {
-        if (!checkdate($month, $day, $year)) {
-            return null;
-        }
-
-        return (new \DateTimeImmutable('now', $tz))->setDate($year, $month, $day)->setTime($h, $m);
     }
 
     /**

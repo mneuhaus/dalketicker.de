@@ -144,14 +144,14 @@ final class ClubHangoverImporter implements SourceImporter
     {
         $tz = $now->getTimezone();
         if ($year !== null) {
-            return $this->safeDate($year, $month, $day, $tz);
+            return SafeDate::create($year, $month, $day, 0, 0, $tz);
         }
 
         $base = (int) $now->format('Y');
         $best = null;
         $bestScore = null;
         foreach ([$base - 1, $base, $base + 1] as $y) {
-            $cand = $this->safeDate($y, $month, $day, $tz);
+            $cand = SafeDate::create($y, $month, $day, 0, 0, $tz);
             if ($cand === null) {
                 continue;
             }
@@ -166,15 +166,6 @@ final class ClubHangoverImporter implements SourceImporter
         }
 
         return $best;
-    }
-
-    private function safeDate(int $y, int $m, int $d, \DateTimeZone $tz): ?\DateTimeImmutable
-    {
-        if (!checkdate($m, $d, $y)) {
-            return null;
-        }
-
-        return (new \DateTimeImmutable('now', $tz))->setDate($y, $m, $d)->setTime(0, 0);
     }
 
     /**
