@@ -1,0 +1,301 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Access to an undefined property Sabre\\VObject\\Component\\VCalendar\:\:\$PRODID\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Calendar/IcsFeedBuilder.php
+
+		-
+			message: '#^Call to an undefined method Sabre\\VObject\\Node\:\:add\(\)\.$#'
+			identifier: method.notFound
+			count: 8
+			path: src/Calendar/IcsFeedBuilder.php
+
+		-
+			message: '#^Property App\\Entity\\AiCategoryDecision\:\:\$id \(int\|null\) is never assigned int so it can be removed from the property type\.$#'
+			identifier: property.unusedType
+			count: 1
+			path: src/Entity/AiCategoryDecision.php
+
+		-
+			message: '#^Property App\\Entity\\AiDedupDay\:\:\$reviewedAt is never read, only written\.$#'
+			identifier: property.onlyWritten
+			count: 1
+			path: src/Entity/AiDedupDay.php
+
+		-
+			message: '#^Property App\\Entity\\AiDedupDecision\:\:\$id \(int\|null\) is never assigned int so it can be removed from the property type\.$#'
+			identifier: property.unusedType
+			count: 1
+			path: src/Entity/AiDedupDecision.php
+
+		-
+			message: '#^Property App\\Entity\\Category\:\:\$id \(int\|null\) is never assigned int so it can be removed from the property type\.$#'
+			identifier: property.unusedType
+			count: 1
+			path: src/Entity/Category.php
+
+		-
+			message: '#^Property App\\Entity\\ContactMessage\:\:\$id \(int\|null\) is never assigned int so it can be removed from the property type\.$#'
+			identifier: property.unusedType
+			count: 1
+			path: src/Entity/ContactMessage.php
+
+		-
+			message: '#^Method App\\Entity\\Event\:\:getRaw\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Event.php
+
+		-
+			message: '#^Method App\\Entity\\Event\:\:setRaw\(\) has parameter \$raw with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Event.php
+
+		-
+			message: '#^Property App\\Entity\\Event\:\:\$id \(int\|null\) is never assigned int so it can be removed from the property type\.$#'
+			identifier: property.unusedType
+			count: 1
+			path: src/Entity/Event.php
+
+		-
+			message: '#^Property App\\Entity\\Event\:\:\$raw type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Event.php
+
+		-
+			message: '#^Property App\\Entity\\ImportRun\:\:\$id \(int\|null\) is never assigned int so it can be removed from the property type\.$#'
+			identifier: property.unusedType
+			count: 1
+			path: src/Entity/ImportRun.php
+
+		-
+			message: '#^Method App\\Entity\\Source\:\:getConfig\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Source.php
+
+		-
+			message: '#^Method App\\Entity\\Source\:\:setConfig\(\) has parameter \$config with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Source.php
+
+		-
+			message: '#^Property App\\Entity\\Source\:\:\$config type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Entity/Source.php
+
+		-
+			message: '#^Property App\\Entity\\Source\:\:\$id \(int\|null\) is never assigned int so it can be removed from the property type\.$#'
+			identifier: property.unusedType
+			count: 1
+			path: src/Entity/Source.php
+
+		-
+			message: '#^Property App\\Entity\\User\:\:\$id \(int\|null\) is never assigned int so it can be removed from the property type\.$#'
+			identifier: property.unusedType
+			count: 1
+			path: src/Entity/User.php
+
+		-
+			message: '#^Property App\\Entity\\Venue\:\:\$id \(int\|null\) is never assigned int so it can be removed from the property type\.$#'
+			identifier: property.unusedType
+			count: 1
+			path: src/Entity/Venue.php
+
+		-
+			message: '#^Method App\\Importer\\BibBorgholzhausenImporter\:\:resolveLicenseKey\(\) has parameter \$config with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Importer/BibBorgholzhausenImporter.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between decimal\-int\-string&non\-falsy\-string and '''' will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: src/Importer/BibVerlImporter.php
+
+		-
+			message: '#^Method App\\Importer\\BurgRavensbergImporter\:\:mapCategory\(\) never returns null so it can be removed from the return type\.$#'
+			identifier: return.unusedType
+			count: 1
+			path: src/Importer/BurgRavensbergImporter.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between decimal\-int\-string&non\-falsy\-string and '''' will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 3
+			path: src/Importer/ClubHangoverImporter.php
+
+		-
+			message: '#^Method App\\Importer\\ErfolgskreisGtImporter\:\:resolveLicenseKey\(\) has parameter \$config with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Importer/ErfolgskreisGtImporter.php
+
+		-
+			message: '#^Method App\\Importer\\GartenschauparkImporter\:\:mapCategory\(\) never returns null so it can be removed from the return type\.$#'
+			identifier: return.unusedType
+			count: 1
+			path: src/Importer/GartenschauparkImporter.php
+
+		-
+			message: '#^Method App\\Importer\\GemLangenbergImporter\:\:mapCategory\(\) never returns null so it can be removed from the return type\.$#'
+			identifier: return.unusedType
+			count: 1
+			path: src/Importer/GemLangenbergImporter.php
+
+		-
+			message: '#^Method App\\Importer\\IcsImporter\:\:mapCategory\(\) has parameter \$config with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Importer/IcsImporter.php
+
+		-
+			message: '#^Method App\\Importer\\IcsImporter\:\:mapEvent\(\) has parameter \$config with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Importer/IcsImporter.php
+
+		-
+			message: '#^Method App\\Importer\\JsonLdImporter\:\:discoverDetailLinks\(\) has parameter \$config with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Importer/JsonLdImporter.php
+
+		-
+			message: '#^Method App\\Importer\\JsonLdImporter\:\:mapEvent\(\) has parameter \$config with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Importer/JsonLdImporter.php
+
+		-
+			message: '#^Method App\\Importer\\JsonLdImporter\:\:mapLocation\(\) has parameter \$config with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Importer/JsonLdImporter.php
+
+		-
+			message: '#^Method App\\Importer\\KuferHtmlImporter\:\:mapCategory\(\) has parameter \$config with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Importer/KuferHtmlImporter.php
+
+		-
+			message: '#^Method App\\Importer\\KuferHtmlImporter\:\:mapCategory\(\) never returns null so it can be removed from the return type\.$#'
+			identifier: return.unusedType
+			count: 1
+			path: src/Importer/KuferHtmlImporter.php
+
+		-
+			message: '#^Method App\\Importer\\KuferHtmlImporter\:\:mapRow\(\) has parameter \$config with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Importer/KuferHtmlImporter.php
+
+		-
+			message: '#^Method App\\Importer\\MuseumPabImporter\:\:mapCategory\(\) never returns null so it can be removed from the return type\.$#'
+			identifier: return.unusedType
+			count: 1
+			path: src/Importer/MuseumPabImporter.php
+
+		-
+			message: '#^Parameter \#1 \$node of method App\\Importer\\MuseumPabImporter\:\:parseParagraph\(\) expects DOMElement, DOMNode given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Importer/MuseumPabImporter.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between decimal\-int\-string&non\-falsy\-string and '''' will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: src/Importer/MuseumPabImporter.php
+
+		-
+			message: '#^Method App\\Importer\\OwlArenaImporter\:\:mapCategory\(\) never returns null so it can be removed from the return type\.$#'
+			identifier: return.unusedType
+			count: 1
+			path: src/Importer/OwlArenaImporter.php
+
+		-
+			message: '#^Method App\\Importer\\RadioGtImporter\:\:parseDateRange\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Importer/RadioGtImporter.php
+
+		-
+			message: '#^Method App\\Importer\\RadioGtImporter\:\:parseWhen\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Importer/RadioGtImporter.php
+
+		-
+			message: '#^Method App\\Importer\\RssImporter\:\:findTimeNear\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Importer/RssImporter.php
+
+		-
+			message: '#^Method App\\Importer\\RssImporter\:\:mapCategory\(\) has parameter \$config with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Importer/RssImporter.php
+
+		-
+			message: '#^Method App\\Importer\\RssImporter\:\:mapItem\(\) has parameter \$config with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Importer/RssImporter.php
+
+		-
+			message: '#^Method App\\Importer\\StadtGtImporter\:\:buildListUrl\(\) has parameter \$config with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Importer/StadtGtImporter.php
+
+		-
+			message: '#^Method App\\Importer\\StadtRietbergImporter\:\:nextPageUrl\(\) has parameter \$seenPages with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Importer/StadtRietbergImporter.php
+
+		-
+			message: '#^Method App\\Importer\\StadtShsImporter\:\:resolveLicenseKey\(\) has parameter \$config with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Importer/StadtShsImporter.php
+
+		-
+			message: '#^Method App\\Importer\\StadtVerlImporter\:\:mapCategory\(\) never returns null so it can be removed from the return type\.$#'
+			identifier: return.unusedType
+			count: 1
+			path: src/Importer/StadtVerlImporter.php
+
+		-
+			message: '#^Method App\\Importer\\StadtbibRietbergImporter\:\:locationText\(\) never returns null so it can be removed from the return type\.$#'
+			identifier: return.unusedType
+			count: 1
+			path: src/Importer/StadtbibRietbergImporter.php
+
+		-
+			message: '#^Offset 1 on array\{non\-falsy\-string, '''', '''', '''', '''', decimal\-int\-string\}\|array\{non\-falsy\-string, '''', '''', decimal\-int\-string, decimal\-int\-string\}\|array\{non\-falsy\-string, decimal\-int\-string, decimal\-int\-string&non\-falsy\-string\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: src/Importer/WebereiFvImporter.php
+
+		-
+			message: '#^PHPDoc tag @implements contains generic type Symfony\\Component\\Security\\Core\\User\\PasswordUpgraderInterface\<App\\Entity\\User\> but interface Symfony\\Component\\Security\\Core\\User\\PasswordUpgraderInterface is not generic\.$#'
+			identifier: generics.notGeneric
+			count: 1
+			path: src/Repository/UserRepository.php
+
+		-
+			message: '#^Method App\\Search\\EventFilter\:\:toQueryParams\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Search/EventFilter.php
