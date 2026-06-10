@@ -28,6 +28,7 @@ final class ImportedEvent
         public ?string $price = null,
         public ?string $organizer = null,
         public ?string $externalId = null,
+        /** @var array<string, mixed> */
         public array $raw = [],
         public bool $isCourse = false,
         public ?BookingStatus $bookingStatus = null,
@@ -53,8 +54,9 @@ final class ImportedEvent
     }
 
     /**
-     * Cross-source dedup key: normalized title + calendar day + place. Two
-     * sources advertising the same event on the same day collapse onto this.
+     * Cross-source dedup key: normalized title + calendar day (+ start time for
+     * timed events) + place. Two sources advertising the same event collapse
+     * onto this.
      */
     public function dedupKey(): string
     {
@@ -63,8 +65,16 @@ final class ImportedEvent
         // wording still collapses.
         $place = $this->city ?? $this->venueName ?? $this->locationText ?? '';
 
+        // Timed events keep their start time in the key so two real showings on
+        // the same day (cinema 15:00 + 20:00) stay distinct; all-day events
+        // match on the day alone. Sources listing different times for the same
+        // event no longer key-match — the AI dedup pass catches those.
+        $when = $this->allDay
+            ? $this->startsAt->format('Y-m-d')
+            : $this->startsAt->format('Y-m-d Hi');
+
         return substr(
-            self::normalizeTitle($this->title).'|'.$this->startsAt->format('Y-m-d').'|'.self::normalize($place),
+            self::normalizeTitle($this->title).'|'.$when.'|'.self::normalize($place),
             0,
             191,
         );
@@ -102,12 +112,20 @@ final class ImportedEvent
             $this->organizer ?? '',
             implode(',', $this->allCategorySlugs()),
             $this->isCourse ? '1' : '0',
-            $this->bookingStatus?->value ?? '',
+            (string) $this->bookingStatus?->value,
         ]));
     }
 
     public static function normalize(string $value): string
     {
+        // Transliterate umlauts/ß before stripping to ASCII, so the common
+        // spelling variants still match ('Müller' and 'Mueller' → 'mueller').
+        $value = str_replace(
+            ['ä', 'ö', 'ü', 'Ä', 'Ö', 'Ü', 'ß', 'ẞ'],
+            ['ae', 'oe', 'ue', 'Ae', 'Oe', 'Ue', 'ss', 'ss'],
+            $value,
+        );
+
         return preg_replace('/[^a-z0-9]+/', '', mb_strtolower(trim($value))) ?? '';
     }
 }

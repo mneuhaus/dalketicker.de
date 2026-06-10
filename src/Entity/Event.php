@@ -28,6 +28,7 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Index(name: 'idx_event_starts_at', columns: ['starts_at'])]
 #[ORM\Index(name: 'idx_event_dedup_key', columns: ['dedup_key'])]
 #[ORM\Index(name: 'idx_event_status', columns: ['status'])]
+#[ORM\Index(name: 'idx_event_venue_title', columns: ['venue_id', 'title'])]
 class Event
 {
     #[ORM\Id]
@@ -110,6 +111,15 @@ class Event
 
     #[ORM\Column(length: 20, enumType: EventStatus::class)]
     private EventStatus $status = EventStatus::Published;
+
+    /**
+     * Set when the prune pass ({@see \App\Command\PruneUnseenCommand}) auto-hid
+     * this event because its source stopped listing it. The importer republishes
+     * and clears it as soon as the source lists the event again — unlike a
+     * deliberate admin hide, which has no marker and stays hidden.
+     */
+    #[ORM\Column(type: Types::DATETIME_IMMUTABLE, nullable: true)]
+    private ?\DateTimeImmutable $prunedAt = null;
 
     /** Secondary classification: course-like offering (VHS etc.), orthogonal to category. */
     #[ORM\Column]
@@ -449,6 +459,18 @@ class Event
     public function setStatus(EventStatus $status): static
     {
         $this->status = $status;
+
+        return $this;
+    }
+
+    public function getPrunedAt(): ?\DateTimeImmutable
+    {
+        return $this->prunedAt;
+    }
+
+    public function setPrunedAt(?\DateTimeImmutable $prunedAt): static
+    {
+        $this->prunedAt = $prunedAt;
 
         return $this;
     }

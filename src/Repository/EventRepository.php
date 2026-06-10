@@ -383,6 +383,8 @@ class EventRepository extends ServiceEntityRepository
      * Distinct cities present on visible events, for the location filter.
      * "Kreis Gütersloh" is the kreis-wide bucket, not a town — it's excluded
      * here and represented by the "all" option (which the UI labels accordingly).
+     *
+     * @return list<string>
      */
     public function findUsedCities(): array
     {
@@ -401,16 +403,16 @@ class EventRepository extends ServiceEntityRepository
     }
 
     /**
-     * Lookup an existing event for upsert, first by (source, externalId), then
-     * by the cross-source dedup key.
+     * Lookup an existing event for upsert: by (source, externalId) when the
+     * source provides a stable id, otherwise by the cross-source dedup key.
+     * With an externalId the dedup key is deliberately NOT used as fallback —
+     * two real events of the same source (e.g. two screenings on one day)
+     * could share a key and would overwrite each other on every import.
      */
     public function findForUpsert(int $sourceId, ?string $externalId, string $dedupKey): ?Event
     {
         if ($externalId !== null && $externalId !== '') {
-            $bySource = $this->findOneBy(['source' => $sourceId, 'externalId' => $externalId]);
-            if ($bySource !== null) {
-                return $bySource;
-            }
+            return $this->findOneBy(['source' => $sourceId, 'externalId' => $externalId]);
         }
 
         return $this->findOneBy(['source' => $sourceId, 'dedupKey' => $dedupKey]);
@@ -520,6 +522,9 @@ class EventRepository extends ServiceEntityRepository
             ->leftJoin('e.venue', 'v')->addSelect('v')
             ->leftJoin('e.source', 's')->addSelect('s')
             ->andWhere('e.status = :published')
+            // Disabling a source takes its events off the site immediately,
+            // without waiting for a prune/cleanup run.
+            ->andWhere('s.enabled = true')
             ->setParameter('published', EventStatus::Published);
 
         if ($filter->q !== null) {

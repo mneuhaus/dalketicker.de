@@ -85,8 +85,13 @@ final class RededupCommand extends Command
             // richer (often aggregator) copies, so we keep the primary source as
             // canonical without losing the flyer image. Re-applied every run, so
             // it survives the import overwriting the primary's empty fields.
+            // Never borrow from facts-only sources — their creative content
+            // (text/images) must not surface on a public event (legal safeguard).
             if (!$dryRun) {
                 foreach (\array_slice($group, 1) as $loser) {
+                    if ($loser->getSource()->isFactsOnly()) {
+                        continue;
+                    }
                     if ($winner->getImageUrl() === null && $loser->getImageUrl() !== null) {
                         $winner->setImageUrl($loser->getImageUrl());
                     }
@@ -119,6 +124,9 @@ final class RededupCommand extends Command
             }
         }
 
+        $rescued = $this->rescueStrandedDuplicates($events, $groups, $dryRun, $promoted);
+        $flips += $rescued;
+
         if (!$dryRun) {
             $this->em->flush();
             // Retire AI-dedup decisions whose canonical we just demoted — the
@@ -132,9 +140,125 @@ final class RededupCommand extends Command
         foreach (\array_slice($promoted, 0, 15) as $line) {
             $io->writeln('  <info>promoted</info> '.$line);
         }
-        $io->success(sprintf('%s: %d Gruppen, %d Änderungen%s.', $dryRun ? 'Dry-run' : 'Fertig', \count(array_filter($groups, static fn ($g) => \count($g) >= 2)), $flips, $dryRun ? ' (nichts geschrieben)' : ''));
+        $io->success(sprintf('%s: %d Gruppen, %d Änderungen, davon %d gestrandete Duplikate%s.', $dryRun ? 'Dry-run' : 'Fertig', \count(array_filter($groups, static fn ($g) => \count($g) >= 2)), $flips, $rescued, $dryRun ? ' (nichts geschrieben)' : ''));
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * Rescue pass: a key-based demotion is otherwise a one-way street. Promote
+     * (or re-hang) duplicates whose canonical vanished (deleted → FK SET NULL),
+     * whose canonical is itself a duplicate (chain), or whose key no longer has
+     * a published counterpart (event moved to another day). A canonical that an
+     * admin set to Hidden (no prunedAt) stays untouched — that hiding was
+     * deliberate, and so are fuzzy AI merges (different keys, backed by an
+     * AiDedupDecision). A canonical hidden by prune-unseen (prunedAt set) is
+     * automation, so its duplicate gets promoted instead.
+     *
+     * @param Event[]               $events   upcoming published/duplicate events (as loaded above)
+     * @param array<string, Event[]> $groups  the same events grouped by dedup key
+     * @param list<string>          $promoted log lines, appended to
+     *
+     * @return int number of changes
+     */
+    private function rescueStrandedDuplicates(array $events, array $groups, bool $dryRun, array &$promoted): int
+    {
+        $changes = 0;
+        $aiDupIds = null; // lazily fetched: events demoted by an active AI merge
+
+        foreach ($events as $e) {
+            if ($e->getStatus() !== EventStatus::Duplicate) {
+                continue;
+            }
+            // Keys with >= 2 members are governed by the key pass above.
+            if (\count($groups[$e->getDedupKey()] ?? []) >= 2) {
+                continue;
+            }
+
+            $target = $e->getDuplicateOf();
+
+            if ($target === null) {
+                // Canonical was deleted (FK SET NULL) — the event is orphaned.
+                $changes += $this->promote($e, $dryRun, $promoted, 'verwaist');
+                continue;
+            }
+
+            if ($target->getStatus() === EventStatus::Duplicate) {
+                // Chain: re-hang onto the chain's end, or promote when the
+                // chain dangles (ends in null or a cycle).
+                $end = $this->chainEnd($target);
+                if ($end === null) {
+                    $changes += $this->promote($e, $dryRun, $promoted, 'Kette ohne Ziel');
+                } elseif ($end->getStatus() === EventStatus::Published) {
+                    if (!$dryRun) {
+                        $e->setDuplicateOf($end);
+                    }
+                    ++$changes;
+                } elseif ($end->getStatus() === EventStatus::Hidden && $end->getPrunedAt() !== null) {
+                    // prune-unseen hid the chain's end — not an admin call.
+                    $changes += $this->promote($e, $dryRun, $promoted, 'Kette endet in gepruntem Canonical');
+                }
+                // Chain ending in admin-Hidden (no prunedAt): deliberate, leave it.
+                continue;
+            }
+
+            if ($target->getStatus() === EventStatus::Hidden) {
+                // Hidden by prune-unseen (prunedAt set) is automation, not an
+                // admin decision — the duplicate may resurface. A manual
+                // Hidden (no prunedAt) stays untouched.
+                if ($target->getPrunedAt() !== null) {
+                    $changes += $this->promote($e, $dryRun, $promoted, 'Canonical geprunt');
+                }
+                continue;
+            }
+
+            if ($target->getDedupKey() === $e->getDedupKey()) {
+                continue; // keys still match (target just isn't in the upcoming set) — link is valid
+            }
+
+            // Canonical is published, but the keys no longer match (single-member
+            // group): either the event moved to a new day or this is a fuzzy AI
+            // merge. Only promote when no AI decision backs the link.
+            $aiDupIds ??= array_flip(array_map(intval(...), $this->db->fetchFirstColumn(
+                'SELECT duplicate_event_id FROM ai_dedup_decision WHERE active = true AND duplicate_event_id IS NOT NULL',
+            )));
+            if (!isset($aiDupIds[(int) $e->getId()])) {
+                $changes += $this->promote($e, $dryRun, $promoted, 'Key ohne Published-Pendant');
+            }
+        }
+
+        return $changes;
+    }
+
+    /** @param list<string> $promoted log lines, appended to */
+    private function promote(Event $e, bool $dryRun, array &$promoted, string $reason): int
+    {
+        if (!$dryRun) {
+            $e->setStatus(EventStatus::Published)->setDuplicateOf(null);
+        }
+        $promoted[] = sprintf('%s (#%d, %s) — %s', $e->getTitle(), $e->getId(), $e->getSource()->getImporter(), $reason);
+
+        return 1;
+    }
+
+    /**
+     * Follow a duplicate chain to its first non-duplicate event; null when the
+     * chain dangles (SET-NULL hole) or cycles.
+     */
+    private function chainEnd(Event $start): ?Event
+    {
+        $seen = [];
+        $cur = $start;
+        while ($cur !== null && $cur->getStatus() === EventStatus::Duplicate) {
+            $id = $cur->getId();
+            if ($id === null || isset($seen[$id])) {
+                return null; // cycle
+            }
+            $seen[$id] = true;
+            $cur = $cur->getDuplicateOf();
+        }
+
+        return $cur;
     }
 
     /** Winner sort: primary before aggregator, then richer (image, longer text), then oldest. */
