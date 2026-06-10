@@ -89,9 +89,6 @@ final class Gtv1879Importer implements SourceImporter
             : 'sport';
 
         $html = $this->fetch($url);
-        if ($html === null) {
-            return;
-        }
 
         $tz = new \DateTimeZone('Europe/Berlin');
         $crawler = new Crawler($html, $url);
@@ -310,7 +307,8 @@ final class Gtv1879Importer implements SourceImporter
         return rtrim($lastSpace !== false ? mb_substr($cut, 0, $lastSpace) : $cut).' …';
     }
 
-    private function fetch(string $url): ?string
+    /** Fetch a URL or throw, so a dead source surfaces as a failed run. */
+    private function fetch(string $url): string
     {
         try {
             $response = $this->http->request('GET', $url, [
@@ -318,13 +316,15 @@ final class Gtv1879Importer implements SourceImporter
                 'timeout' => 30,
                 'max_redirects' => 5,
             ]);
-            if ($response->getStatusCode() >= 400) {
-                return null;
-            }
-
-            return $response->getContent();
-        } catch (\Throwable) {
-            return null;
+            $status = $response->getStatusCode();
+            $content = $status < 400 ? $response->getContent() : null;
+        } catch (\Throwable $e) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: %s', $url, $e->getMessage()), 0, $e);
         }
+        if ($content === null) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: HTTP %d', $url, $status));
+        }
+
+        return $content;
     }
 }

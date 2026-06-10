@@ -53,18 +53,7 @@ final class BurgRavensbergImporter implements SourceImporter
         $city = $config['city'] ?? 'Borgholzhausen';
         $tz = new \DateTimeZone('Europe/Berlin');
 
-        try {
-            $response = $this->http->request('GET', $url, [
-                'headers' => ['User-Agent' => self::USER_AGENT],
-                'timeout' => 20,
-            ]);
-            if ($response->getStatusCode() >= 400) {
-                return;
-            }
-            $html = $response->getContent();
-        } catch (\Throwable) {
-            return;
-        }
+        $html = $this->fetch($url);
 
         $crawler = new Crawler($html, $url);
         $seen = [];
@@ -122,6 +111,26 @@ final class BurgRavensbergImporter implements SourceImporter
                 continue;
             }
         }
+    }
+
+    /** Fetch the calendar page or throw, so a dead source surfaces as a failed run. */
+    private function fetch(string $url): string
+    {
+        try {
+            $response = $this->http->request('GET', $url, [
+                'headers' => ['User-Agent' => self::USER_AGENT],
+                'timeout' => 20,
+            ]);
+            $status = $response->getStatusCode();
+            $content = $status < 400 ? $response->getContent() : null;
+        } catch (\Throwable $e) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: %s', $url, $e->getMessage()), 0, $e);
+        }
+        if ($content === null) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: HTTP %d', $url, $status));
+        }
+
+        return $content;
     }
 
     private function isoDate(Crawler $event, string $selector, \DateTimeZone $tz): ?\DateTimeImmutable

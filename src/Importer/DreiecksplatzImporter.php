@@ -79,9 +79,6 @@ final class DreiecksplatzImporter implements SourceImporter
         $defaultTime = (string) ($config['defaultTime'] ?? self::DEFAULT_TIME);
 
         $html = $this->fetch($programUrl);
-        if ($html === null) {
-            return;
-        }
 
         // Fall back to the year embedded in the page heading if still unknown.
         if ($year <= 0 && preg_match('#Programm\s+(\d{4})#', strip_tags($html), $m)) {
@@ -271,7 +268,8 @@ final class DreiecksplatzImporter implements SourceImporter
         return str_starts_with($url, 'http') ? $url : null;
     }
 
-    private function fetch(string $url): ?string
+    /** Fetch the program page or throw, so a dead source surfaces as a failed run. */
+    private function fetch(string $url): string
     {
         try {
             $response = $this->http->request('GET', $url, [
@@ -279,14 +277,16 @@ final class DreiecksplatzImporter implements SourceImporter
                 'timeout' => 30,
                 'max_redirects' => 5,
             ]);
-            if ($response->getStatusCode() >= 400) {
-                return null;
-            }
-
-            return $response->getContent();
-        } catch (\Throwable) {
-            return null;
+            $status = $response->getStatusCode();
+            $content = $status < 400 ? $response->getContent() : null;
+        } catch (\Throwable $e) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: %s', $url, $e->getMessage()), 0, $e);
         }
+        if ($content === null) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: HTTP %d', $url, $status));
+        }
+
+        return $content;
     }
 
     private function collapse(string $text): string

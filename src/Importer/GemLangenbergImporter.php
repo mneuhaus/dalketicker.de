@@ -42,10 +42,7 @@ final class GemLangenbergImporter implements SourceImporter
     {
         $url = $source->getUrl() ?: self::BASE.'/startseite/kalender/event.ics?weekends=false&tagMode=ALL';
 
-        $body = $this->http->request('GET', $url, [
-            'headers' => ['User-Agent' => self::USER_AGENT],
-            'timeout' => 20,
-        ])->getContent();
+        $body = $this->fetch($url);
 
         $today = new \DateTimeImmutable('today', new \DateTimeZone('Europe/Berlin'));
         $count = 0;
@@ -64,6 +61,26 @@ final class GemLangenbergImporter implements SourceImporter
                 yield $event;
             }
         }
+    }
+
+    /** Fetch the ICS feed or throw, so a dead source surfaces as a failed run. */
+    private function fetch(string $url): string
+    {
+        try {
+            $response = $this->http->request('GET', $url, [
+                'headers' => ['User-Agent' => self::USER_AGENT],
+                'timeout' => 20,
+            ]);
+            $status = $response->getStatusCode();
+            $content = $status < 400 ? $response->getContent() : null;
+        } catch (\Throwable $e) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: %s', $url, $e->getMessage()), 0, $e);
+        }
+        if ($content === null) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: HTTP %d', $url, $status));
+        }
+
+        return $content;
     }
 
     /** Unfold RFC 5545 folded lines (continuation lines start with space/tab). */

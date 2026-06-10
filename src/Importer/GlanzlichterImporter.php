@@ -45,14 +45,7 @@ final class GlanzlichterImporter implements SourceImporter
         $config = $source->getConfig();
         $city = $config['city'] ?? 'Schloß Holte-Stukenbrock';
 
-        try {
-            $html = $this->http->request('GET', $url, [
-                'headers' => ['User-Agent' => 'Dalketicker/1.0 (+https://dalketicker.de)'],
-                'timeout' => 20,
-            ])->getContent();
-        } catch (\Throwable) {
-            return;
-        }
+        $html = $this->fetch($url);
 
         $description = $this->metaContent($html, 'og:description');
         if ($description === null) {
@@ -126,6 +119,26 @@ final class GlanzlichterImporter implements SourceImporter
                 ], static fn ($v) => $v !== null && $v !== ''),
             );
         }
+    }
+
+    /** Fetch a URL or throw, so a dead source surfaces as a failed run. */
+    private function fetch(string $url): string
+    {
+        try {
+            $response = $this->http->request('GET', $url, [
+                'headers' => ['User-Agent' => 'Dalketicker/1.0 (+https://dalketicker.de)'],
+                'timeout' => 20,
+            ]);
+            $status = $response->getStatusCode();
+            $content = $status < 400 ? $response->getContent() : null;
+        } catch (\Throwable $e) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: %s', $url, $e->getMessage()), 0, $e);
+        }
+        if ($content === null) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: HTTP %d', $url, $status));
+        }
+
+        return $content;
     }
 
     /** Extract a `<meta property="…" content="…">` value, HTML-decoded. */

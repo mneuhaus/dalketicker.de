@@ -68,9 +68,15 @@ final class StadtRietbergImporter implements SourceImporter
             }
             $seenPages[$url] = true;
 
-            $html = $this->fetch($url);
-            if ($html === null) {
-                break;
+            // The first request is the primary fetch: if it fails the whole run
+            // is worthless, so let it throw. Pagination follow-ups stay tolerant.
+            if ($page === 0) {
+                $html = $this->fetch($url);
+            } else {
+                $html = $this->tryFetch($url);
+                if ($html === null) {
+                    break;
+                }
             }
             $crawler = new Crawler($html, $url);
 
@@ -247,19 +253,32 @@ final class StadtRietbergImporter implements SourceImporter
         return null;
     }
 
-    private function fetch(string $url): ?string
+    /** Fetch a URL or throw, so a dead source surfaces as a failed run. */
+    private function fetch(string $url): string
     {
         try {
             $response = $this->http->request('GET', $url, [
                 'headers' => ['User-Agent' => self::USER_AGENT],
                 'timeout' => 20,
             ]);
-            if ($response->getStatusCode() >= 400) {
-                return null;
-            }
+            $status = $response->getStatusCode();
+            $content = $status < 400 ? $response->getContent() : null;
+        } catch (\Throwable $e) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: %s', $url, $e->getMessage()), 0, $e);
+        }
+        if ($content === null) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: HTTP %d', $url, $status));
+        }
 
-            return $response->getContent();
-        } catch (\Throwable) {
+        return $content;
+    }
+
+    /** Tolerant variant for pagination follow-ups: one broken page must not kill the run. */
+    private function tryFetch(string $url): ?string
+    {
+        try {
+            return $this->fetch($url);
+        } catch (\RuntimeException) {
             return null;
         }
     }

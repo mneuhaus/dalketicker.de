@@ -49,14 +49,7 @@ final class BibVerlImporter implements SourceImporter
         $config = $source->getConfig();
         $city = $config['city'] ?? 'Verl';
 
-        try {
-            $html = $this->http->request('GET', $url, [
-                'headers' => ['User-Agent' => self::UA],
-                'timeout' => 20,
-            ])->getContent();
-        } catch (\Throwable) {
-            return;
-        }
+        $html = $this->fetch($url);
 
         $crawler = new Crawler($html);
         $tz = new \DateTimeZone('Europe/Berlin');
@@ -169,12 +162,8 @@ final class BibVerlImporter implements SourceImporter
             return [null, null, null, null];
         }
 
-        try {
-            $html = $this->http->request('GET', $url, [
-                'headers' => ['User-Agent' => self::UA],
-                'timeout' => 20,
-            ])->getContent();
-        } catch (\Throwable) {
+        $html = $this->tryFetch($url);
+        if ($html === null) {
             return [null, null, null, null];
         }
 
@@ -188,6 +177,36 @@ final class BibVerlImporter implements SourceImporter
         }
 
         return [null, null, null, null];
+    }
+
+    /** Fetch a URL or throw, so a dead source surfaces as a failed run. */
+    private function fetch(string $url): string
+    {
+        try {
+            $response = $this->http->request('GET', $url, [
+                'headers' => ['User-Agent' => self::UA],
+                'timeout' => 20,
+            ]);
+            $status = $response->getStatusCode();
+            $content = $status < 400 ? $response->getContent() : null;
+        } catch (\Throwable $e) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: %s', $url, $e->getMessage()), 0, $e);
+        }
+        if ($content === null) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: HTTP %d', $url, $status));
+        }
+
+        return $content;
+    }
+
+    /** Tolerant variant for detail pages: one broken page must not kill the run. */
+    private function tryFetch(string $url): ?string
+    {
+        try {
+            return $this->fetch($url);
+        } catch (\RuntimeException) {
+            return null;
+        }
     }
 
     private function absolute(?string $href): ?string

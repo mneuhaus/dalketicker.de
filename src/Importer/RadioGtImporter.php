@@ -55,9 +55,6 @@ final class RadioGtImporter implements SourceImporter
         $maxDetails = (int) ($config['maxDetails'] ?? 40);
 
         $html = $this->fetch($listUrl);
-        if ($html === null) {
-            return;
-        }
 
         $crawler = new Crawler($html, $listUrl);
         $tz = new \DateTimeZone(self::TZ);
@@ -71,7 +68,7 @@ final class RadioGtImporter implements SourceImporter
 
             // Enrich with precise time / city / description from the detail page.
             if ($fetched < $maxDetails && $event->sourceUrl !== null) {
-                $detailHtml = $this->fetch($event->sourceUrl);
+                $detailHtml = $this->tryFetch($event->sourceUrl);
                 ++$fetched;
                 if ($detailHtml !== null) {
                     $event = $this->enrichFromDetail($event, $detailHtml, $tz);
@@ -275,19 +272,32 @@ final class RadioGtImporter implements SourceImporter
         return $this->clean($sel->first()->text(''));
     }
 
-    private function fetch(string $url): ?string
+    /** Fetch a URL or throw, so a dead source surfaces as a failed run. */
+    private function fetch(string $url): string
     {
         try {
             $response = $this->http->request('GET', $url, [
                 'headers' => ['User-Agent' => self::USER_AGENT],
                 'timeout' => 30,
             ]);
-            if ($response->getStatusCode() >= 400) {
-                return null;
-            }
+            $status = $response->getStatusCode();
+            $content = $status < 400 ? $response->getContent() : null;
+        } catch (\Throwable $e) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: %s', $url, $e->getMessage()), 0, $e);
+        }
+        if ($content === null) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: HTTP %d', $url, $status));
+        }
 
-            return $response->getContent();
-        } catch (\Throwable) {
+        return $content;
+    }
+
+    /** Tolerant variant for detail pages: one broken page must not kill the run. */
+    private function tryFetch(string $url): ?string
+    {
+        try {
+            return $this->fetch($url);
+        } catch (\RuntimeException) {
             return null;
         }
     }

@@ -61,7 +61,10 @@ final class StadtbibRietbergImporter implements SourceImporter
             }
             $visited[$pageUrl] = true;
 
-            $html = $this->fetch($pageUrl);
+            // The first page is the primary fetch: a dead source must surface as
+            // a failed run. Pagination is best-effort, so later pages tolerate a
+            // broken fetch and simply stop.
+            $html = $p === 0 ? $this->fetch($pageUrl) : $this->tryFetch($pageUrl);
             if ($html === null) {
                 break;
             }
@@ -260,19 +263,32 @@ final class StadtbibRietbergImporter implements SourceImporter
         return null;
     }
 
-    private function fetch(string $url): ?string
+    /** Fetch a URL or throw, so a dead source surfaces as a failed run. */
+    private function fetch(string $url): string
     {
         try {
             $response = $this->http->request('GET', $url, [
                 'headers' => ['User-Agent' => self::USER_AGENT],
                 'timeout' => 20,
             ]);
-            if ($response->getStatusCode() >= 400) {
-                return null;
-            }
+            $status = $response->getStatusCode();
+            $content = $status < 400 ? $response->getContent() : null;
+        } catch (\Throwable $e) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: %s', $url, $e->getMessage()), 0, $e);
+        }
+        if ($content === null) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: HTTP %d', $url, $status));
+        }
 
-            return $response->getContent();
-        } catch (\Throwable) {
+        return $content;
+    }
+
+    /** Tolerant variant for pagination: a broken next page must not kill the run. */
+    private function tryFetch(string $url): ?string
+    {
+        try {
+            return $this->fetch($url);
+        } catch (\RuntimeException) {
             return null;
         }
     }

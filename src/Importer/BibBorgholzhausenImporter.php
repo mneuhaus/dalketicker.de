@@ -160,24 +160,31 @@ final class BibBorgholzhausenImporter implements SourceImporter
      */
     private function fetchPage(string $experience, string $cityFilter, string $licensekey, int $months, int $offset): array
     {
+        $query = [
+            'experience' => $experience,
+            'licensekey' => $licensekey,
+            'type' => 'Event',
+            'template' => 'ET2014A.json',
+            'q' => 'city:"'.$cityFilter.'"',
+            'mode' => 'next_months,'.$months,
+            'sort' => 'chronological',
+            'offset' => $offset,
+            'limit' => self::PAGE_SIZE,
+        ];
+
         try {
-            $body = $this->http->request('GET', self::META_BASE, [
+            $response = $this->http->request('GET', self::META_BASE, [
                 'headers' => ['User-Agent' => self::USER_AGENT],
                 'timeout' => 20,
-                'query' => [
-                    'experience' => $experience,
-                    'licensekey' => $licensekey,
-                    'type' => 'Event',
-                    'template' => 'ET2014A.json',
-                    'q' => 'city:"'.$cityFilter.'"',
-                    'mode' => 'next_months,'.$months,
-                    'sort' => 'chronological',
-                    'offset' => $offset,
-                    'limit' => self::PAGE_SIZE,
-                ],
-            ])->getContent();
-        } catch (\Throwable) {
-            return [];
+                'query' => $query,
+            ]);
+            $status = $response->getStatusCode();
+            $body = $status < 400 ? $response->getContent() : null;
+        } catch (\Throwable $e) {
+            throw new \RuntimeException(sprintf('Fetching %s (offset %d) failed: %s', self::META_BASE, $offset, $e->getMessage()), 0, $e);
+        }
+        if ($body === null) {
+            throw new \RuntimeException(sprintf('Fetching %s (offset %d) failed: HTTP %d', self::META_BASE, $offset, $status));
         }
 
         $data = json_decode($body, true);

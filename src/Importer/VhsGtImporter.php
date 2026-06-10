@@ -62,10 +62,16 @@ final class VhsGtImporter implements SourceImporter
 
         $seen = [];
         for ($page = 0; $page < $maxPages; ++$page) {
-            try {
+            if ($page === 0) {
+                // Primary fetch: a dead source must surface as a failed run.
                 $body = $this->fetch($listUrl);
-            } catch (\Throwable) {
-                break;
+            } else {
+                // Pagination is best-effort: a broken next page just stops us.
+                try {
+                    $body = $this->fetch($listUrl);
+                } catch (\Throwable) {
+                    break;
+                }
             }
 
             $crawler = new Crawler($body, $listUrl);

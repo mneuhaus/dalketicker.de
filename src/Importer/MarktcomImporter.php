@@ -73,7 +73,9 @@ final class MarktcomImporter implements SourceImporter
 
         while ($url !== null && $pages < $maxPages) {
             ++$pages;
-            $html = $this->fetch($url);
+            // The first page is the primary fetch: if it fails the whole run is
+            // worthless, so let it throw. Pagination follow-ups stay tolerant.
+            $html = $pages === 1 ? $this->fetch($url) : $this->tryFetch($url);
             if ($html === null) {
                 break;
             }
@@ -91,14 +93,32 @@ final class MarktcomImporter implements SourceImporter
         }
     }
 
-    private function fetch(string $url): ?string
+    /** Fetch a URL or throw, so a dead source surfaces as a failed run. */
+    private function fetch(string $url): string
     {
         try {
-            return $this->http->request('GET', $url, [
+            $response = $this->http->request('GET', $url, [
                 'headers' => ['User-Agent' => self::USER_AGENT],
                 'timeout' => 30,
-            ])->getContent();
-        } catch (\Throwable) {
+            ]);
+            $status = $response->getStatusCode();
+            $content = $status < 400 ? $response->getContent() : null;
+        } catch (\Throwable $e) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: %s', $url, $e->getMessage()), 0, $e);
+        }
+        if ($content === null) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: HTTP %d', $url, $status));
+        }
+
+        return $content;
+    }
+
+    /** Tolerant variant for pagination follow-ups: one broken page must not kill the run. */
+    private function tryFetch(string $url): ?string
+    {
+        try {
+            return $this->fetch($url);
+        } catch (\RuntimeException) {
             return null;
         }
     }

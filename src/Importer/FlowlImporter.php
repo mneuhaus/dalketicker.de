@@ -75,7 +75,12 @@ final class FlowlImporter implements SourceImporter
         $seen = [];
 
         for ($page = 1; $page <= $maxPages; ++$page) {
-            $data = $this->fetchPage($base, $search, $perPage, $page);
+            // Page 1 is the primary fetch: if it fails the whole run is
+            // worthless, so let it throw. Later pages stay tolerant (a broken
+            // follow-up page just ends pagination).
+            $data = $page === 1
+                ? $this->fetchPage($base, $search, $perPage, $page)
+                : $this->tryFetchPage($base, $search, $perPage, $page);
             if ($data === null) {
                 break;
             }
@@ -112,6 +117,8 @@ final class FlowlImporter implements SourceImporter
     }
 
     /**
+     * Fetch a page or throw, so a dead source surfaces as a failed run.
+     *
      * @return array<string, mixed>|null
      */
     private function fetchPage(string $base, string $search, int $perPage, int $page): ?array
@@ -127,17 +134,35 @@ final class FlowlImporter implements SourceImporter
                     'search' => $search,
                 ],
             ]);
-
-            if ($response->getStatusCode() >= 400) {
-                return null;
-            }
-
-            $data = json_decode($response->getContent(), true);
-        } catch (\Throwable) {
-            return null;
+            $status = $response->getStatusCode();
+            $content = $status < 400 ? $response->getContent() : null;
+        } catch (\Throwable $e) {
+            $url = $base.'?per_page='.$perPage.'&page='.$page.'&search='.rawurlencode($search);
+            throw new \RuntimeException(sprintf('Fetching %s failed: %s', $url, $e->getMessage()), 0, $e);
+        }
+        if ($content === null) {
+            $url = $base.'?per_page='.$perPage.'&page='.$page.'&search='.rawurlencode($search);
+            throw new \RuntimeException(sprintf('Fetching %s failed: HTTP %d', $url, $status));
         }
 
+        $data = json_decode($content, true);
+
         return \is_array($data) ? $data : null;
+    }
+
+    /**
+     * Tolerant variant for pagination follow-up pages: a broken later page must
+     * not kill a run that already produced the first page.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function tryFetchPage(string $base, string $search, int $perPage, int $page): ?array
+    {
+        try {
+            return $this->fetchPage($base, $search, $perPage, $page);
+        } catch (\RuntimeException) {
+            return null;
+        }
     }
 
     /**

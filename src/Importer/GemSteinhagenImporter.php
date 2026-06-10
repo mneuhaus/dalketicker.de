@@ -50,9 +50,6 @@ final class GemSteinhagenImporter implements SourceImporter
         $listUrl = $source->getUrl() ?: self::DEFAULT_LIST;
 
         $html = $this->fetch($listUrl);
-        if ($html === null) {
-            return;
-        }
 
         $tz = new \DateTimeZone('Europe/Berlin');
         $crawler = new Crawler($html, $listUrl);
@@ -118,21 +115,24 @@ final class GemSteinhagenImporter implements SourceImporter
         }
     }
 
-    private function fetch(string $url): ?string
+    /** Fetch a URL or throw, so a dead source surfaces as a failed run. */
+    private function fetch(string $url): string
     {
         try {
             $response = $this->http->request('GET', $url, [
                 'headers' => ['User-Agent' => self::USER_AGENT],
                 'timeout' => 20,
             ]);
-            if ($response->getStatusCode() >= 400) {
-                return null;
-            }
-
-            return $response->getContent();
-        } catch (\Throwable) {
-            return null;
+            $status = $response->getStatusCode();
+            $content = $status < 400 ? $response->getContent() : null;
+        } catch (\Throwable $e) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: %s', $url, $e->getMessage()), 0, $e);
         }
+        if ($content === null) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: HTTP %d', $url, $status));
+        }
+
+        return $content;
     }
 
     /**

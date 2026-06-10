@@ -154,32 +154,58 @@ final class ErfolgskreisGtImporter implements SourceImporter
     }
 
     /**
+     * Fetch one page of the REST feed.
+     *
+     * The first page (offset 0) is the primary fetch: if it fails the whole run
+     * is worthless, so transport/HTTP errors there throw a {@see \RuntimeException}
+     * with the URL. Follow-up pagination pages stay tolerant (return []) so a
+     * single broken page can't discard the items already collected.
+     *
      * @return array<int, array<string, mixed>>
      */
     private function fetchPage(string $experience, string $licensekey, int $months, int $offset): array
     {
+        $query = [
+            'experience' => $experience,
+            'licensekey' => $licensekey,
+            'type' => 'Event',
+            'template' => 'ET2014A.json',
+            'q' => 'all:all -systag:has_abnormal_interval',
+            'mode' => 'next_months,'.$months,
+            'sort' => 'start asc',
+            'offset' => $offset,
+            'limit' => self::PAGE_SIZE,
+        ];
+
         try {
-            $body = $this->http->request('GET', self::META_BASE, [
+            $response = $this->http->request('GET', self::META_BASE, [
                 'headers' => ['User-Agent' => self::USER_AGENT],
                 'timeout' => 30,
-                'query' => [
-                    'experience' => $experience,
-                    'licensekey' => $licensekey,
-                    'type' => 'Event',
-                    'template' => 'ET2014A.json',
-                    'q' => 'all:all -systag:has_abnormal_interval',
-                    'mode' => 'next_months,'.$months,
-                    'sort' => 'start asc',
-                    'offset' => $offset,
-                    'limit' => self::PAGE_SIZE,
-                ],
-            ])->getContent();
-        } catch (\Throwable) {
+                'query' => $query,
+            ]);
+            $status = $response->getStatusCode();
+            $body = $status < 400 ? $response->getContent() : null;
+        } catch (\Throwable $e) {
+            if ($offset === 0) {
+                throw new \RuntimeException(sprintf('Fetching %s failed: %s', self::META_BASE, $e->getMessage()), 0, $e);
+            }
+
+            return [];
+        }
+        if ($body === null) {
+            if ($offset === 0) {
+                throw new \RuntimeException(sprintf('Fetching %s failed: HTTP %d', self::META_BASE, $status));
+            }
+
             return [];
         }
 
         $data = json_decode($body, true);
         if (!\is_array($data) || ($data['status'] ?? null) !== 'OK') {
+            if ($offset === 0) {
+                throw new \RuntimeException(sprintf('Fetching %s returned an unexpected payload (status %s).', self::META_BASE, \is_array($data) ? (string) ($data['status'] ?? 'missing') : 'non-JSON'));
+            }
+
             return [];
         }
 
