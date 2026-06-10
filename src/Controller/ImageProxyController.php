@@ -23,6 +23,7 @@ final class ImageProxyController extends AbstractController
 {
     private const MAX_BYTES = 8 * 1024 * 1024;
     private const MAX_WIDTH = 1000;
+    private const MAX_REDIRECTS = 3;
     private const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif'];
 
     public function __construct(
@@ -40,7 +41,7 @@ final class ImageProxyController extends AbstractController
         // Facts-only (aggregator) sources: never serve their images, even if a
         // URL is guessed directly — the legal safeguard holds at every layer.
         $url = ($event !== null && !$event->isFactsOnly()) ? $event->getImageUrl() : null;
-        if ($url === null || $url === '' || !$this->isSafeUrl($url)) {
+        if ($url === null || $url === '') {
             return $this->transparentPixel();
         }
 
@@ -67,37 +68,103 @@ final class ImageProxyController extends AbstractController
         if (!is_dir($this->imageCacheDir)) {
             @mkdir($this->imageCacheDir, 0775, true);
         }
-        @file_put_contents($bin, $data);
-        @file_put_contents($ctFile, $type);
+        $this->writeAtomic($ctFile, $type);
+        $this->writeAtomic($bin, $data);
 
         return $this->serve($data, $type);
     }
 
-    /** @return array{0: ?string, 1: string} */
+    /**
+     * Write via temp file + rename: the cache dir lives on a volume shared by
+     * multiple replicas, and a plain file_put_contents could let a concurrent
+     * reader see (and serve) a half-written file.
+     */
+    private function writeAtomic(string $path, string $data): void
+    {
+        $tmp = $path.'.'.uniqid('', true).'.tmp';
+        if (@file_put_contents($tmp, $data) === false) {
+            return;
+        }
+        if (!@rename($tmp, $path)) {
+            @unlink($tmp);
+        }
+    }
+
+    /**
+     * Fetch the image, following redirects manually: every hop is validated and
+     * the connection is pinned to the validated IP via the "resolve" option, so
+     * a DNS answer can't change between check and request (no rebinding TOCTOU).
+     * TLS certificates are still verified against the hostname.
+     *
+     * @return array{0: ?string, 1: string}
+     */
     private function fetch(string $url): array
     {
         try {
-            $resp = $this->http->request('GET', $url, [
-                'headers' => ['User-Agent' => 'Dalketicker/1.0 (+https://dalketicker.neuhaus.nrw)'],
-                'timeout' => 15,
-                'max_redirects' => 3,
-            ]);
-            if ($resp->getStatusCode() !== 200) {
-                return [null, ''];
-            }
-            $type = strtolower(explode(';', $resp->getHeaders(false)['content-type'][0] ?? '')[0]);
-            if (!in_array($type, self::ALLOWED_TYPES, true)) {
-                return [null, ''];
-            }
-            $data = $resp->getContent(false);
-            if (strlen($data) > self::MAX_BYTES) {
-                return [null, ''];
+            for ($hop = 0; $hop <= self::MAX_REDIRECTS; $hop++) {
+                $host = (string) parse_url($url, \PHP_URL_HOST);
+                $ip = $this->validatedPublicIp($url);
+                if ($ip === null) {
+                    return [null, ''];
+                }
+                $resp = $this->http->request('GET', $url, [
+                    'headers' => ['User-Agent' => 'Dalketicker/1.0 (+https://dalketicker.neuhaus.nrw)'],
+                    'timeout' => 15,
+                    'max_redirects' => 0,
+                    'resolve' => [$host => $ip],
+                ]);
+                $status = $resp->getStatusCode();
+                if (in_array($status, [301, 302, 303, 307, 308], true)) {
+                    $next = $this->redirectTarget($url, $resp->getHeaders(false)['location'][0] ?? '');
+                    $resp->cancel();
+                    if ($next === null) {
+                        return [null, ''];
+                    }
+                    $url = $next;
+                    continue;
+                }
+                if ($status !== 200) {
+                    return [null, ''];
+                }
+                $type = strtolower(explode(';', $resp->getHeaders(false)['content-type'][0] ?? '')[0]);
+                if (!in_array($type, self::ALLOWED_TYPES, true)) {
+                    return [null, ''];
+                }
+                $data = $resp->getContent(false);
+                if (strlen($data) > self::MAX_BYTES) {
+                    return [null, ''];
+                }
+
+                return [$data, $type];
             }
 
-            return [$data, $type];
+            return [null, '']; // too many redirects
         } catch (\Throwable) {
             return [null, ''];
         }
+    }
+
+    /** Absolute redirect target, or null for missing/exotic (path-relative) Locations. */
+    private function redirectTarget(string $base, string $location): ?string
+    {
+        if ($location === '') {
+            return null;
+        }
+        if (preg_match('#^https?://#i', $location)) {
+            return $location;
+        }
+        $parts = parse_url($base);
+        $scheme = $parts['scheme'] ?? 'https';
+        if (str_starts_with($location, '//')) {
+            return $scheme.':'.$location;
+        }
+        if (str_starts_with($location, '/') && !empty($parts['host'])) {
+            $port = isset($parts['port']) ? ':'.$parts['port'] : '';
+
+            return $scheme.'://'.$parts['host'].$port.$location;
+        }
+
+        return null;
     }
 
     /**
@@ -170,24 +237,54 @@ final class ImageProxyController extends AbstractController
         return $resp;
     }
 
-    /** Allow only http(s) to non-private hosts (defence in depth). */
-    private function isSafeUrl(string $url): bool
+    /**
+     * Allow only http(s) to public hosts (defence in depth). Returns the first
+     * validated IP so the caller can pin the connection to it, or null when the
+     * URL is unsafe or doesn't resolve to a usable address.
+     */
+    private function validatedPublicIp(string $url): ?string
     {
         $parts = parse_url($url);
         if (!is_array($parts) || !in_array($parts['scheme'] ?? '', ['http', 'https'], true) || empty($parts['host'])) {
-            return false;
+            return null;
         }
-        $host = $parts['host'];
-        $ips = @gethostbynamel($host) ?: [];
-        if ($ips === [] && filter_var($host, FILTER_VALIDATE_IP)) {
-            $ips = [$host];
+        // IPv6 URL literals come bracketed from parse_url ("[2001:db8::1]").
+        $host = trim($parts['host'], '[]');
+        $ips = filter_var($host, FILTER_VALIDATE_IP) ? [$host] : $this->resolveIps($host);
+        if ($ips === []) {
+            return null;
         }
         foreach ($ips as $ip) {
+            // FILTER_FLAG_NO_PRIV_RANGE|NO_RES_RANGE also covers IPv6 (::1,
+            // fc00::/7, fe80::/10, …) — verified.
             if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
-                return false; // private / reserved → reject
+                return null; // private / reserved → reject
             }
         }
 
-        return true;
+        return $ips[0];
+    }
+
+    /**
+     * All A and AAAA records for the host (v4 first), so IPv6-only image hosts
+     * resolve too. Both HttpClient backends accept a bare IPv6 address in the
+     * "resolve" option (curl: CURLOPT_RESOLVE "host:port:ip", native: brackets
+     * the IP itself).
+     *
+     * @return list<string>
+     */
+    private function resolveIps(string $host): array
+    {
+        $records = @dns_get_record($host, DNS_A | DNS_AAAA) ?: [];
+        $v4 = $v6 = [];
+        foreach ($records as $record) {
+            if (isset($record['ip'])) {
+                $v4[] = (string) $record['ip'];
+            } elseif (isset($record['ipv6'])) {
+                $v6[] = (string) $record['ipv6'];
+            }
+        }
+
+        return [...$v4, ...$v6];
     }
 }

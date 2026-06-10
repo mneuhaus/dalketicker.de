@@ -7,10 +7,20 @@
  * responses marked private/no-store — otherwise admin pages and contact
  * personal data could linger in the browser cache after logout.
  */
-const CACHE = 'dalke-v2';
+const CACHE = 'dalke-v3';
 
 // Authenticated / private paths that must never be written to the cache.
 const NO_CACHE = /^\/(admin|login|logout)(\/|$)/;
+
+// Cap the cache so it can't grow unbounded; entries come back in insertion
+// order, so dropping from the front evicts the oldest ones first.
+const MAX_ENTRIES = 120;
+const trim = async (cache) => {
+    const keys = await cache.keys();
+    if (keys.length > MAX_ENTRIES) {
+        await Promise.all(keys.slice(0, keys.length - MAX_ENTRIES).map((k) => cache.delete(k)));
+    }
+};
 
 self.addEventListener('install', () => self.skipWaiting());
 
@@ -35,7 +45,7 @@ self.addEventListener('fetch', (e) => {
                     && !/no-store|private/i.test(cc);
                 if (cacheable) {
                     const copy = res.clone();
-                    caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
+                    caches.open(CACHE).then((c) => c.put(e.request, copy).then(() => trim(c))).catch(() => {});
                 }
                 return res;
             })

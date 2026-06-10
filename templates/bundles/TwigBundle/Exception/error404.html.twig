@@ -1,0 +1,12 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Seite nicht gefunden – {{ site_name }}{% endblock %}
+
+{% block body %}
+    <div class="max-w-xl mx-auto py-16 text-center">
+        <p class="font-[family-name:var(--font-display)] text-6xl font-extrabold tracking-tight text-brand-600">404</p>
+        <h1 class="mt-3 font-[family-name:var(--font-display)] text-2xl font-extrabold tracking-tight text-ink">Seite nicht gefunden</h1>
+        <p class="mt-3 text-ink/60 leading-relaxed">Diese Seite gibt es nicht (mehr) – vielleicht ist die Veranstaltung schon vorbei oder der Link ist veraltet.</p>
+        <a href="{{ path('event_index') }}" class="mt-6 inline-flex items-center rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 transition">Zur Startseite</a>
+    </div>
+{% endblock %}

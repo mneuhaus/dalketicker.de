@@ -384,7 +384,15 @@ final class EventController extends AbstractController
         $byDay = [];
         foreach ($events as $event) {
             $start = $event->getStartsAt()->setTimezone($tz)->setTime(0, 0);
-            $end = ($event->getEndsAt() ?? $event->getStartsAt())->setTimezone($tz)->setTime(0, 0);
+            $endsAt = $event->getEndsAt()?->setTimezone($tz);
+            $end = ($endsAt ?? $start)->setTime(0, 0);
+            // For timed events an end at exactly midnight means "until the end
+            // of the previous day" — don't paint the following day. All-day
+            // events store an inclusive end (importers already shifted the
+            // exclusive DTEND back), so no further adjustment there.
+            if (!$event->isAllDay() && $endsAt !== null && $endsAt->format('His') === '000000' && $end > $start) {
+                $end = $end->modify('-1 day');
+            }
             $cursor = $start;
             $guard = 0;
             while ($cursor <= $end && $guard++ < 60) {
@@ -418,7 +426,11 @@ final class EventController extends AbstractController
         return $weeks;
     }
 
-    /** Shared sidebar filter data. */
+    /**
+     * Shared sidebar filter data.
+     *
+     * @return array<string, mixed>
+     */
     private function filterData(): array
     {
         return [
