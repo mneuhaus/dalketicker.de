@@ -59,9 +59,6 @@ final class GtIsselhorstImporter implements SourceImporter
 
         $listUrl = $source->getUrl() ?: self::DEFAULT_LIST;
         $html = $this->fetch($listUrl);
-        if ($html === null) {
-            return;
-        }
 
         $crawler = new Crawler($html, $listUrl);
         $seen = [];
@@ -142,7 +139,7 @@ final class GtIsselhorstImporter implements SourceImporter
      */
     private function parseDetail(string $url, \DateTimeZone $tz): ?array
     {
-        $html = $this->fetch($url);
+        $html = $this->tryFetch($url);
         if ($html === null) {
             return null;
         }
@@ -243,17 +240,16 @@ final class GtIsselhorstImporter implements SourceImporter
         }
 
         $first = $m[0];
-        $start = (new \DateTimeImmutable('now', $tz))
-            ->setDate((int) $first[3], (int) $first[2], (int) $first[1])
-            ->setTime($h, $i);
+        $start = SafeDate::create((int) $first[3], (int) $first[2], (int) $first[1], $h, $i, $tz);
+        if ($start === null) {
+            return [null, null];
+        }
 
         $end = null;
         if (\count($m) > 1) {
             $last = $m[\count($m) - 1];
-            $endDay = (new \DateTimeImmutable('now', $tz))
-                ->setDate((int) $last[3], (int) $last[2], (int) $last[1])
-                ->setTime($h, $i);
-            if ($endDay > $start) {
+            $endDay = SafeDate::create((int) $last[3], (int) $last[2], (int) $last[1], $h, $i, $tz);
+            if ($endDay !== null && $endDay > $start) {
                 $end = $endDay;
             }
         }
@@ -311,19 +307,32 @@ final class GtIsselhorstImporter implements SourceImporter
         return is_scalar($id) && (string) $id !== '' ? (string) $id : sha1($fallback);
     }
 
-    private function fetch(string $url): ?string
+    /** Fetch a URL or throw, so a dead source surfaces as a failed run. */
+    private function fetch(string $url): string
     {
         try {
             $response = $this->http->request('GET', $url, [
                 'headers' => ['User-Agent' => self::USER_AGENT],
                 'timeout' => 20,
             ]);
-            if ($response->getStatusCode() >= 400) {
-                return null;
-            }
+            $status = $response->getStatusCode();
+            $content = $status < 400 ? $response->getContent() : null;
+        } catch (\Throwable $e) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: %s', $url, $e->getMessage()), 0, $e);
+        }
+        if ($content === null) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: HTTP %d', $url, $status));
+        }
 
-            return $response->getContent();
-        } catch (\Throwable) {
+        return $content;
+    }
+
+    /** Tolerant variant for detail pages: one broken page must not kill the run. */
+    private function tryFetch(string $url): ?string
+    {
+        try {
+            return $this->fetch($url);
+        } catch (\RuntimeException) {
             return null;
         }
     }

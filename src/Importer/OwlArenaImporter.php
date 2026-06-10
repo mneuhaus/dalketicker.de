@@ -48,17 +48,19 @@ final class OwlArenaImporter implements SourceImporter
         $url = $source->getUrl() ?: self::DEFAULT_LIST;
         $tz = new \DateTimeZone('Europe/Berlin');
 
+        // Fetch the listing or throw, so a dead source surfaces as a failed run.
         try {
             $response = $this->http->request('GET', $url, [
                 'headers' => ['User-Agent' => self::USER_AGENT],
                 'timeout' => 20,
             ]);
-            if ($response->getStatusCode() >= 400) {
-                return;
-            }
-            $html = $response->getContent();
-        } catch (\Throwable) {
-            return;
+            $status = $response->getStatusCode();
+            $html = $status < 400 ? $response->getContent() : null;
+        } catch (\Throwable $e) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: %s', $url, $e->getMessage()), 0, $e);
+        }
+        if ($html === null) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: HTTP %d', $url, $status));
         }
 
         $crawler = new Crawler($html, $url);

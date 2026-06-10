@@ -60,9 +60,6 @@ final class SvPavenstaedtImporter implements SourceImporter
 
         $url = $source->getUrl() ?: self::DEFAULT_URL;
         $html = $this->fetch($url);
-        if ($html === null) {
-            return;
-        }
 
         // Keep only today and later — the page carries whole past seasons.
         $today = $this->clock->now()->setTimezone($tz)->setTime(0, 0);
@@ -75,10 +72,9 @@ final class SvPavenstaedtImporter implements SourceImporter
                     return;
                 }
 
-                $start = (new \DateTimeImmutable('now', $tz))->setDate($year, $month, $day);
                 $allDay = $time === null;
-                $start = $allDay ? $start->setTime(0, 0) : $start->setTime($time[0], $time[1]);
-                if ($start < $today) {
+                $start = SafeDate::create($year, $month, $day, $time[0] ?? 0, $time[1] ?? 0, $tz);
+                if ($start === null || $start < $today) {
                     continue;
                 }
 
@@ -260,21 +256,24 @@ final class SvPavenstaedtImporter implements SourceImporter
         return substr($s, 0, 40);
     }
 
-    private function fetch(string $url): ?string
+    /** Fetch the calendar page or throw, so a dead source surfaces as a failed run. */
+    private function fetch(string $url): string
     {
         try {
             $response = $this->http->request('GET', $url, [
                 'headers' => ['User-Agent' => self::USER_AGENT],
                 'timeout' => 20,
             ]);
-            if ($response->getStatusCode() >= 400) {
-                return null;
-            }
-
-            return $response->getContent();
-        } catch (\Throwable) {
-            return null;
+            $status = $response->getStatusCode();
+            $content = $status < 400 ? $response->getContent() : null;
+        } catch (\Throwable $e) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: %s', $url, $e->getMessage()), 0, $e);
         }
+        if ($content === null) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: HTTP %d', $url, $status));
+        }
+
+        return $content;
     }
 
     private function mapCategory(string $title): ?string

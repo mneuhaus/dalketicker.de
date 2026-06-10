@@ -17,7 +17,9 @@ class VenueRepository extends ServiceEntityRepository
      * In-memory identity map for venues created (but not yet flushed) during the
      * current request. Without it, several events referencing the same brand-new
      * venue would each persist a separate Venue with the same dedup key and
-     * violate the unique constraint on flush.
+     * violate the unique constraint on flush. Must be cleared per import run
+     * (see {@see resetRunMemo()}) — after an EntityManager reset the memoized
+     * venues are detached and must not leak into the next run.
      *
      * @var array<string, Venue>
      */
@@ -26,6 +28,12 @@ class VenueRepository extends ServiceEntityRepository
     public function __construct(ManagerRegistry $registry)
     {
         parent::__construct($registry, Venue::class);
+    }
+
+    /** Drop the per-run venue memo (start of an import run / after an EM reset). */
+    public function resetRunMemo(): void
+    {
+        $this->createdThisRun = [];
     }
 
     public function findByDedupKey(string $dedupKey): ?Venue

@@ -126,7 +126,7 @@ final class StadthalleGtImporter implements SourceImporter
         $slugs = [];
 
         // First batch: the main page already embeds #ajaxTeaserHolder.
-        $main = $this->fetch(self::BASE . '/');
+        $main = $this->tryFetch(self::BASE . '/');
         $next = $main !== null ? $this->harvest($main, $slugs) : null;
 
         // If the main page yielded nothing usable, fall back to the configured
@@ -136,6 +136,11 @@ final class StadthalleGtImporter implements SourceImporter
             if ($json !== null) {
                 $next = $this->harvest($json, $slugs);
             }
+        }
+
+        // Both entry points down → fail the run instead of reporting "0 seen".
+        if ($main === null && $slugs === []) {
+            throw new \RuntimeException('Neither '.self::BASE.'/ nor the AJAX list fallback was reachable.');
         }
 
         $pages = 0;
@@ -203,7 +208,7 @@ final class StadthalleGtImporter implements SourceImporter
         \DateTimeImmutable $now,
     ): array {
         $url = self::BASE . '/veranstaltung/' . $slug;
-        $html = $this->fetch($url);
+        $html = $this->tryFetch($url);
         if ($html === null) {
             return [];
         }
@@ -384,9 +389,7 @@ final class StadthalleGtImporter implements SourceImporter
             return null;
         }
 
-        return (new \DateTimeImmutable('now', $tz))
-            ->setDate((int) $m[3], $month, (int) $m[1])
-            ->setTime(0, 0);
+        return SafeDate::create((int) $m[3], $month, (int) $m[1], 0, 0, $tz);
     }
 
     /**
@@ -406,11 +409,13 @@ final class StadthalleGtImporter implements SourceImporter
             return null;
         }
         $day = (int) $m[1];
+        $year = (int) $now->format('Y');
 
-        $candidate = $now->setDate((int) $now->format('Y'), $month, $day)->setTime(0, 0);
-        // If the date already lies clearly in the past, assume next year.
-        if ($candidate < $now->modify('-7 days')) {
-            $candidate = $candidate->setDate((int) $now->format('Y') + 1, $month, $day);
+        $candidate = SafeDate::create($year, $month, $day, 0, 0, $tz);
+        // If the date already lies clearly in the past — or does not exist in
+        // the current year (29. Feb.) — assume next year.
+        if ($candidate === null || $candidate < $now->modify('-7 days')) {
+            $candidate = SafeDate::create($year + 1, $month, $day, 0, 0, $tz);
         }
 
         return $candidate;
@@ -499,19 +504,32 @@ final class StadthalleGtImporter implements SourceImporter
         return self::BASE . '/' . ltrim($href, '/');
     }
 
-    private function fetch(string $url): ?string
+    /** Fetch a URL or throw, so a dead source surfaces as a failed run. */
+    private function fetch(string $url): string
     {
         try {
             $response = $this->http->request('GET', $url, [
                 'headers' => ['User-Agent' => self::UA],
                 'timeout' => 30,
             ]);
-            if ($response->getStatusCode() >= 400) {
-                return null;
-            }
+            $status = $response->getStatusCode();
+            $content = $status < 400 ? $response->getContent(false) : null;
+        } catch (\Throwable $e) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: %s', $url, $e->getMessage()), 0, $e);
+        }
+        if ($content === null) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: HTTP %d', $url, $status));
+        }
 
-            return $response->getContent(false);
-        } catch (\Throwable) {
+        return $content;
+    }
+
+    /** Tolerant variant for detail/AJAX pages: one broken page must not kill the run. */
+    private function tryFetch(string $url): ?string
+    {
+        try {
+            return $this->fetch($url);
+        } catch (\RuntimeException) {
             return null;
         }
     }
@@ -519,7 +537,7 @@ final class StadthalleGtImporter implements SourceImporter
     /** Fetches an AJAX list URL and returns its embedded HTML fragment. */
     private function fetchAjax(string $url): ?string
     {
-        $body = $this->fetch($url);
+        $body = $this->tryFetch($url);
         if ($body === null) {
             return null;
         }

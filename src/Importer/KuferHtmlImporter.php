@@ -69,7 +69,9 @@ final class KuferHtmlImporter implements SourceImporter
             $seenPageUrls[$url] = true;
             ++$pages;
 
-            $html = $this->fetch($url);
+            // The first page failing means the source is down → fail the run;
+            // a broken follow-up page only ends pagination early.
+            $html = $pages === 1 ? $this->fetch($url) : $this->tryFetch($url);
             if ($html === null) {
                 break;
             }
@@ -100,20 +102,32 @@ final class KuferHtmlImporter implements SourceImporter
         }
     }
 
-    private function fetch(string $url): ?string
+    /** Fetch a URL or throw, so a dead source surfaces as a failed run. */
+    private function fetch(string $url): string
     {
         try {
             $response = $this->http->request('GET', $url, [
                 'headers' => ['User-Agent' => self::USER_AGENT],
                 'timeout' => 30,
             ]);
+            $status = $response->getStatusCode();
+            $content = $status < 400 ? $response->getContent() : null;
+        } catch (\Throwable $e) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: %s', $url, $e->getMessage()), 0, $e);
+        }
+        if ($content === null) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: HTTP %d', $url, $status));
+        }
 
-            if ($response->getStatusCode() >= 400) {
-                return null;
-            }
+        return $content;
+    }
 
-            return $response->getContent();
-        } catch (\Throwable) {
+    /** Tolerant variant for follow-up pages: one broken page must not kill the run. */
+    private function tryFetch(string $url): ?string
+    {
+        try {
+            return $this->fetch($url);
+        } catch (\RuntimeException) {
             return null;
         }
     }
@@ -183,7 +197,7 @@ final class KuferHtmlImporter implements SourceImporter
             organizer: null,
             externalId: $externalId,
             raw: [
-                'when' => $whenText ?? '',
+                'when' => $whenText,
                 'where' => $whereText ?? '',
                 'nr' => $courseNo ?? '',
             ],
@@ -234,23 +248,13 @@ final class KuferHtmlImporter implements SourceImporter
 
         $hour = 0;
         $minute = 0;
-        $hasTime = false;
         // Time follows the date: "19.30 Uhr" or "19:30 Uhr".
         if (preg_match('/(\d{1,2})[.:](\d{2})\s*Uhr/u', $text, $t)) {
             $hour = (int) $t[1];
             $minute = (int) $t[2];
-            $hasTime = true;
         }
 
-        if (!checkdate($month, $day, $year)) {
-            return null;
-        }
-
-        $date = (new \DateTimeImmutable('now', $tz))
-            ->setDate($year, $month, $day)
-            ->setTime($hour, $minute);
-
-        return $hasTime ? $date : $date->setTime(0, 0);
+        return SafeDate::create($year, $month, $day, $hour, $minute, $tz);
     }
 
     /**
@@ -304,10 +308,11 @@ final class KuferHtmlImporter implements SourceImporter
             return null;
         }
         // .../kurs/<slug>/<courseNr>  or .../kurssuche/kurs/<courseNr>
-        if (preg_match('#/kurs/[^/]+/([^/#?]+)#', $url, $m)) {
+        // ~ delimiter: the character class contains '#', which would end a #-delimited pattern.
+        if (preg_match('~/kurs/[^/]+/([^/#?]+)~', $url, $m)) {
             return $m[1];
         }
-        if (preg_match('#/kurs/([^/#?]+)#', $url, $m)) {
+        if (preg_match('~/kurs/([^/#?]+)~', $url, $m)) {
             return $m[1];
         }
 

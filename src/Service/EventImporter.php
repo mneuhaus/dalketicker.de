@@ -14,6 +14,7 @@ use App\Repository\CategoryRepository;
 use App\Repository\EventRepository;
 use App\Repository\VenueRepository;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\Persistence\ManagerRegistry;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\String\Slugger\SluggerInterface;
@@ -25,12 +26,20 @@ use Symfony\Component\String\Slugger\SluggerInterface;
  */
 final class EventImporter
 {
-    /** Keys (source:externalId) of NEW events persisted in the current run,
-     * to avoid inserting two rows that collide on the unique (source, externalId). */
+    /** How many upserted DTOs to collect before flushing mid-run. */
+    private const FLUSH_BATCH_SIZE = 50;
+
+    /**
+     * Keys (source:externalId) of NEW events persisted in the current run,
+     * to avoid inserting two rows that collide on the unique (source, externalId).
+     *
+     * @var array<string, true>
+     */
     private array $newKeysThisRun = [];
 
     public function __construct(
         private readonly ImporterRegistry $registry,
+        private readonly ManagerRegistry $managerRegistry,
         private readonly EntityManagerInterface $em,
         private readonly EventRepository $events,
         private readonly VenueRepository $venues,
@@ -47,10 +56,19 @@ final class EventImporter
         $report = new ImportReport($source->getKey());
         $now = $this->clock->now();
         $this->newKeysThisRun = [];
+        // The venue memo may still hold venues from a previous run that hung on
+        // a since-reset (closed) EntityManager — detached entities that would
+        // make every flush referencing them fail.
+        $this->venues->resetRunMemo();
         $run = new ImportRun($source, $now, $dryRun);
 
         try {
+            if (!$dryRun) {
+                $this->beginRun($run);
+            }
+
             $importer = $this->registry->get($source);
+            $pending = 0;
             foreach ($importer->import($source) as $dto) {
                 $report->seen++;
                 try {
@@ -63,30 +81,44 @@ final class EventImporter
                         'error' => $e->getMessage(),
                     ]);
                 }
+                // Flush in batches so a row the database rejects surfaces as a
+                // fatal error instead of silently discarding the whole run.
+                if (!$dryRun && ++$pending >= self::FLUSH_BATCH_SIZE) {
+                    $this->em->flush();
+                    $pending = 0;
+                }
             }
 
             if (!$dryRun) {
-                $source->setLastRunAt($now);
-                $source->setLastStatus(sprintf(
-                    'OK: %d gesehen, %d neu, %d aktualisiert, %d Duplikate, %d Fehler',
-                    $report->seen, $report->created, $report->updated, $report->duplicates, $report->errors,
-                ));
-                $this->recordRun($run, $report, null);
+                $this->em->flush();
             }
         } catch (\Throwable $e) {
             $report->fatal = $e->getMessage();
-            // A failed flush closes the EM; only touch it if it's still open.
-            if ($this->em->isOpen()) {
-                $source->setLastRunAt($now);
-                $source->setLastStatus('FEHLER: '.substr($e->getMessage(), 0, 1024));
-                if (!$dryRun) {
-                    $this->recordRun($run, $report, $e->getMessage());
-                }
-            }
             $this->logger->error('Import for source {source} failed: {error}', [
                 'source' => $source->getKey(),
                 'error' => $e->getMessage(),
             ]);
+        }
+
+        if (!$dryRun) {
+            // A failed flush closes the EM. Reset it so this run can still be
+            // recorded and subsequent sources (--all) keep working; previously
+            // held entity references are detached then, so reload them.
+            if (!$this->em->isOpen()) {
+                $this->managerRegistry->resetManager();
+                $this->venues->resetRunMemo();
+                $sourceId = $source->getId();
+                $source = ($sourceId !== null ? $this->em->find(Source::class, $sourceId) : null) ?? $source;
+                $run = $this->reattachRun($run) ?? $run;
+            }
+            $source->setLastRunAt($now);
+            $source->setLastStatus($report->fatal !== null
+                ? 'FEHLER: '.substr($report->fatal, 0, 1024)
+                : sprintf(
+                    'OK: %d gesehen, %d neu, %d aktualisiert, %d Duplikate, %d Fehler',
+                    $report->seen, $report->created, $report->updated, $report->duplicates, $report->errors,
+                ));
+            $this->recordRun($run, $report, $report->fatal);
         }
 
         return $report;
@@ -105,27 +137,85 @@ final class EventImporter
     {
         $report = new ImportReport($source->getKey());
         $this->newKeysThisRun = [];
+        $this->venues->resetRunMemo();
         $this->upsert($source, $dto, $this->clock->now(), false, $report);
         $this->em->flush();
 
         return $report->created > 0;
     }
 
-    /** Persist the run record + everything pending in one flush. */
+    /** Persist the run upfront as "running" so killed runs leave a visible trace. */
+    private function beginRun(ImportRun $run): void
+    {
+        $run->setStatus(ImportRun::STATUS_RUNNING);
+        $this->em->persist($run);
+        $this->em->flush();
+    }
+
+    /**
+     * Finalize and persist the run record + everything pending in one flush.
+     * Failures are logged and retried once on a fresh EntityManager — the run
+     * record is the operator's monitoring trail and must not vanish silently.
+     */
     private function recordRun(ImportRun $run, ImportReport $report, ?string $fatal): void
     {
-        $run->complete(
-            $this->clock->now(),
+        $finishedAt = $this->clock->now();
+        $complete = static fn (ImportRun $r): ImportRun => $r->complete(
+            $finishedAt,
             $report->seen, $report->created, $report->updated,
             $report->unchanged, $report->duplicates, $report->errors,
             $fatal,
         );
+
         try {
-            $this->em->persist($run);
+            $this->em->persist($complete($run));
             $this->em->flush();
-        } catch (\Throwable) {
-            // Monitoring bookkeeping must never crash the import itself.
+
+            return;
+        } catch (\Throwable $e) {
+            $this->logger->error('Failed to record import run for {source}: {error}', [
+                'source' => $report->sourceKey,
+                'error' => $e->getMessage(),
+            ]);
         }
+
+        try {
+            if (!$this->em->isOpen()) {
+                $this->managerRegistry->resetManager();
+                $this->venues->resetRunMemo();
+            }
+            $retry = $this->reattachRun($run);
+            if ($retry === null) {
+                return;
+            }
+            $this->em->persist($complete($retry));
+            $this->em->flush();
+        } catch (\Throwable $e) {
+            $this->logger->error('Failed to record import run after EntityManager reset for {source}: {error}', [
+                'source' => $report->sourceKey,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * After an EntityManager reset every held reference is detached: fetch the
+     * managed copy of the run, or rebuild it when it was never flushed. Null
+     * when the source itself is gone.
+     */
+    private function reattachRun(ImportRun $run): ?ImportRun
+    {
+        if ($run->getId() !== null) {
+            $managed = $this->em->find(ImportRun::class, $run->getId());
+            if ($managed !== null) {
+                return $managed;
+            }
+        }
+
+        $sourceId = $run->getSource()->getId();
+        $source = $sourceId !== null ? $this->em->find(Source::class, $sourceId) : null;
+
+        return $source !== null ? new ImportRun($source, $run->getStartedAt(), $run->isDryRun()) : null;
     }
 
     private function upsert(Source $source, ImportedEvent $dto, \DateTimeImmutable $now, bool $dryRun, ImportReport $report): void
@@ -155,8 +245,13 @@ final class EventImporter
         $existing = $this->events->findForUpsert((int) $source->getId(), $dto->externalId, $dedupKey);
 
         if ($existing !== null && $existing->getContentHash() === $hash) {
-            // Unchanged — just bump the "still alive" timestamp.
+            // Unchanged — just bump the "still alive" timestamp. The dedup key
+            // is refreshed regardless: its derivation can change between
+            // releases without the content hash noticing, and a stale key
+            // breaks cross-source dedup for every future match.
             $existing->setLastSeenAt($now);
+            $existing->setDedupKey($dedupKey);
+            $this->republishIfPruned($existing);
             $report->unchanged++;
 
             return;
@@ -198,9 +293,13 @@ final class EventImporter
             $event->setCategories($cats);
         }
         $event->setSourceUrl($dto->sourceUrl !== null ? substr($dto->sourceUrl, 0, 1024) : null);
-        $event->setImageUrl($dto->imageUrl !== null ? substr($dto->imageUrl, 0, 1024) : null);
+        if (!$event->isFieldLocked('imageUrl')) {
+            $event->setImageUrl($dto->imageUrl !== null ? substr($dto->imageUrl, 0, 1024) : null);
+        }
         $event->setPrice($dto->price !== null ? mb_substr($dto->price, 0, 120) : null);
-        $event->setOrganizer($dto->organizer !== null ? mb_substr($dto->organizer, 0, 200) : null);
+        if (!$event->isFieldLocked('organizer')) {
+            $event->setOrganizer($dto->organizer !== null ? mb_substr($dto->organizer, 0, 200) : null);
+        }
         $event->setExternalId($dto->externalId);
         $event->setIsCourse($dto->isCourse || (bool) ($source->getConfig()['isCourse'] ?? false));
         $event->setBookingStatus($dto->bookingStatus);
@@ -229,8 +328,26 @@ final class EventImporter
                 $this->newKeysThisRun[$runKey] = true;
             }
         } else {
+            $this->republishIfPruned($event);
             $report->updated++;
         }
+    }
+
+    /**
+     * Undo an automatic prune ({@see \App\Command\PruneUnseenCommand}) once the
+     * source lists the event again: the hide encoded "source dropped it", which
+     * no longer holds. Deliberately admin-hidden events carry no prune marker
+     * and stay hidden.
+     */
+    private function republishIfPruned(Event $event): void
+    {
+        if ($event->getPrunedAt() === null) {
+            return;
+        }
+        if ($event->getStatus() === EventStatus::Hidden) {
+            $event->setStatus(EventStatus::Published);
+        }
+        $event->setPrunedAt(null);
     }
 
     private function buildSlug(ImportedEvent $dto): string

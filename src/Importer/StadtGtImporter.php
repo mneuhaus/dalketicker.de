@@ -52,9 +52,6 @@ final class StadtGtImporter implements SourceImporter
 
         $listUrl = $this->buildListUrl($source, $config, $tz);
         $listHtml = $this->fetch($listUrl);
-        if ($listHtml === null) {
-            return;
-        }
 
         $crawler = new Crawler($listHtml, $listUrl);
         $seen = [];
@@ -105,7 +102,7 @@ final class StadtGtImporter implements SourceImporter
             $locationText = null;
             $description = null;
 
-            $detailHtml = $this->fetch($detailUrl);
+            $detailHtml = $this->tryFetch($detailUrl);
             if ($detailHtml !== null) {
                 $detail = new Crawler($detailHtml, $detailUrl);
                 $detailTitle = $this->detailTitle($detail);
@@ -160,19 +157,32 @@ final class StadtGtImporter implements SourceImporter
         return self::BASE.self::LIST_PATH.'?from='.rawurlencode($from).'&to='.rawurlencode($to);
     }
 
-    private function fetch(string $url): ?string
+    /** Fetch a URL or throw, so a dead source surfaces as a failed run. */
+    private function fetch(string $url): string
     {
         try {
             $response = $this->http->request('GET', $url, [
                 'headers' => ['User-Agent' => self::USER_AGENT],
                 'timeout' => 30,
             ]);
-            if ($response->getStatusCode() >= 400) {
-                return null;
-            }
+            $status = $response->getStatusCode();
+            $content = $status < 400 ? $response->getContent() : null;
+        } catch (\Throwable $e) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: %s', $url, $e->getMessage()), 0, $e);
+        }
+        if ($content === null) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: HTTP %d', $url, $status));
+        }
 
-            return $response->getContent();
-        } catch (\Throwable) {
+        return $content;
+    }
+
+    /** Tolerant variant for detail pages: one broken page must not kill the run. */
+    private function tryFetch(string $url): ?string
+    {
+        try {
+            return $this->fetch($url);
+        } catch (\RuntimeException) {
             return null;
         }
     }
@@ -306,11 +316,7 @@ final class StadtGtImporter implements SourceImporter
             $i = (int) $tm[2];
         }
 
-        $built = (new \DateTimeImmutable('now', $tz))
-            ->setDate((int) $m[3], (int) $m[2], (int) $m[1])
-            ->setTime($h, $i);
-
-        return $built;
+        return SafeDate::create((int) $m[3], (int) $m[2], (int) $m[1], $h, $i, $tz);
     }
 
     private function externalIdFromUrl(string $url): string

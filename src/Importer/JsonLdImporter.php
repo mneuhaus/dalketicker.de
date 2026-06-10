@@ -55,9 +55,6 @@ final class JsonLdImporter implements SourceImporter
 
         $config = $source->getConfig();
         $html = $this->fetch($url);
-        if ($html === null) {
-            return;
-        }
 
         $events = $this->extractEventObjects($html);
         $seenIds = [];
@@ -83,7 +80,7 @@ final class JsonLdImporter implements SourceImporter
             }
             ++$count;
 
-            $detailHtml = $this->fetch($detailUrl);
+            $detailHtml = $this->tryFetch($detailUrl);
             if ($detailHtml === null) {
                 continue;
             }
@@ -96,7 +93,8 @@ final class JsonLdImporter implements SourceImporter
         }
     }
 
-    private function fetch(string $url): ?string
+    /** Fetch a URL or throw, so a dead source surfaces as a failed run. */
+    private function fetch(string $url): string
     {
         try {
             $response = $this->http->request('GET', $url, [
@@ -104,13 +102,24 @@ final class JsonLdImporter implements SourceImporter
                 'timeout' => 30,
                 'max_redirects' => 5,
             ]);
+            $status = $response->getStatusCode();
+            $content = $status < 400 ? $response->getContent() : null;
+        } catch (\Throwable $e) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: %s', $url, $e->getMessage()), 0, $e);
+        }
+        if ($content === null) {
+            throw new \RuntimeException(sprintf('Fetching %s failed: HTTP %d', $url, $status));
+        }
 
-            if ($response->getStatusCode() >= 400) {
-                return null;
-            }
+        return $content;
+    }
 
-            return $response->getContent();
-        } catch (\Throwable) {
+    /** Tolerant variant for detail pages: one broken page must not kill the run. */
+    private function tryFetch(string $url): ?string
+    {
+        try {
+            return $this->fetch($url);
+        } catch (\RuntimeException) {
             return null;
         }
     }
@@ -158,7 +167,7 @@ final class JsonLdImporter implements SourceImporter
     }
 
     /**
-     * @param list<array<string, mixed>> $out
+     * @param list<array<mixed>> $out
      */
     private function collectEvents(mixed $node, array &$out): void
     {
@@ -195,7 +204,7 @@ final class JsonLdImporter implements SourceImporter
     }
 
     /**
-     * @param array<string, mixed> $event
+     * @param array<mixed> $event
      */
     private function mapEvent(array $event, array $config, string $fallbackUrl): ?ImportedEvent
     {

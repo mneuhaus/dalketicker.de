@@ -19,6 +19,7 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Index(name: 'idx_import_run_source', columns: ['source_id'])]
 class ImportRun
 {
+    public const STATUS_RUNNING = 'running';
     public const STATUS_OK = 'ok';
     public const STATUS_PARTIAL = 'partial';
     public const STATUS_FAILED = 'failed';
