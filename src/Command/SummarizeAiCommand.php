@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\Ai\AiSummarizer;
+use App\Ai\AiUnavailableException;
 use App\Repository\EventRepository;
+use App\Service\RunLock;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -25,10 +27,13 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 )]
 final class SummarizeAiCommand extends Command
 {
+    private const LOCK_NAME = 'ai-summarize';
+
     public function __construct(
         private readonly EventRepository $events,
         private readonly AiSummarizer $summarizer,
         private readonly EntityManagerInterface $em,
+        private readonly RunLock $locks,
     ) {
         parent::__construct();
     }
@@ -47,6 +52,22 @@ final class SummarizeAiCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
+
+        if (!$this->locks->acquire(self::LOCK_NAME)) {
+            $io->warning('Lauf läuft bereits – Abbruch.');
+
+            return Command::SUCCESS;
+        }
+
+        try {
+            return $this->doExecute($input, $io);
+        } finally {
+            $this->locks->release(self::LOCK_NAME);
+        }
+    }
+
+    private function doExecute(InputInterface $input, SymfonyStyle $io): int
+    {
         $apply = (bool) $input->getOption('apply');
         $limit = max(0, (int) $input->getOption('limit'));
         $batch = max(1, (int) $input->getOption('batch'));
@@ -77,7 +98,15 @@ final class SummarizeAiCommand extends Command
                 break;
             }
             ++$calls;
-            $summaries = $this->summarizer->summarize($chunk)['summaries'];
+            try {
+                $summaries = $this->summarizer->summarize($chunk)['summaries'];
+            } catch (AiUnavailableException $e) {
+                // Don't mark this batch (no empty summaries) — it gets retried
+                // next run; batches flushed before this one stay saved.
+                $io->error(sprintf('KI nicht verfügbar – Lauf abgebrochen, Batch bleibt unbearbeitet: %s', $e->getMessage()));
+
+                return Command::FAILURE;
+            }
 
             foreach ($chunk as $event) {
                 $summary = $summaries[$event->getId()] ?? null;

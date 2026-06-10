@@ -3,8 +3,8 @@
 {% block title %}Quellen – {{ site_name }}{% endblock %}
 
 {% macro status_badge(status) %}
-    {% set map = {'ok': 'bg-emerald-100 text-emerald-800', 'partial': 'bg-amber-100 text-amber-800', 'failed': 'bg-rose-100 text-rose-700'} %}
-    {% set label = {'ok': 'OK', 'partial': 'Teilweise', 'failed': 'Fehler'} %}
+    {% set map = {'ok': 'bg-emerald-100 text-emerald-800', 'partial': 'bg-amber-100 text-amber-800', 'failed': 'bg-rose-100 text-rose-700', 'running': 'bg-sky-100 text-sky-800'} %}
+    {% set label = {'ok': 'OK', 'partial': 'Teilweise', 'failed': 'Fehler', 'running': 'Läuft'} %}
     <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold {{ map[status] ?? 'bg-black/10 text-ink/60' }}">{{ label[status] ?? status }}</span>
 {% endmacro %}
 
@@ -50,6 +50,18 @@
                                     <span class="inline-flex items-center rounded-full bg-brand-100 px-1.5 py-0.5 text-[10px] font-semibold text-brand-800" title="Primärquelle">Primär</span>
                                 {% endif %}
                                 {% if source.approved %}<span class="inline-flex items-center rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800" title="Freigabe vorhanden">frei</span>{% endif %}
+                                {% set warn = warnings[source.id] ?? null %}
+                                {% if warn %}
+                                    {% if warn.failed %}
+                                        <span class="inline-flex items-center rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700" title="{{ warn.failed|slice(0, 300) }}">Lauf fehlgeschlagen</span>
+                                    {% endif %}
+                                    {% if warn.staleDays %}
+                                        <span class="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800" title="Kein erfolgreicher Lauf seit {{ warn.staleDays }} Tagen">zuletzt vor {{ warn.staleDays }} Tagen</span>
+                                    {% endif %}
+                                    {% if warn.zeroEvents %}
+                                        <span class="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800" title="Die letzten 3 Läufe haben keine Events gesehen">liefert 0 Events</span>
+                                    {% endif %}
+                                {% endif %}
                             </div>
                             <div class="text-xs text-ink/40">{{ source.key }}{% if not source.enabled %} · inaktiv{% endif %}</div>
                         </td>

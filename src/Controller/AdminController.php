@@ -12,6 +12,8 @@ use App\Entity\AiCategoryDecision;
 use App\Entity\AiDedupDecision;
 use App\Entity\ContactMessage;
 use App\Repository\ContactMessageRepository;
+use App\Entity\ImportRun;
+use App\Entity\Source;
 use App\Entity\User;
 use App\Importer\ImporterRegistry;
 use App\Repository\CategoryRepository;
@@ -19,6 +21,7 @@ use App\Repository\EventRepository;
 use App\Repository\ImportRunRepository;
 use App\Repository\SourceRepository;
 use App\Repository\UserRepository;
+use App\Service\RunLock;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -67,7 +70,76 @@ final class AdminController extends AbstractController
             'latest' => $latest,
             'recent' => $recent,
             'lastRun' => $recent[0] ?? null,
+            'warnings' => $this->buildSourceWarnings($allSources, $latest, $runs),
         ]);
+    }
+
+    /**
+     * Health warnings per enabled source for the overview table: last run
+     * failed, no successful run for over a week, or the last three runs all
+     * came back empty (the source probably changed its markup).
+     *
+     * @param Source[]              $sources
+     * @param array<int, ImportRun> $latest
+     *
+     * @return array<int, array{failed: string|null, staleDays: int|null, zeroEvents: bool}>
+     */
+    private function buildSourceWarnings(array $sources, array $latest, ImportRunRepository $runs): array
+    {
+        // One scalar pass over all finished runs (newest first): last
+        // successful run + the "seen" counts of the last three runs per source.
+        $rows = $runs->createQueryBuilder('r')
+            ->select('IDENTITY(r.source) AS sid, r.status AS status, r.seen AS seen, r.startedAt AS startedAt')
+            ->andWhere('r.status != :running')
+            ->setParameter('running', ImportRun::STATUS_RUNNING)
+            ->orderBy('r.startedAt', 'DESC')
+            ->getQuery()
+            ->getArrayResult();
+
+        $lastSuccessAt = [];
+        $recentSeen = [];
+        foreach ($rows as $row) {
+            $sid = (int) $row['sid'];
+            if (!isset($lastSuccessAt[$sid]) && \in_array($row['status'], [ImportRun::STATUS_OK, ImportRun::STATUS_PARTIAL], true)) {
+                $lastSuccessAt[$sid] = $row['startedAt'];
+            }
+            if (\count($recentSeen[$sid] ?? []) < 3) {
+                $recentSeen[$sid][] = (int) $row['seen'];
+            }
+        }
+
+        $now = new \DateTimeImmutable('now');
+        $warnings = [];
+        foreach ($sources as $source) {
+            $sid = $source->getId();
+            $run = $latest[$sid] ?? null;
+            if ($sid === null || !$source->isEnabled() || $run === null) {
+                continue;
+            }
+
+            $failed = $run->getStatus() === ImportRun::STATUS_FAILED ? ($run->getMessage() ?? 'Fehler ohne Meldung') : null;
+
+            $staleDays = null;
+            $successAt = $lastSuccessAt[$sid] ?? null;
+            if (\is_string($successAt)) {
+                $successAt = new \DateTimeImmutable($successAt);
+            }
+            if ($successAt instanceof \DateTimeInterface) {
+                $days = (int) $successAt->diff($now)->days;
+                if ($days > 7) {
+                    $staleDays = $days;
+                }
+            }
+
+            $seen = $recentSeen[$sid] ?? [];
+            $zeroEvents = \count($seen) >= 3 && array_sum($seen) === 0;
+
+            if ($failed !== null || $staleDays !== null || $zeroEvents) {
+                $warnings[$sid] = ['failed' => $failed, 'staleDays' => $staleDays, 'zeroEvents' => $zeroEvents];
+            }
+        }
+
+        return $warnings;
     }
 
     /** Details of a single import run. */
@@ -284,6 +356,7 @@ final class AdminController extends AbstractController
     public function dedupRun(
         Request $request,
         AiDeduper $deduper,
+        RunLock $locks,
         #[Autowire('%kernel.project_dir%')] string $projectDir,
     ): RedirectResponse {
         if (!$this->isCsrfTokenValid('dedup_run', (string) $request->request->get('_token'))) {
@@ -296,24 +369,20 @@ final class AdminController extends AbstractController
 
             return $this->redirectToRoute('admin_dedup');
         }
+        // The command holds the actual lock ("ai-dedup", see DedupAiCommand) —
+        // this check just turns a silently exiting second run into a message.
+        if ($locks->isLocked('ai-dedup')) {
+            $this->addFlash('error', 'Ein Dedup-Lauf läuft bereits – bitte warten, bis er fertig ist.');
 
-        // In prod, Symfony logs to stderr, so var/log isn't created on its own —
-        // make sure it exists, else the redirect below fails and the job dies.
-        @mkdir($projectDir.'/var/log', 0775, true);
-        $log = $projectDir.'/var/log/dedup-manual.log';
-        // Trailing "&" lets the shell return immediately; nohup detaches the run
-        // from the web request so it survives the response.
-        $cmd = sprintf(
-            'nohup php %s/bin/console dalketicker:dedup-ai --days=60 --max-ai-calls=80 >> %s 2>&1 &',
-            escapeshellarg($projectDir),
-            escapeshellarg($log),
-        );
-        $process = Process::fromShellCommandline($cmd, $projectDir);
-        $process->setTimeout(null);
-        $process->disableOutput();
-        $process->run();
+            return $this->redirectToRoute('admin_dedup');
+        }
 
-        $this->addFlash('success', 'AI-Dedup gestartet – läuft im Hintergrund. Liste in ~1 Minute aktualisieren.');
+        $error = $this->startDetachedConsoleRun('dalketicker:dedup-ai --days=60 --max-ai-calls=80', 'dedup-manual.log', $projectDir);
+        if ($error !== null) {
+            $this->addFlash('error', 'AI-Dedup: '.$error);
+        } else {
+            $this->addFlash('success', 'AI-Dedup gestartet – läuft im Hintergrund. Liste in ~1 Minute aktualisieren.');
+        }
 
         return $this->redirectToRoute('admin_dedup');
     }
@@ -398,6 +467,7 @@ final class AdminController extends AbstractController
     public function categorizeRun(
         Request $request,
         AiCategorizer $categorizer,
+        RunLock $locks,
         #[Autowire('%kernel.project_dir%')] string $projectDir,
     ): RedirectResponse {
         if (!$this->isCsrfTokenValid('categorize', (string) $request->request->get('_token'))) {
@@ -410,22 +480,63 @@ final class AdminController extends AbstractController
 
             return $this->redirectToRoute('admin_categorize');
         }
+        // The command holds the actual lock ("ai-categorize", see
+        // CategorizeAiCommand) — this check just provides a friendly message.
+        if ($locks->isLocked('ai-categorize')) {
+            $this->addFlash('error', 'Ein Kategorisierungs-Lauf läuft bereits – bitte warten, bis er fertig ist.');
 
+            return $this->redirectToRoute('admin_categorize');
+        }
+
+        $error = $this->startDetachedConsoleRun('dalketicker:categorize-ai --apply --max-calls=120', 'categorize-manual.log', $projectDir);
+        if ($error !== null) {
+            $this->addFlash('error', 'KI-Kategorisierung: '.$error);
+        } else {
+            $this->addFlash('success', 'KI-Kategorisierung gestartet – läuft im Hintergrund. Liste in ~1–2 Minuten aktualisieren.');
+        }
+
+        return $this->redirectToRoute('admin_categorize');
+    }
+
+    /**
+     * Launch a console command detached from the request (nohup + "&") so it
+     * survives the response. The previous log is kept as a single rotated
+     * generation (<name>.log.1) so files in var/log stay bounded.
+     *
+     * @return string|null error hint for the flash message, null when the run started
+     */
+    private function startDetachedConsoleRun(string $arguments, string $logName, string $projectDir): ?string
+    {
+        // In prod, Symfony logs to stderr, so var/log isn't created on its own —
+        // make sure it exists, else the redirect below fails and the job dies.
         @mkdir($projectDir.'/var/log', 0775, true);
-        $log = $projectDir.'/var/log/categorize-manual.log';
+        $log = $projectDir.'/var/log/'.$logName;
+        if (is_file($log)) {
+            @rename($log, $log.'.1');
+        }
+
+        // Trailing "&" lets the shell return immediately; nohup detaches the
+        // run from the web request. "echo $!" hands back the PID so we can
+        // verify the job didn't die right away.
         $cmd = sprintf(
-            'nohup php %s/bin/console dalketicker:categorize-ai --apply --max-calls=120 >> %s 2>&1 &',
+            'nohup php %s/bin/console %s > %s 2>&1 & echo $!',
             escapeshellarg($projectDir),
+            $arguments,
             escapeshellarg($log),
         );
         $process = Process::fromShellCommandline($cmd, $projectDir);
-        $process->setTimeout(null);
-        $process->disableOutput();
         $process->run();
+        $pid = (int) trim($process->getOutput());
 
-        $this->addFlash('success', 'KI-Kategorisierung gestartet – läuft im Hintergrund. Liste in ~1–2 Minuten aktualisieren.');
+        // Grace period: a healthy run is still alive after 300 ms, an immediate
+        // crash (missing php, fatal boot error, ...) is not.
+        usleep(300_000);
+        $died = $pid > 0 && \function_exists('posix_kill') && !@posix_kill($pid, 0);
+        if (!$process->isSuccessful() || $pid <= 0 || $died) {
+            return 'Start fehlgeschlagen – Details in var/log/'.$logName;
+        }
 
-        return $this->redirectToRoute('admin_categorize');
+        return null;
     }
 
     #[Route('/kategorien/{id}/{action}', name: 'admin_categorize_decide', requirements: ['id' => '\d+', 'action' => 'accept|dismiss|undo'], methods: ['POST'])]
@@ -438,16 +549,17 @@ final class AdminController extends AbstractController
         }
         $decision = $em->getRepository(AiCategoryDecision::class)->find($id);
         if ($decision !== null) {
+            // The route requirement restricts $action to these three values.
             match ($action) {
                 'accept' => $applier->acceptSuggestion($decision),
                 'dismiss' => $applier->dismissSuggestion($decision),
-                'undo' => $applier->undo($decision),
+                default => $applier->undo($decision),
             };
             $em->flush();
             $this->addFlash('success', match ($action) {
                 'accept' => 'Vorschlag übernommen.',
                 'dismiss' => 'Vorschlag verworfen.',
-                'undo' => 'Kategorie zurückgesetzt.',
+                default => 'Kategorie zurückgesetzt.',
             });
         }
 

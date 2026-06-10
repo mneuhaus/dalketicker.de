@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\Ai\AiCategorizer;
+use App\Ai\AiUnavailableException;
 use App\Ai\CategoryApplier;
 use App\Entity\Event;
 use App\Repository\EventRepository;
+use App\Service\RunLock;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -31,11 +33,14 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 )]
 final class CategorizeAiCommand extends Command
 {
+    private const LOCK_NAME = 'ai-categorize';
+
     public function __construct(
         private readonly EventRepository $events,
         private readonly AiCategorizer $categorizer,
         private readonly CategoryApplier $applier,
         private readonly EntityManagerInterface $em,
+        private readonly RunLock $locks,
     ) {
         parent::__construct();
     }
@@ -57,6 +62,21 @@ final class CategorizeAiCommand extends Command
     {
         $io = new SymfonyStyle($input, $output);
 
+        if (!$this->locks->acquire(self::LOCK_NAME)) {
+            $io->warning('Lauf läuft bereits – Abbruch.');
+
+            return Command::SUCCESS;
+        }
+
+        try {
+            return $this->doExecute($input, $io);
+        } finally {
+            $this->locks->release(self::LOCK_NAME);
+        }
+    }
+
+    private function doExecute(InputInterface $input, SymfonyStyle $io): int
+    {
         if ($input->getOption('reset')) {
             return $this->reset($io);
         }
@@ -75,7 +95,7 @@ final class CategorizeAiCommand extends Command
         }
 
         $calls = 0;
-        $stats = ['fill' => 0, 'suggestions' => 0, 'agreed' => 0, 'skipped' => 0];
+        $stats = ['fill' => 0, 'suggestions' => 0, 'agreed' => 0, 'skipped' => 0, 'pinned' => 0];
 
         $shards = max(1, (int) $input->getOption('shards'));
         $shard = max(0, (int) $input->getOption('shard'));
@@ -92,7 +112,15 @@ final class CategorizeAiCommand extends Command
                 break;
             }
             ++$calls;
-            $proposals = $this->categorizer->classify($chunk)['proposals'];
+            try {
+                $proposals = $this->categorizer->classify($chunk)['proposals'];
+            } catch (AiUnavailableException $e) {
+                // Don't mark this batch as checked — it gets retried next run;
+                // batches flushed before this one stay saved.
+                $io->error(sprintf('KI nicht verfügbar – Lauf abgebrochen, Batch bleibt ungeprüft: %s', $e->getMessage()));
+
+                return Command::FAILURE;
+            }
 
             foreach ($chunk as $event) {
                 $uncategorized = !$this->hasRealCategory($event);
@@ -119,9 +147,9 @@ final class CategorizeAiCommand extends Command
 
         $io->newLine();
         $io->success(sprintf(
-            '%s | KI-Aufrufe: %d · gefüllt: %d · überschrieben: %d · bestätigt: %d · ohne Vorschlag: %d',
+            '%s | KI-Aufrufe: %d · gefüllt: %d · überschrieben: %d · bestätigt: %d · ohne Vorschlag: %d · gepinnt: %d',
             $apply ? 'Gespeichert' : 'Dry-Run (nichts gespeichert)',
-            $calls, $stats['fill'], $stats['suggestions'], $stats['agreed'], $stats['skipped'],
+            $calls, $stats['fill'], $stats['suggestions'], $stats['agreed'], $stats['skipped'], $stats['pinned'],
         ));
 
         return Command::SUCCESS;
@@ -164,6 +192,20 @@ final class CategorizeAiCommand extends Command
         $current = [];
         foreach ($event->getCategories() as $c) {
             $current[] = $c->getSlug();
+        }
+
+        // Admin pinned the categories: never overwrite them. Still record the
+        // decision (as dismissed, via the applier) so the event counts as
+        // checked and the run doesn't revisit it forever.
+        if ($event->isFieldLocked('categories')) {
+            ++$stats['pinned'];
+            if ($apply) {
+                $this->applier->apply($event, $proposal['slugs'], $uncategorized ? 'fill' : 'opinion', $model, $proposal['reason']);
+            } elseif ($io->isVerbose()) {
+                $io->writeln(sprintf('  pin   #%d "%s" – übersprungen: Kategorien gepinnt', $event->getId(), $event->getTitle()));
+            }
+
+            return;
         }
 
         if ($uncategorized) {

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\Ai\AiDeduper;
+use App\Ai\AiUnavailableException;
 use App\Ai\DuplicateMerger;
 use App\Entity\AiDedupDay;
 use App\Entity\AiDedupDecision;
@@ -13,6 +14,7 @@ use App\Enum\EventStatus;
 use App\Importer\ImportedEvent;
 use App\Repository\EventRepository;
 use App\Search\EventFilter;
+use App\Service\RunLock;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -36,12 +38,15 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 )]
 final class DedupAiCommand extends Command
 {
+    private const LOCK_NAME = 'ai-dedup';
+
     public function __construct(
         private readonly EventRepository $events,
         private readonly AiDeduper $deduper,
         private readonly DuplicateMerger $merger,
         private readonly EntityManagerInterface $em,
         private readonly ClockInterface $clock,
+        private readonly RunLock $locks,
     ) {
         parent::__construct();
     }
@@ -60,6 +65,22 @@ final class DedupAiCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
+
+        if (!$this->locks->acquire(self::LOCK_NAME)) {
+            $io->warning('Lauf läuft bereits – Abbruch.');
+
+            return Command::SUCCESS;
+        }
+
+        try {
+            return $this->doExecute($input, $io);
+        } finally {
+            $this->locks->release(self::LOCK_NAME);
+        }
+    }
+
+    private function doExecute(InputInterface $input, SymfonyStyle $io): int
+    {
         $tz = new \DateTimeZone('Europe/Berlin');
         $dryRun = (bool) $input->getOption('dry-run');
         $force = (bool) $input->getOption('force');
@@ -130,7 +151,15 @@ final class DedupAiCommand extends Command
 
             ++$aiCalls;
             ++$reviewed;
-            $proposals = $this->deduper->findDuplicates($day, $events);
+            try {
+                $proposals = $this->deduper->findDuplicates($day, $events);
+            } catch (AiUnavailableException $e) {
+                // Don't store the day's fingerprint — it gets re-reviewed next
+                // run; days processed before this one stay saved.
+                $io->error(sprintf('KI nicht verfügbar – Lauf abgebrochen, Tag %s bleibt ungeprüft: %s', $dayKey, $e->getMessage()));
+
+                return Command::FAILURE;
+            }
 
             /** @var array<int, Event> $byId */
             $byId = [];

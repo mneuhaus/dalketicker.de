@@ -28,12 +28,22 @@ final class CategoryApplier
      * Set the AI categories on the event straight away (used for both filling a
      * gap, mode 'fill', and overriding a wrong importer category, mode 'opinion').
      * The previous categories are recorded so the change can be undone.
+     * Admin-pinned categories are never touched: the decision is recorded as
+     * "dismissed" so the event still counts as checked and re-runs skip it.
      *
      * @param list<string> $slugs
      */
     public function apply(Event $event, array $slugs, string $mode, string $model, ?string $reason): AiCategoryDecision
     {
         $previous = $this->currentSlugs($event);
+
+        if ($event->isFieldLocked('categories')) {
+            $decision = new AiCategoryDecision($event, $mode, 'dismissed', $previous, $slugs, $model, 'Kategorien vom Admin gepinnt');
+            $this->em->persist($decision);
+
+            return $decision;
+        }
+
         $event->setCategories($this->resolve($slugs));
 
         $decision = new AiCategoryDecision($event, $mode, 'applied', $previous, $slugs, $model, $reason);
@@ -84,13 +94,19 @@ final class CategoryApplier
         $decision->setStatus('dismissed')->setReviewedAt(new \DateTimeImmutable('now'));
     }
 
-    /** Restore the categories the event had before this decision was applied. */
+    /**
+     * Restore the categories the event had before this decision was applied.
+     * Pinned categories stay untouched (the admin's pick wins over the restore).
+     */
     public function undo(AiCategoryDecision $decision): void
     {
         if ($decision->getStatus() !== 'applied') {
             return;
         }
-        $decision->getEvent()->setCategories($this->resolve($decision->getPreviousSlugs()));
+        $event = $decision->getEvent();
+        if (!$event->isFieldLocked('categories')) {
+            $event->setCategories($this->resolve($decision->getPreviousSlugs()));
+        }
         $decision->setStatus('undone')->setReviewedAt(new \DateTimeImmutable('now'));
     }
 
