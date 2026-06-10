@@ -10,7 +10,6 @@ services:
       SERVER_NAME: :80
       TRUSTED_PROXIES: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
       DATABASE_URL: "postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-!ChangeMe!}@database:5432/${POSTGRES_DB:-app}?serverVersion=16&charset=utf8"
-      MAILER_DSN: smtp://mailer:1025
       # SSH agent forwarding (macOS) for git operations inside the container
       SSH_AUTH_SOCK: /ssh-agent
     volumes:
@@ -55,23 +54,6 @@ services:
       - "5432"
     networks:
       - default
-
-  mailer:
-    image: axllent/mailpit
-    container_name: ${HOSTNAME:-dalketicker}-mailer
-    environment:
-      MP_SMTP_AUTH_ACCEPT_ANY: 1
-      MP_SMTP_AUTH_ALLOW_INSECURE: 1
-    networks:
-      - default
-      - traefik
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik}"
-      - "traefik.http.routers.${HOSTNAME:-dalketicker}-mail.rule=Host(`mail-${HOSTNAME:-dalketicker}.traefik.me`)"
-      - "traefik.http.routers.${HOSTNAME:-dalketicker}-mail.entrypoints=websecure"
-      - "traefik.http.routers.${HOSTNAME:-dalketicker}-mail.tls=true"
-      - "traefik.http.services.${HOSTNAME:-dalketicker}-mail.loadbalancer.server.port=8025"
 
 volumes:
   database_data:

@@ -14,6 +14,8 @@ assets/vendor/
 .env.*
 !.env.dist
 .docker-initialized
+# Design-phase artifacts (logo drafts, fonts, galleries) — not needed at runtime.
+tools/
 docker-compose*.yml
 compose*.yaml
 *.md

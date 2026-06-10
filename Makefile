@@ -1,9 +1,8 @@
 # ======================================================================#
 # Dalketicker - Makefile                                                #
 # ======================================================================#
-# Stack: FrankenPHP + PostgreSQL + Mailpit + Traefik                    #
+# Stack: FrankenPHP + PostgreSQL + Traefik                              #
 # App:   https://dalketicker.traefik.me                                 #
-# Mail:  https://mail-dalketicker.traefik.me                            #
 # ======================================================================#
 
 .PHONY: help
@@ -119,7 +118,6 @@ dc/status: ## Show status + URLs
 	@docker compose ps
 	@$(MAKE) dc/traefik/status
 	@echo "App:  https://dalketicker.traefik.me"
-	@echo "Mail: https://mail-dalketicker.traefik.me"
 
 dc/shell: ## Open a shell in the app container
 	docker compose exec app bash
@@ -161,7 +159,19 @@ dedup/dry: ## AI dedup pass, propose only (no changes)
 	@$(CONSOLE) dalketicker:dedup-ai --dry-run
 
 # ======================================================================#
-# Deployment (dalketicker.neuhaus.nrw)                                  #
+# Quality                                                               #
+# ======================================================================#
+
+.PHONY: stan test
+
+stan: ## Run PHPStan static analysis (host PHP)
+	php vendor/bin/phpstan analyse --memory-limit=1G
+
+test: ## Run the PHPUnit test suite (host PHP)
+	php bin/phpunit
+
+# ======================================================================#
+# Deployment (dalketicker.de)                                           #
 # ======================================================================#
 # Server keeps its own .env with the generated secrets — NEVER rsync it,
 # or the Postgres credentials break.
@@ -170,16 +180,26 @@ DEPLOY_HOST = root@neuhaus.nrw
 DEPLOY_PATH = /opt/dalketicker.neuhaus.nrw
 PROD = docker compose -f docker-compose.prod.yml
 
-.PHONY: deploy deploy/sync deploy/build deploy/migrate deploy/rollout
+.PHONY: deploy deploy/check deploy/sync deploy/build deploy/migrate deploy/rollout deploy/sidecars deploy/backup
 
-deploy: deploy/sync deploy/build deploy/migrate deploy/rollout ## Sync, build, migrate, zero-downtime swap
-	@echo "Deployed -> https://dalketicker.neuhaus.nrw"
+deploy: deploy/check deploy/sync deploy/build deploy/migrate deploy/rollout deploy/sidecars ## Sync, build, migrate, zero-downtime swap
+	@echo "Deployed -> https://dalketicker.de"
+
+deploy/check: ## Guard: clean working tree + confirmation (DEPLOY_FORCE=1 / DEPLOY_YES=1 to skip)
+	@if [ "$(DEPLOY_FORCE)" != "1" ] && [ -n "$$(git status --porcelain)" ]; then \
+	  echo "ABBRUCH: Working Tree nicht sauber — deploy rsynct mit --delete nach Prod."; \
+	  echo "Erst committen/stashen oder mit DEPLOY_FORCE=1 erzwingen."; \
+	  exit 1; \
+	fi
+	@if [ "$(DEPLOY_YES)" != "1" ]; then \
+	  read -p "Deploy nach $(DEPLOY_HOST):$(DEPLOY_PATH)? (y/N) " c && [ "$$c" = "y" ] || (echo Aborted && exit 1); \
+	fi
 
 deploy/sync: ## rsync code to the server (excludes .env and build artifacts)
 	rsync -az --delete \
 	  --exclude '.git/' --exclude 'var/' --exclude 'vendor/' --exclude 'node_modules/' \
 	  --exclude 'public/assets/' --exclude 'assets/vendor/' --exclude '.docker-initialized' \
-	  --exclude '.env' --exclude '.env.local' --exclude '.env.*.local' \
+	  --exclude '.env' --exclude '.env.local' --exclude '.env.*.local' --exclude 'tools/' \
 	  -e 'ssh -o BatchMode=yes' \
 	  ./ $(DEPLOY_HOST):$(DEPLOY_PATH)/
 
@@ -212,6 +232,14 @@ deploy/rollout: ## Blue-green swap: start new container, wait until healthy, the
 	  sleep 3; \
 	  docker stop "$$OLD" >/dev/null && docker rm "$$OLD" >/dev/null; \
 	  echo "Swap abgeschlossen"'
+
+deploy/sidecars: ## Recreate scheduler + db-backup (picks up the freshly built image)
+	ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && $(PROD) up -d scheduler db-backup'
+
+deploy/backup: ## Manual pg_dump on the server (into the backup volume, see docker/backup.sh)
+	ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && \
+	  $(PROD) exec -T db-backup pg_dump -Fc -f /backups/dalketicker-manual-$$(date +%Y-%m-%d_%H%M%S).dump && \
+	  $(PROD) exec -T db-backup ls -lh /backups'
 
 deploy/import: ## Run importers on the server
 	ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && $(PROD) exec -T app php bin/console dalketicker:import --all'

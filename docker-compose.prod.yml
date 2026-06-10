@@ -3,6 +3,26 @@
 #   docker compose -f docker-compose.prod.yml up -d --build
 # Secrets (APP_SECRET, DB_PASSWORD) come from a sibling .env file (not committed).
 
+# Cap container log size (json-file rotates; without this, logs grow unbounded).
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+# Shared by "app" and "scheduler" — both run the same baked app image.
+x-app-environment: &app-environment
+  APP_ENV: prod
+  APP_DEBUG: 0
+  APP_SECRET: ${APP_SECRET}
+  TRUSTED_PROXIES: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+  DATABASE_URL: "postgresql://dalke:${DB_PASSWORD}@database:5432/dalketicker?serverVersion=16&charset=utf8"
+  MAILER_DSN: null://null
+  MESSENGER_TRANSPORT_DSN: "doctrine://default?auto_setup=0"
+  DEFAULT_URI: https://dalketicker.de
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+  DEDUP_AI_MODEL: ${DEDUP_AI_MODEL:-anthropic/claude-sonnet-4}
+
 services:
   app:
     build:
@@ -11,6 +31,7 @@ services:
     image: dalketicker-app:latest
     # No fixed container_name: blue-green deploys run two replicas briefly.
     restart: always
+    logging: *default-logging
     healthcheck:
       # "Healthy" means the PHP app actually serves (not just Caddy booting),
       # so Traefik/rollout only route traffic once it's truly ready.
@@ -19,23 +40,17 @@ services:
       timeout: 3s
       retries: 5
       start_period: 40s
-    environment:
-      APP_ENV: prod
-      APP_DEBUG: 0
-      APP_SECRET: ${APP_SECRET}
-      TRUSTED_PROXIES: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
-      DATABASE_URL: "postgresql://dalke:${DB_PASSWORD}@database:5432/dalketicker?serverVersion=16&charset=utf8"
-      MAILER_DSN: null://null
-      MESSENGER_TRANSPORT_DSN: "doctrine://default?auto_setup=0"
-      DEFAULT_URI: https://dalketicker.de
-      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
-      DEDUP_AI_MODEL: ${DEDUP_AI_MODEL:-anthropic/claude-sonnet-4}
+    environment: *app-environment
     depends_on:
       database:
         condition: service_healthy
     volumes:
       # Persist admin uploads (Freigabe-Nachweise) across container rebuilds.
       - dalketicker-uploads:/app/var/uploads
+      # flock lock files (var/run) shared between the app replicas (blue-green
+      # briefly runs two) and the scheduler — without a shared filesystem the
+      # "one import/AI run at a time" locks would only hold per container.
+      - dalketicker-run:/app/var/run
     networks:
       - web
       - internal
@@ -87,10 +102,35 @@ services:
       - "traefik.http.middlewares.dalketicker-https.redirectscheme.scheme=https"
       - "traefik.http.middlewares.dalketicker-https.redirectscheme.permanent=true"
 
+  # In-container scheduler: imports every 3 hours, AI maintenance passes
+  # nightly, weekly prune (see docker/cron.sh). Uses the app image built by
+  # the "app" service; `make deploy` recreates it after each image build.
+  scheduler:
+    image: dalketicker-app:latest
+    container_name: dalketicker-scheduler
+    restart: always
+    logging: *default-logging
+    command: ["bash", "docker/cron.sh"]
+    environment:
+      <<: *app-environment
+      # cron.sh schedules by wall-clock time via `date`; the image defaults to
+      # UTC, which would shift the run times and the Sunday check.
+      TZ: Europe/Berlin
+    depends_on:
+      database:
+        condition: service_healthy
+    volumes:
+      # Same lock volume as "app": scheduled and admin-triggered runs of the
+      # same command must contend for one flock, not one per container.
+      - dalketicker-run:/app/var/run
+    networks:
+      - internal
+
   database:
     image: postgres:16-alpine
     container_name: dalketicker-db
     restart: always
+    logging: *default-logging
     environment:
       POSTGRES_DB: dalketicker
       POSTGRES_USER: dalke
@@ -105,6 +145,32 @@ services:
     networks:
       - internal
 
+  # Backup sidecar: daily pg_dump -Fc around 03:00 into the named volume,
+  # dumps older than 14 days are pruned (see docker/backup.sh).
+  # Manual dump: make deploy/backup. Restore: pg_restore -d dalketicker <file>.
+  db-backup:
+    image: postgres:16-alpine
+    container_name: dalketicker-db-backup
+    restart: always
+    logging: *default-logging
+    command: ["sh", "/backup.sh"]
+    environment:
+      PGHOST: database
+      PGUSER: dalke
+      PGDATABASE: dalketicker
+      PGPASSWORD: ${DB_PASSWORD}
+      # backup.sh waits for "03:00" via `date`; without this the container's
+      # UTC clock would shift the dump time against Berlin local time.
+      TZ: Europe/Berlin
+    volumes:
+      - ./docker/backup.sh:/backup.sh:ro
+      - dalketicker-db-backups:/backups
+    depends_on:
+      database:
+        condition: service_healthy
+    networks:
+      - internal
+
 networks:
   web:
     external: true
@@ -112,4 +178,6 @@ networks:
 
 volumes:
   dalketicker-db-data:
+  dalketicker-db-backups:
   dalketicker-uploads:
+  dalketicker-run:
