@@ -26,11 +26,11 @@ services:
       - "traefik.enable=true"
       - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik}"
       # HTTP -> HTTPS redirect
-      - "traefik.http.routers.${HOSTNAME:-dalketicker}-http.rule=Host(`${APP_HOST:-${HOSTNAME:-dalketicker}.traefik.me}`)"
+      - "traefik.http.routers.${HOSTNAME:-dalketicker}-http.rule=Host(`${APP_HOST:-${HOSTNAME:-dalketicker}.traefik.me}`) || Host(`paderticker.traefik.me`) || Host(`weserticker.traefik.me`) || Host(`sparrenticker.traefik.me`)"
       - "traefik.http.routers.${HOSTNAME:-dalketicker}-http.entrypoints=web"
       - "traefik.http.routers.${HOSTNAME:-dalketicker}-http.middlewares=${HOSTNAME:-dalketicker}-redirect"
       # HTTPS
-      - "traefik.http.routers.${HOSTNAME:-dalketicker}.rule=Host(`${APP_HOST:-${HOSTNAME:-dalketicker}.traefik.me}`)"
+      - "traefik.http.routers.${HOSTNAME:-dalketicker}.rule=Host(`${APP_HOST:-${HOSTNAME:-dalketicker}.traefik.me}`) || Host(`paderticker.traefik.me`) || Host(`weserticker.traefik.me`) || Host(`sparrenticker.traefik.me`)"
       - "traefik.http.routers.${HOSTNAME:-dalketicker}.entrypoints=websecure"
       - "traefik.http.routers.${HOSTNAME:-dalketicker}.tls=true"
       - "traefik.http.middlewares.${HOSTNAME:-dalketicker}-redirect.redirectscheme.scheme=https"

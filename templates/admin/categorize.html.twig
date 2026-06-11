@@ -25,7 +25,7 @@
                 Modell: {{ model }}{% if not configured %} <span class="text-rose-600 font-semibold">– nicht konfiguriert</span>{% endif %}
             </p>
         </div>
-        <form method="post" action="{{ path('admin_categorize_run') }}">
+        <form method="post" action="{{ path('admin_categorize_run', admin_region_params()) }}">
             <input type="hidden" name="_token" value="{{ csrf_token('categorize') }}">
             <button type="submit" class="inline-flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 transition" {{ configured ? '' : 'disabled' }}>
                 Jetzt durchlaufen
@@ -90,7 +90,7 @@
             {% for d in pending %}
                 <div class="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-black/5 bg-white p-3">
                     <div class="min-w-0 flex-1">
-                        <a href="{{ path('event_show', {id: d.event.id, slug: d.event.slug}) }}" target="_blank" rel="noopener" class="text-sm font-semibold text-ink hover:text-brand-700 line-clamp-1">{{ d.event.title }}</a>
+                        <a href="{{ d.event.region.baseUrl }}{{ path('event_show', {id: d.event.id, slug: d.event.slug}) }}" target="_blank" rel="noopener" class="text-sm font-semibold text-ink hover:text-brand-700 line-clamp-1">{{ d.event.title }}</a>
                         <div class="text-xs text-ink/45 line-clamp-1">{{ d.event.displayLocation }}</div>
                         {% if d.reason %}<div class="text-xs text-ink/40 mt-0.5 italic line-clamp-1">{{ d.reason }}</div>{% endif %}
                     </div>
@@ -100,11 +100,11 @@
                         <span class="flex flex-wrap gap-1">{{ ui.slugchips(d.proposedSlugs) }}</span>
                     </div>
                     <div class="flex items-center gap-1.5">
-                        <form method="post" action="{{ path('admin_categorize_decide', {id: d.id, action: 'accept'}) }}">
+                        <form method="post" action="{{ path('admin_categorize_decide', admin_region_params({id: d.id, action: 'accept'})) }}">
                             <input type="hidden" name="_token" value="{{ csrf_token('categorize') }}">
                             <button class="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition">Übernehmen</button>
                         </form>
-                        <form method="post" action="{{ path('admin_categorize_decide', {id: d.id, action: 'dismiss'}) }}">
+                        <form method="post" action="{{ path('admin_categorize_decide', admin_region_params({id: d.id, action: 'dismiss'})) }}">
                             <input type="hidden" name="_token" value="{{ csrf_token('categorize') }}">
                             <button class="rounded-lg border border-black/10 px-3 py-1.5 text-xs font-medium text-ink/60 hover:bg-black/5 transition">Verwerfen</button>
                         </form>
@@ -125,7 +125,7 @@
         <div class="bg-white rounded-2xl border border-black/5 shadow-sm divide-y divide-black/5">
             {% for d in log %}
                 <div class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 text-sm">
-                    <a href="{{ path('event_show', {id: d.event.id, slug: d.event.slug}) }}" target="_blank" rel="noopener" class="min-w-0 flex-1 font-medium text-ink hover:text-brand-700 line-clamp-1">{{ d.event.title }}</a>
+                    <a href="{{ d.event.region.baseUrl }}{{ path('event_show', {id: d.event.id, slug: d.event.slug}) }}" target="_blank" rel="noopener" class="min-w-0 flex-1 font-medium text-ink hover:text-brand-700 line-clamp-1">{{ d.event.title }}</a>
                     <span class="flex items-center gap-1.5">
                         <span class="flex flex-wrap gap-1">{{ d.previousSlugs ? ui.slugchips(d.previousSlugs) : '<span class="text-ink/30">—</span>'|raw }}</span>
                         <span class="text-ink/30">→</span>
@@ -134,7 +134,7 @@
                     <span class="text-[11px] px-1.5 py-0.5 rounded-full bg-black/5 text-ink/50 whitespace-nowrap">{{ statusLabel[d.status] ?? d.status }}</span>
                     {% if d.reason %}<span class="text-[11px] text-ink/40 w-full sm:w-auto sm:basis-full">{{ d.reason }}</span>{% endif %}
                     {% if d.status in ['applied', 'agreed'] %}
-                        <form method="post" action="{{ path('admin_categorize_decide', {id: d.id, action: 'undo'}) }}">
+                        <form method="post" action="{{ path('admin_categorize_decide', admin_region_params({id: d.id, action: 'undo'})) }}">
                             <input type="hidden" name="_token" value="{{ csrf_token('categorize') }}">
                             <button class="text-xs text-ink/45 hover:text-rose-600 transition">rückgängig</button>
                         </form>
@@ -145,9 +145,9 @@
 
         {% if pages > 1 %}
             <div class="flex items-center justify-center gap-3 mt-4 text-sm">
-                {% if page > 1 %}<a href="?seite={{ page - 1 }}" class="chip-muted">← Zurück</a>{% endif %}
+                {% if page > 1 %}<a href="{{ path('admin_categorize', admin_region_params({seite: page - 1})) }}" class="chip-muted">← Zurück</a>{% endif %}
                 <span class="text-ink/50">Seite {{ page }} / {{ pages }}</span>
-                {% if page < pages %}<a href="?seite={{ page + 1 }}" class="chip-muted">Weiter →</a>{% endif %}
+                {% if page < pages %}<a href="{{ path('admin_categorize', admin_region_params({seite: page + 1})) }}" class="chip-muted">Weiter →</a>{% endif %}
             </div>
         {% endif %}
     {% endif %}

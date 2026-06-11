@@ -21,8 +21,6 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
  */
 final class IcsFeedBuilder
 {
-    private const PRODID = '-//dalketicker//Veranstaltungen Kreis Gütersloh//DE';
-
     public function __construct(private readonly UrlGeneratorInterface $urls)
     {
     }
@@ -34,7 +32,7 @@ final class IcsFeedBuilder
     public function build(array $events, string $calName): string
     {
         $calendar = new VCalendar();
-        $calendar->PRODID = self::PRODID;
+        $calendar->PRODID = '-//'.$this->prodIdHost($events).'//'.$calName.'//DE';
         $calendar->add('METHOD', 'PUBLISH');
         // Auto-refresh hints (RFC 7986 + the Apple/Microsoft extension), ~twice a
         // day to match the import cron.
@@ -56,7 +54,7 @@ final class IcsFeedBuilder
         $stamp = $event->getLastSeenAt()->setTimezone($utc);
 
         $vevent = $calendar->add('VEVENT', [
-            'UID' => 'event-'.$event->getId().'@dalketicker.de',
+            'UID' => 'event-'.$event->getId().'@'.$event->getRegion()->getCanonicalHost(),
             'DTSTAMP' => $stamp,
             'LAST-MODIFIED' => $stamp,
             'SUMMARY' => $event->getTitle(),
@@ -128,5 +126,15 @@ final class IcsFeedBuilder
             ['id' => $event->getId(), 'slug' => $event->getSlug()],
             UrlGeneratorInterface::ABSOLUTE_URL,
         );
+    }
+
+    /** @param Event[] $events */
+    private function prodIdHost(array $events): string
+    {
+        if ($events === []) {
+            return 'dalketicker.de';
+        }
+
+        return $events[0]->getRegion()->getCanonicalHost();
     }
 }

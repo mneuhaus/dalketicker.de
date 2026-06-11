@@ -44,7 +44,7 @@
         <div class="flex items-center gap-3 shrink-0">
             <span class="text-xs text-ink/40">{{ decisions|length }} aktive Merges</span>
             {% if configured %}
-                <form method="post" action="{{ path('admin_dedup_run') }}">
+                <form method="post" action="{{ path('admin_dedup_run', admin_region_params()) }}">
                     <input type="hidden" name="_token" value="{{ csrf_token('dedup_run') }}">
                     <button type="submit" class="rounded-full bg-brand-700 text-white text-xs font-semibold px-3.5 py-1.5 hover:bg-brand-800 transition-colors">Jetzt prüfen</button>
                 </form>
@@ -75,7 +75,7 @@
                             {% if d.reason %}<p class="text-sm text-ink/55 mt-0.5">{{ d.reason }}</p>{% endif %}
                         </div>
                         {% if d.duplicateEvent %}
-                            <form method="post" action="{{ path('admin_dedup_undo', {id: d.id}) }}" class="shrink-0">
+                            <form method="post" action="{{ path('admin_dedup_undo', admin_region_params({id: d.id})) }}" class="shrink-0">
                                 <input type="hidden" name="_token" value="{{ csrf_token('dedup_undo') }}">
                                 <button type="submit" class="chip-muted text-xs">Rückgängig</button>
                             </form>

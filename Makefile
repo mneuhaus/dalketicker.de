@@ -141,10 +141,10 @@ db/fixtures: ## Drop, recreate, migrate and load fixtures
 # ======================================================================#
 
 import: ## Run all source importers
-	@$(CONSOLE) dalketicker:import --all
+	@$(CONSOLE) dalketicker:import --all-regions --workers=4
 
 import/dry: ## Run importers without writing (dry run)
-	@$(CONSOLE) dalketicker:import --all --dry-run
+	@$(CONSOLE) dalketicker:import --all-regions --dry-run --workers=4
 
 dedup: ## AI dedup pass (after import)
 	@$(CONSOLE) dalketicker:dedup-ai
@@ -242,7 +242,7 @@ deploy/backup: ## Manual pg_dump on the server (into the backup volume, see dock
 	  $(PROD) exec -T db-backup ls -lh /backups'
 
 deploy/import: ## Run importers on the server
-	ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && $(PROD) exec -T app php bin/console dalketicker:import --all'
+	ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && $(PROD) exec -T app php bin/console dalketicker:import --all-regions --workers=4'
 
 deploy/dedup: ## Run the AI dedup pass on the server
 	ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && $(PROD) exec -T app php bin/console dalketicker:dedup-ai'

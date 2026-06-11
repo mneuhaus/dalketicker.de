@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Entity\Region;
+
 /**
  * Maps the messy, granular place names that come from the various sources
  * (sub-localities, spelling variants) onto the 13 municipalities of the
@@ -62,7 +64,7 @@ final class CityNormalizer
         'clarholz' => 'Herzebrock-Clarholz',
     ];
 
-    public function normalize(?string $raw): ?string
+    public function normalize(?string $raw, ?Region $region = null): ?string
     {
         $raw = trim((string) $raw);
         if ($raw === '') {
@@ -70,6 +72,21 @@ final class CityNormalizer
         }
 
         $key = $this->key($raw);
+
+        if ($region !== null) {
+            $aliases = $region->getCityAliases();
+            if (isset($aliases[$key])) {
+                return $aliases[$key];
+            }
+            foreach ($region->getCities() as $name) {
+                if (str_starts_with($key, $this->key($name))) {
+                    return $name;
+                }
+            }
+            if ($key === $this->key($region->getDefaultCity())) {
+                return $region->getDefaultCity();
+            }
+        }
 
         if (isset(self::ALIAS[$key])) {
             return self::ALIAS[$key];

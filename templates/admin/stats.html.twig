@@ -141,7 +141,7 @@
         {% for ev in topEvents %}
             <div class="flex items-center gap-4 px-4 py-2.5 text-sm">
                 <span class="text-ink/30 tabular-nums w-5 text-right">{{ loop.index }}</span>
-                <a href="{{ path('event_show', {id: ev.id, slug: ev.slug}) }}" target="_blank" rel="noopener" class="font-medium text-ink flex-1 line-clamp-1 hover:text-brand-700">{{ ev.title }}</a>
+                <a href="https://{{ ev.canonical_host }}{{ path('event_show', {id: ev.id, slug: ev.slug}) }}" target="_blank" rel="noopener" class="font-medium text-ink flex-1 line-clamp-1 hover:text-brand-700">{{ ev.title }}</a>
                 <span class="text-ink/50 tabular-nums">{{ ev.views }}</span>
             </div>
         {% else %}

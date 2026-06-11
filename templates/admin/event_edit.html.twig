@@ -24,7 +24,7 @@
 
 {% block body %}
     {% import _self as f %}
-    <a href="{{ path('admin_source', {id: event.source.id}) }}" class="text-sm text-ink/50 hover:text-brand-700 inline-flex items-center gap-1 mb-4">← {{ event.source.name }}</a>
+    <a href="{{ path('admin_source', admin_region_params({id: event.source.id})) }}" class="text-sm text-ink/50 hover:text-brand-700 inline-flex items-center gap-1 mb-4">← {{ event.source.name }}</a>
 
     <div class="max-w-2xl">
         <h1 class="font-[family-name:var(--font-display)] text-2xl font-extrabold tracking-tight text-ink mb-1">Event bearbeiten</h1>
@@ -33,7 +33,7 @@
         {% for msg in app.flashes('success') %}<div class="rounded-xl bg-emerald-50 text-emerald-800 text-sm px-4 py-3 mb-4">{{ msg }}</div>{% endfor %}
         {% for msg in app.flashes('error') %}<div class="rounded-xl bg-rose-50 text-rose-700 text-sm px-4 py-3 mb-4">{{ msg }}</div>{% endfor %}
 
-        <form method="post" action="{{ path('admin_event_update', {id: event.id}) }}" class="space-y-5">
+        <form method="post" action="{{ path('admin_event_update', admin_region_params({id: event.id})) }}" class="space-y-5">
             <input type="hidden" name="_token" value="{{ csrf_token('event_edit') }}">
             {{ f.field(event, 'title', 'Titel', event.title, false) }}
             {{ f.field(event, 'organizer', 'Veranstalter', event.organizer, false) }}
@@ -97,7 +97,7 @@
 
             <div class="flex items-center gap-3 pt-2">
                 <button type="submit" class="rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 transition">Speichern</button>
-                <a href="{{ path('event_show', {id: event.id, slug: event.slug}) }}" target="_blank" class="text-sm text-ink/50 hover:text-brand-700">Event ansehen ↗</a>
+                <a href="{{ event.region.baseUrl }}{{ path('event_show', {id: event.id, slug: event.slug}) }}" target="_blank" class="text-sm text-ink/50 hover:text-brand-700">Event ansehen ↗</a>
             </div>
         </form>
     </div>

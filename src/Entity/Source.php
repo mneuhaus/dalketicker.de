@@ -15,6 +15,7 @@ use Doctrine\ORM\Mapping as ORM;
  */
 #[ORM\Entity(repositoryClass: SourceRepository::class)]
 #[ORM\Table(name: 'source')]
+#[ORM\UniqueConstraint(name: 'uniq_source_region_key', columns: ['region_id', 'source_key'])]
 class Source
 {
     #[ORM\Id]
@@ -23,8 +24,12 @@ class Source
     private ?int $id = null;
 
     /** Stable machine key, e.g. "stadt_gt", "wapelbad", "gtv1879". */
-    #[ORM\Column(length: 64, unique: true)]
+    #[ORM\Column(name: 'source_key', length: 64)]
     private string $key;
+
+    #[ORM\ManyToOne(targetEntity: Region::class)]
+    #[ORM\JoinColumn(nullable: false, onDelete: 'CASCADE')]
+    private Region $region;
 
     #[ORM\Column(length: 150)]
     private string $name;
@@ -74,11 +79,12 @@ class Source
     #[ORM\Column(length: 1024, nullable: true)]
     private ?string $lastStatus = null;
 
-    public function __construct(string $key, string $name, SourceType $type)
+    public function __construct(string $key, string $name, SourceType $type, Region $region)
     {
         $this->key = $key;
         $this->name = $name;
         $this->type = $type;
+        $this->region = $region;
     }
 
     public function getId(): ?int
@@ -89,6 +95,18 @@ class Source
     public function getKey(): string
     {
         return $this->key;
+    }
+
+    public function getRegion(): Region
+    {
+        return $this->region;
+    }
+
+    public function setRegion(Region $region): static
+    {
+        $this->region = $region;
+
+        return $this;
     }
 
     public function getName(): string

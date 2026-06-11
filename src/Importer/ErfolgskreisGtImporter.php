@@ -96,9 +96,6 @@ final class ErfolgskreisGtImporter implements SourceImporter
         $maxItems = (int) ($config['maxItems'] ?? 1000);
 
         $licensekey = $this->resolveLicenseKey($config);
-        if ($licensekey === null) {
-            throw new \RuntimeException('Could not obtain a destination.one license key for erfolgskreis_gt.');
-        }
 
         $tz = new \DateTimeZone('Europe/Berlin');
         $offset = 0;
@@ -112,7 +109,7 @@ final class ErfolgskreisGtImporter implements SourceImporter
 
             foreach ($items as $item) {
                 ++$fetched;
-                yield from $this->mapItem($item, $experience, $defaultCity, $tz);
+                yield from $this->mapItem($item, $experience, $defaultCity, $tz, $config);
             }
 
             if (\count($items) < self::PAGE_SIZE) {
@@ -163,11 +160,10 @@ final class ErfolgskreisGtImporter implements SourceImporter
      *
      * @return array<int, array<string, mixed>>
      */
-    private function fetchPage(string $experience, string $licensekey, int $months, int $offset): array
+    private function fetchPage(string $experience, ?string $licensekey, int $months, int $offset): array
     {
         $query = [
             'experience' => $experience,
-            'licensekey' => $licensekey,
             'type' => 'Event',
             'template' => 'ET2014A.json',
             'q' => 'all:all -systag:has_abnormal_interval',
@@ -176,6 +172,9 @@ final class ErfolgskreisGtImporter implements SourceImporter
             'offset' => $offset,
             'limit' => self::PAGE_SIZE,
         ];
+        if ($licensekey !== null && $licensekey !== '') {
+            $query['licensekey'] = $licensekey;
+        }
 
         try {
             $response = $this->http->request('GET', self::META_BASE, [
@@ -216,10 +215,11 @@ final class ErfolgskreisGtImporter implements SourceImporter
 
     /**
      * @param array<string, mixed> $item
+     * @param array<string, mixed> $config
      *
      * @return iterable<ImportedEvent>
      */
-    private function mapItem(array $item, string $experience, string $defaultCity, \DateTimeZone $tz): iterable
+    private function mapItem(array $item, string $experience, string $defaultCity, \DateTimeZone $tz, array $config): iterable
     {
         $title = trim((string) ($item['title'] ?? ''));
         if ($title === '') {
@@ -258,6 +258,9 @@ final class ErfolgskreisGtImporter implements SourceImporter
         // (e.g. "Tö? 44a"): a real town has no digits or replacement chars.
         if (preg_match('/[0-9?\x{FFFD}]/u', $city) || mb_strlen($city) > 40) {
             $city = $defaultCity;
+        }
+        if (!$this->passesConfiguredRegionFilter($city, $item, $address, $config)) {
+            return;
         }
         $locationText = $this->buildLocationText($venueName, $item, $address);
         $organizer = trim((string) ($address['name'] ?? '')) ?: null;
@@ -301,6 +304,39 @@ final class ErfolgskreisGtImporter implements SourceImporter
                 ],
             );
         }
+    }
+
+    /**
+     * Some destination.one experiences are regional super-portals. Let a source
+     * constrain them to one ticker's municipalities/postal codes.
+     *
+     * @param array<string, mixed> $item
+     * @param array<string, mixed> $address
+     * @param array<string, mixed> $config
+     */
+    private function passesConfiguredRegionFilter(string $city, array $item, array $address, array $config): bool
+    {
+        $allowedCities = \is_array($config['allowedCities'] ?? null) ? $config['allowedCities'] : [];
+        $postalPrefixes = \is_array($config['postalPrefixes'] ?? null) ? $config['postalPrefixes'] : [];
+        if ($allowedCities === [] && $postalPrefixes === []) {
+            return true;
+        }
+
+        $zip = trim((string) ($item['zip'] ?? $address['zip'] ?? ''));
+        foreach ($postalPrefixes as $prefix) {
+            if (\is_string($prefix) && $prefix !== '' && str_starts_with($zip, $prefix)) {
+                return true;
+            }
+        }
+
+        $normalizedCity = ImportedEvent::normalize($city);
+        foreach ($allowedCities as $allowed) {
+            if (\is_string($allowed) && ImportedEvent::normalize($allowed) === $normalizedCity) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** @param array<string, mixed> $item */

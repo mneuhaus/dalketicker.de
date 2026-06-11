@@ -6,9 +6,11 @@ namespace App\Controller;
 
 use App\Calendar\IcsFeedBuilder;
 use App\Entity\Event;
+use App\Entity\Region;
 use App\Repository\CategoryRepository;
 use App\Repository\EventRepository;
 use App\Search\EventFilter;
+use App\Service\RegionContext;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\HttpFoundation\Request;
@@ -25,6 +27,7 @@ final class EventController extends AbstractController
         private readonly CategoryRepository $categories,
         private readonly ClockInterface $clock,
         private readonly IcsFeedBuilder $icsFeed,
+        private readonly RegionContext $regions,
     ) {
     }
 
@@ -33,15 +36,16 @@ final class EventController extends AbstractController
     public function index(Request $request): Response
     {
         $filter = EventFilter::fromRequest($request);
+        $region = $this->regions->current();
         $page = max(1, $request->query->getInt('seite', 1));
         $offset = ($page - 1) * self::PER_PAGE;
 
-        $events = $this->events->findUpcoming($filter, self::PER_PAGE, $offset);
-        $total = $this->events->countUpcoming($filter);
+        $events = $this->events->findUpcoming($filter, self::PER_PAGE, $offset, $region);
+        $total = $this->events->countUpcoming($filter, $region);
 
         // Recurring series (same title+venue) are collapsed to one card by the
         // repository; map the label data ("täglich · bis …") onto those cards.
-        $seriesInfo = $this->events->seriesLabelInfo($filter);
+        $seriesInfo = $this->events->seriesLabelInfo($filter, $region);
         $seriesByEvent = [];
         foreach ($events as $event) {
             $key = $event->getTitle().'|'.($event->getVenue()?->getId() ?? '');
@@ -65,7 +69,7 @@ final class EventController extends AbstractController
             'filter' => $filter,
             'view' => 'list',
             'seriesByEvent' => $seriesByEvent,
-        ] + $this->filterData());
+        ] + $this->filterData($region));
     }
 
     /** Month grid view. */
@@ -81,7 +85,8 @@ final class EventController extends AbstractController
         }
 
         $filter = EventFilter::fromRequest($request);
-        $events = $this->events->findForMonth($year, $month, $filter);
+        $region = $this->regions->current();
+        $events = $this->events->findForMonth($year, $month, $filter, $region);
 
         $first = new \DateTimeImmutable(sprintf('%04d-%02d-01', $year, $month), $tz);
         $prev = $first->modify('-1 month');
@@ -96,7 +101,7 @@ final class EventController extends AbstractController
             'today' => $now->setTime(0, 0),
             'filter' => $filter,
             'view' => 'month',
-        ] + $this->filterData());
+        ] + $this->filterData($region));
     }
 
     /** Week view: a single ISO week, navigable week by week. */
@@ -115,7 +120,8 @@ final class EventController extends AbstractController
         $nextMonday = $monday->modify('+7 days');
 
         $filter = EventFilter::fromRequest($request);
-        $events = $this->events->findInRange($monday, $nextMonday, $filter);
+        $region = $this->regions->current();
+        $events = $this->events->findInRange($monday, $nextMonday, $filter, $region);
         $prev = $monday->modify('-7 days');
         $next = $nextMonday;
 
@@ -128,7 +134,7 @@ final class EventController extends AbstractController
             'today' => $now->setTime(0, 0),
             'filter' => $filter,
             'view' => 'week',
-        ] + $this->filterData());
+        ] + $this->filterData($region));
     }
 
     /** "Überrasch mich": a playful shuffle through today's events (mobile-first). */
@@ -137,9 +143,10 @@ final class EventController extends AbstractController
     {
         $tz = new \DateTimeZone('Europe/Berlin');
         $today = $this->clock->now()->setTimezone($tz)->setTime(0, 0);
+        $region = $this->regions->current();
 
         return $this->render('event/surprise.html.twig', [
-            'events' => $this->events->findInRange($today, $today->modify('+1 day'), new EventFilter()),
+            'events' => $this->events->findInRange($today, $today->modify('+1 day'), new EventFilter(), $region),
             'view' => 'surprise',
         ]);
     }
@@ -153,6 +160,7 @@ final class EventController extends AbstractController
     public function feed(Request $request): Response
     {
         $requested = EventFilter::fromRequest($request);
+        $region = $this->regions->current();
         // Drop the temporal + "Meine Events" parts; keep the meaningful filters.
         $filter = new EventFilter(
             q: $requested->q,
@@ -161,17 +169,17 @@ final class EventController extends AbstractController
             course: $requested->course,
         );
 
-        $events = $this->events->findForFeed($filter);
-        $ics = $this->icsFeed->build($events, $this->feedName($filter));
+        $events = $this->events->findForFeed($filter, region: $region);
+        $ics = $this->icsFeed->build($events, $this->feedName($filter, $region));
 
         $response = new Response($ics, Response::HTTP_OK, ['Content-Type' => 'text/calendar; charset=utf-8']);
-        $response->headers->set('Content-Disposition', 'inline; filename="dalketicker.ics"');
+        $response->headers->set('Content-Disposition', 'inline; filename="'.$region->getSiteName().'.ics"');
 
         return $response;
     }
 
     /** Human-readable calendar name reflecting the active filters. */
-    private function feedName(EventFilter $filter): string
+    private function feedName(EventFilter $filter, Region $region): string
     {
         $bits = [];
         if ($filter->categorySlugs !== []) {
@@ -197,13 +205,14 @@ final class EventController extends AbstractController
             $bits[] = '„'.$filter->q.'“';
         }
 
-        return 'dalketicker – '.($bits !== [] ? implode(' · ', $bits) : 'Kreis Gütersloh');
+        return $region->getSiteName().' – '.($bits !== [] ? implode(' · ', $bits) : $region->getAreaName());
     }
 
     #[Route('/event/{id}-{slug}', name: 'event_show', requirements: ['id' => '\d+', 'slug' => '[^/]*'], methods: ['GET'])]
     public function show(Request $request, int $id, string $slug): Response
     {
-        $event = $this->events->findVisible($id);
+        $region = $this->regions->current();
+        $event = $this->events->findVisible($id, $region);
         if ($event === null) {
             throw $this->createNotFoundException('Event nicht gefunden.');
         }
@@ -216,7 +225,7 @@ final class EventController extends AbstractController
         }
 
         // Only the immediate neighbours are shown (one before, one after).
-        $around = $this->events->findAround($filter, $event, 1);
+        $around = $this->events->findAround($filter, $event, 1, $region);
 
         return $this->render('event/show.html.twig', [
             'event' => $event,
@@ -431,11 +440,11 @@ final class EventController extends AbstractController
      *
      * @return array<string, mixed>
      */
-    private function filterData(): array
+    private function filterData(Region $region): array
     {
         return [
             'allCategories' => $this->categories->findAllOrdered(),
-            'allCities' => $this->events->findUsedCities(),
+            'allCities' => $this->events->findUsedCities($region),
         ];
     }
 }

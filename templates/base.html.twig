@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}{{ site_name }} – {{ site_tagline }}{% endblock %}</title>
-    <meta name="description" content="{% block meta_description %}Alle Veranstaltungen im Kreis Gütersloh an einem Ort – Konzerte, Sport, Familie, Kultur und mehr. Endlich übersichtlich.{% endblock %}">
+    <meta name="description" content="{% block meta_description %}Alle Veranstaltungen {{ current_region.areaInPhrase }} an einem Ort – Konzerte, Sport, Familie, Kultur und mehr. Endlich übersichtlich.{% endblock %}">
 
     {# Link-Vorschau (Open Graph / Twitter) – greift in WhatsApp, Signal, Telegram, iMessage, Facebook … #}
     {% block og %}
@@ -20,12 +20,13 @@
         <meta name="twitter:description" content="{{ block('og_description') }}">
         <meta name="twitter:image" content="{{ block('og_image') }}">
     {% endblock %}
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><rect width=%2232%22 height=%2232%22 rx=%227%22 fill=%22%230a8da3%22/><text x=%2216%22 y=%2223.5%22 text-anchor=%22middle%22 font-family=%22Helvetica,Arial,sans-serif%22 font-size=%2224%22 font-weight=%22700%22 fill=%22%23fff%22>d</text></svg>">
-    {# Installable as a home-screen app (no store, no popup — offered via the footer "App" link). #}
-    <link rel="manifest" href="/site.webmanifest">
-    <meta name="theme-color" content="#0a8da3">
+    {% set favicon_letter_y = current_region.logoLetter == 'p' ? '22.6' : (current_region.logoLetter == 's' ? '23.0' : '23.5') %}
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><rect width=%2232%22 height=%2232%22 rx=%227%22 fill=%22{{ current_region.themeColor|replace({'#': '%23'}) }}%22/><text x=%2216%22 y=%22{{ favicon_letter_y }}%22 text-anchor=%22middle%22 font-family=%22Helvetica,Arial,sans-serif%22 font-size=%2224%22 font-weight=%22700%22 fill=%22%23fff%22>{{ current_region.logoLetter }}</text></svg>">
+    {# Installable as a home-screen app (no store; offered via the App page and the mobile badge). #}
+    <link rel="manifest" href="{{ path('site_manifest') }}">
+    <meta name="theme-color" content="{{ current_region.themeColor }}">
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
-    <meta name="apple-mobile-web-app-title" content="dalketicker">
+    <meta name="apple-mobile-web-app-title" content="{{ site_name }}">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <link rel="canonical" href="{{ app.request.schemeAndHttpHost }}{{ app.request.pathInfo }}">
@@ -39,7 +40,8 @@
         {% block importmap %}{{ importmap('app') }}{% endblock %}
     {% endblock %}
 </head>
-<body class="min-h-screen flex flex-col {{ view|default('') == 'surprise' ? 'pb-20 md:pb-0' : '' }}">
+<body class="min-h-screen flex flex-col {{ view|default('') == 'surprise' ? 'pb-20 md:pb-0' : '' }}"
+      style="--region-color: {{ current_region.themeColor }}; --color-brand-50: color-mix(in srgb, var(--region-color), white 94%); --color-brand-100: color-mix(in srgb, var(--region-color), white 84%); --color-brand-200: color-mix(in srgb, var(--region-color), white 70%); --color-brand-300: color-mix(in srgb, var(--region-color), white 52%); --color-brand-400: color-mix(in srgb, var(--region-color), white 28%); --color-brand-500: color-mix(in srgb, var(--region-color), white 10%); --color-brand-600: var(--region-color); --color-brand-700: color-mix(in srgb, var(--region-color), black 18%); --color-brand-800: color-mix(in srgb, var(--region-color), black 34%); --color-brand-900: color-mix(in srgb, var(--region-color), black 48%); --color-brand-950: color-mix(in srgb, var(--region-color), black 62%);">
     <div class="river-rule h-1 w-full"></div>
 
     {# Header + (on list views) the mobile filter bar stick to the top together. #}
@@ -99,13 +101,13 @@
                 Als App speichern
             </a>
             <p class="text-xs text-ink/45 leading-relaxed max-w-xs">
-                <strong class="text-ink/60">{{ site_name }}</strong> aggregiert Veranstaltungen aus dem Kreis Gütersloh – alle Angaben ohne Gewähr.
+                <strong class="text-ink/60">{{ site_name }}</strong> aggregiert Veranstaltungen {{ current_region.areaFromPhrase }} – alle Angaben ohne Gewähr.
             </p>
         </div>
         {# Desktop: tagline left, links right. #}
         <div class="hidden sm:flex mx-auto max-w-6xl px-4 py-8 justify-between gap-4">
             <p>
-                <strong class="text-ink/70">{{ site_name }}</strong> · aggregiert Veranstaltungen aus dem Kreis Gütersloh.<br>
+                <strong class="text-ink/70">{{ site_name }}</strong> · aggregiert Veranstaltungen {{ current_region.areaFromPhrase }}.<br>
                 Alle Angaben ohne Gewähr – maßgeblich ist immer der Veranstalter.
             </p>
             <nav class="flex flex-col gap-1 items-end text-right">
@@ -119,5 +121,28 @@
             </nav>
         </div>
     </footer>
+
+    <aside data-install-badge hidden
+           class="install-badge fixed inset-x-3 mx-auto max-w-md z-50 rounded-2xl bg-white text-ink shadow-[0_18px_60px_rgba(0,0,0,0.16),0_1px_0_rgba(255,255,255,0.7)_inset] ring-1 ring-black/10 overflow-hidden">
+        {% set install_logo_letter_offset = current_region.logoLetter == 'p' ? '-0.08em' : (current_region.logoLetter == 's' ? '-0.045em' : '0') %}
+        <div class="flex items-stretch">
+            <a href="{{ path('page_app') }}" data-install-badge-action
+               class="min-w-0 flex-1 flex items-center gap-3 px-3.5 py-3 text-left hover:bg-brand-50 transition-colors">
+                <span class="inline-flex items-center justify-center w-10 h-10 rounded-xl shrink-0 bg-brand-600 text-white shadow-sm">
+                    <span class="inline-block font-[family-name:var(--font-display)] text-[2rem] font-bold leading-none" style="transform: translateY({{ install_logo_letter_offset }});">{{ current_region.logoLetter }}</span>
+                </span>
+                <span class="min-w-0">
+                    <span class="block text-sm font-bold leading-tight text-ink">{{ site_name }} als App speichern</span>
+                    <span data-install-badge-mode="ios" class="block text-xs leading-snug text-ink/55">Auf dem iPhone über Teilen zum Home-Bildschirm.</span>
+                    <span data-install-badge-mode="prompt" hidden class="block text-xs leading-snug text-ink/55">Direkt als Homescreen-App installieren.</span>
+                </span>
+            </a>
+            <button type="button" data-install-badge-close
+                    class="w-12 shrink-0 inline-flex items-center justify-center text-ink/45 hover:text-ink hover:bg-black/5 active:scale-[0.96] transition-[color,background-color,scale]"
+                    aria-label="App-Hinweis ausblenden">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M18 6L6 18"/></svg>
+            </button>
+        </div>
+    </aside>
 </body>
 </html>

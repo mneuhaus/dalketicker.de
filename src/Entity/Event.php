@@ -25,6 +25,7 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Entity(repositoryClass: EventRepository::class)]
 #[ORM\Table(name: 'event')]
 #[ORM\UniqueConstraint(name: 'uniq_event_source_external', columns: ['source_id', 'external_id'])]
+#[ORM\Index(name: 'idx_event_region_starts_at', columns: ['region_id', 'starts_at'])]
 #[ORM\Index(name: 'idx_event_starts_at', columns: ['starts_at'])]
 #[ORM\Index(name: 'idx_event_dedup_key', columns: ['dedup_key'])]
 #[ORM\Index(name: 'idx_event_status', columns: ['status'])]
@@ -76,6 +77,10 @@ class Event
     #[ORM\ManyToMany(targetEntity: Category::class)]
     #[ORM\JoinTable(name: 'event_category')]
     private Collection $categories;
+
+    #[ORM\ManyToOne(targetEntity: Region::class)]
+    #[ORM\JoinColumn(nullable: false, onDelete: 'CASCADE')]
+    private Region $region;
 
     #[ORM\ManyToOne(targetEntity: Source::class)]
     #[ORM\JoinColumn(nullable: false, onDelete: 'CASCADE')]
@@ -154,6 +159,7 @@ class Event
         $this->title = $title;
         $this->startsAt = $startsAt;
         $this->source = $source;
+        $this->region = $source->getRegion();
         $this->slug = '';
         $now = $startsAt; // overwritten by lifecycle/import; placeholder for non-managed instances
         $this->firstSeenAt = $now;
@@ -341,6 +347,19 @@ class Event
     public function setSource(Source $source): static
     {
         $this->source = $source;
+        $this->region = $source->getRegion();
+
+        return $this;
+    }
+
+    public function getRegion(): Region
+    {
+        return $this->region;
+    }
+
+    public function setRegion(Region $region): static
+    {
+        $this->region = $region;
 
         return $this;
     }

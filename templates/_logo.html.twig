@@ -1,5 +1,5 @@
-{# Brand mark: a bold lowercase "d" (matching the dalketicker wordmark) on the
-   brand box. No emoji. #}
-<span class="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-brand-600 shrink-0">
-    <span class="font-[family-name:var(--font-display)] text-[2.05rem] font-bold leading-none text-white">d</span>
+{# Brand mark: a bold lowercase ticker initial on the brand box. No emoji. #}
+{% set logo_letter_offset = current_region.logoLetter == 'p' ? '-0.08em' : (current_region.logoLetter == 's' ? '-0.045em' : '0') %}
+<span class="inline-flex items-center justify-center w-9 h-9 rounded-xl shrink-0 bg-brand-600">
+    <span class="inline-block font-[family-name:var(--font-display)] text-[2.05rem] font-bold leading-none text-white" style="transform: translateY({{ logo_letter_offset }});">{{ current_region.logoLetter }}</span>
 </span>

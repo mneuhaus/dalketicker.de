@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Repository;
 
+use App\Entity\Region;
 use App\Entity\Venue;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
@@ -36,31 +37,31 @@ class VenueRepository extends ServiceEntityRepository
         $this->createdThisRun = [];
     }
 
-    public function findByDedupKey(string $dedupKey): ?Venue
+    public function findByDedupKey(string $dedupKey, Region $region): ?Venue
     {
-        return $this->findOneBy(['dedupKey' => $dedupKey]);
+        return $this->findOneBy(['dedupKey' => $dedupKey, 'region' => $region]);
     }
 
     /**
      * Resolve (or lazily create) a venue from a name + city. Returns null when
      * the name is empty so callers can fall back to a free-text location.
      */
-    public function findOrCreate(?string $name, ?string $city): ?Venue
+    public function findOrCreate(?string $name, ?string $city, Region $region): ?Venue
     {
         $name = trim((string) $name);
-        $city = trim((string) ($city ?: 'Kreis Gütersloh'));
+        $city = trim((string) ($city ?: $region->getDefaultCity()));
         if ($name === '') {
             return null;
         }
 
-        $dedupKey = Venue::buildDedupKey($name, $city);
+        $dedupKey = $region->getKey().'|'.Venue::buildDedupKey($name, $city);
         if (isset($this->createdThisRun[$dedupKey])) {
             return $this->createdThisRun[$dedupKey];
         }
 
-        $venue = $this->findByDedupKey($dedupKey);
+        $venue = $this->findByDedupKey(Venue::buildDedupKey($name, $city), $region);
         if ($venue === null) {
-            $venue = new Venue($name, $city);
+            $venue = new Venue($name, $city, $region);
             $this->getEntityManager()->persist($venue);
         }
 

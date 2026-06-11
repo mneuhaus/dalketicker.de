@@ -6,6 +6,7 @@ namespace App\Command;
 
 use App\Entity\Event;
 use App\Enum\EventStatus;
+use App\Repository\RegionRepository;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Clock\ClockInterface;
@@ -35,19 +36,32 @@ final class RededupCommand extends Command
         private readonly EntityManagerInterface $em,
         private readonly Connection $db,
         private readonly ClockInterface $clock,
+        private readonly RegionRepository $regions,
     ) {
         parent::__construct();
     }
 
     protected function configure(): void
     {
-        $this->addOption('dry-run', null, InputOption::VALUE_NONE, 'Nur anzeigen, nichts ändern');
+        $this
+            ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Nur anzeigen, nichts ändern')
+            ->addOption('region', null, InputOption::VALUE_REQUIRED, 'Nur diese Region verarbeiten (z. B. guetersloh)');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
         $dryRun = (bool) $input->getOption('dry-run');
+        $region = null;
+        $regionKey = trim((string) $input->getOption('region'));
+        if ($regionKey !== '') {
+            $region = $this->regions->findByKey($regionKey);
+            if ($region === null) {
+                $io->error(sprintf('Region "%s" nicht gefunden.', $regionKey));
+
+                return Command::INVALID;
+            }
+        }
         $now = $this->clock->now()->setTimezone(new \DateTimeZone('Europe/Berlin'));
 
         // Upcoming, key-deduplicatable events (published or key-duplicate).
@@ -55,21 +69,24 @@ final class RededupCommand extends Command
         // same event, so key-based dedup is authoritative and may override a
         // same-key AI merge. Fuzzy AI merges use *different* keys, so they land
         // in single-member groups below and stay untouched.
-        /** @var Event[] $events */
-        $events = $this->em->createQueryBuilder()
+        $qb = $this->em->createQueryBuilder()
             ->select('e', 's')
             ->from(Event::class, 'e')
             ->join('e.source', 's')
             ->where('e.status IN (:st)')
             ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :now')
             ->setParameter('st', [EventStatus::Published, EventStatus::Duplicate])
-            ->setParameter('now', $now)
-            ->getQuery()->getResult();
+            ->setParameter('now', $now);
+        if ($region !== null) {
+            $qb->andWhere('e.region = :region')->setParameter('region', $region);
+        }
+        /** @var Event[] $events */
+        $events = $qb->getQuery()->getResult();
 
         /** @var array<string, Event[]> $groups */
         $groups = [];
         foreach ($events as $e) {
-            $groups[$e->getDedupKey()][] = $e;
+            $groups[$this->groupKey($e)][] = $e;
         }
 
         $flips = 0;
@@ -145,6 +162,11 @@ final class RededupCommand extends Command
         return Command::SUCCESS;
     }
 
+    private function groupKey(Event $event): string
+    {
+        return $event->getRegion()->getKey().'|'.$event->getDedupKey();
+    }
+
     /**
      * Rescue pass: a key-based demotion is otherwise a one-way street. Promote
      * (or re-hang) duplicates whose canonical vanished (deleted → FK SET NULL),
@@ -171,7 +193,7 @@ final class RededupCommand extends Command
                 continue;
             }
             // Keys with >= 2 members are governed by the key pass above.
-            if (\count($groups[$e->getDedupKey()] ?? []) >= 2) {
+            if (\count($groups[$this->groupKey($e)] ?? []) >= 2) {
                 continue;
             }
 

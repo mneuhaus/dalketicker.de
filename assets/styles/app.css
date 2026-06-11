@@ -105,6 +105,29 @@
   display: block;
 }
 
+/* Small add-to-home-screen hint for iOS and install-capable browsers. */
+[data-install-badge] {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 0.85rem);
+  opacity: 0;
+  transform: translateY(1rem) scale(0.98);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+[data-install-badge].is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+.has-surprise-actions [data-install-badge] {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 5.7rem);
+}
+@media (max-width: 639px) {
+  .has-install-badge body {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 5.8rem);
+  }
+  .has-install-badge.has-surprise-actions body {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 10.5rem);
+  }
+}
+
 /* "Überrasch mich" swipe cards. */
 .surprise-card {
   transition: transform 0.18s ease, opacity 0.18s ease;

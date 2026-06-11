@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Repository;
 
 use App\Entity\Event;
+use App\Entity\Region;
 use App\Entity\Source;
 use App\Enum\EventStatus;
 use App\Search\EventFilter;
@@ -28,9 +29,9 @@ class EventRepository extends ServiceEntityRepository
      *
      * @return Event[]
      */
-    public function findUpcoming(EventFilter $filter, int $limit = 50, int $offset = 0): array
+    public function findUpcoming(EventFilter $filter, int $limit = 50, int $offset = 0, ?Region $region = null): array
     {
-        $qb = $this->visibleQueryBuilder($filter);
+        $qb = $this->visibleQueryBuilder($filter, $region);
         $this->applyUpcomingWindow($qb, $filter);
         $this->applySeriesCollapse($qb, $filter);
 
@@ -50,9 +51,9 @@ class EventRepository extends ServiceEntityRepository
             ->getResult();
     }
 
-    public function countUpcoming(EventFilter $filter): int
+    public function countUpcoming(EventFilter $filter, ?Region $region = null): int
     {
-        $qb = $this->visibleQueryBuilder($filter);
+        $qb = $this->visibleQueryBuilder($filter, $region);
         $this->applyUpcomingWindow($qb, $filter);
         $this->applySeriesCollapse($qb, $filter);
 
@@ -67,13 +68,13 @@ class EventRepository extends ServiceEntityRepository
      *
      * @return array<string, array{count: int, last: \DateTimeImmutable, daily: bool}>
      */
-    public function seriesLabelInfo(EventFilter $filter): array
+    public function seriesLabelInfo(EventFilter $filter, ?Region $region = null): array
     {
         if ($filter->onlySaved) {
             return [];
         }
 
-        $qb = $this->visibleQueryBuilder($filter);
+        $qb = $this->visibleQueryBuilder($filter, $region);
         $qb->andWhere('COALESCE(e.endsAt, e.startsAt) >= :seriesFloor')
             ->setParameter('seriesFloor', $this->seriesFloor($filter));
         if ($filter->to !== null) {
@@ -141,6 +142,7 @@ class EventRepository extends ServiceEntityRepository
             .'SELECT MIN(e2.startsAt) FROM '.Event::class.' e2 '
             .'WHERE e2.title = e.title '
             .'AND (IDENTITY(e2.venue) = IDENTITY(e.venue) OR (e2.venue IS NULL AND e.venue IS NULL)) '
+            .'AND e2.region = e.region '
             .'AND e2.status = :published '
             .'AND COALESCE(e2.endsAt, e2.startsAt) >= :seriesFloor'
             .')'
@@ -153,9 +155,9 @@ class EventRepository extends ServiceEntityRepository
      *
      * @return Event[]
      */
-    public function findInRange(\DateTimeImmutable $start, \DateTimeImmutable $end, EventFilter $filter): array
+    public function findInRange(\DateTimeImmutable $start, \DateTimeImmutable $end, EventFilter $filter, ?Region $region = null): array
     {
-        return $this->visibleQueryBuilder($filter)
+        return $this->visibleQueryBuilder($filter, $region)
             ->andWhere('e.startsAt < :end')
             ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :start')
             ->setParameter('start', $start)
@@ -170,12 +172,12 @@ class EventRepository extends ServiceEntityRepository
      *
      * @return Event[]
      */
-    public function findForMonth(int $year, int $month, EventFilter $filter): array
+    public function findForMonth(int $year, int $month, EventFilter $filter, ?Region $region = null): array
     {
         $tz = new \DateTimeZone('Europe/Berlin');
         $start = new \DateTimeImmutable(sprintf('%04d-%02d-01 00:00:00', $year, $month), $tz);
 
-        return $this->findInRange($start, $start->modify('first day of next month'), $filter);
+        return $this->findInRange($start, $start->modify('first day of next month'), $filter, $region);
     }
 
     /**
@@ -184,9 +186,9 @@ class EventRepository extends ServiceEntityRepository
      *
      * @return array{before: Event[], after: Event[]}
      */
-    public function findAround(EventFilter $filter, Event $current, int $limit = 8): array
+    public function findAround(EventFilter $filter, Event $current, int $limit = 8, ?Region $region = null): array
     {
-        $after = $this->visibleQueryBuilder($filter)
+        $after = $this->visibleQueryBuilder($filter, $region)
             ->andWhere('(e.startsAt > :start OR (e.startsAt = :start AND e.id > :id))')
             ->andWhere('e.id != :id')
             ->setParameter('start', $current->getStartsAt())
@@ -195,7 +197,7 @@ class EventRepository extends ServiceEntityRepository
             ->setMaxResults($limit)
             ->getQuery()->getResult();
 
-        $before = $this->visibleQueryBuilder($filter)
+        $before = $this->visibleQueryBuilder($filter, $region)
             ->andWhere('(e.startsAt < :start OR (e.startsAt = :start AND e.id < :id))')
             ->andWhere('e.id != :id')
             ->setParameter('start', $current->getStartsAt())
@@ -216,12 +218,12 @@ class EventRepository extends ServiceEntityRepository
      *
      * @return Event[]
      */
-    public function findForFeed(EventFilter $filter, int $limit = 2000): array
+    public function findForFeed(EventFilter $filter, int $limit = 2000, ?Region $region = null): array
     {
         $tz = new \DateTimeZone('Europe/Berlin');
         $now = new \DateTimeImmutable('now', $tz);
 
-        return $this->visibleQueryBuilder($filter)
+        return $this->visibleQueryBuilder($filter, $region)
             ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :now')
             ->andWhere('e.startsAt < :until')
             ->setParameter('now', $now)
@@ -240,9 +242,9 @@ class EventRepository extends ServiceEntityRepository
      *
      * @return Event[]
      */
-    public function findUncheckedUpcoming(int $limit = 100000, int $shards = 1, int $shard = 0): array
+    public function findUncheckedUpcoming(int $limit = 100000, int $shards = 1, int $shard = 0, ?Region $region = null): array
     {
-        $qb = $this->visibleQueryBuilder(new EventFilter())
+        $qb = $this->visibleQueryBuilder(new EventFilter(), $region)
             ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :now')
             ->andWhere('e.id NOT IN (SELECT IDENTITY(aicd.event) FROM '.\App\Entity\AiCategoryDecision::class.' aicd)')
             ->setParameter('now', new \DateTimeImmutable('now', new \DateTimeZone('Europe/Berlin')))
@@ -269,9 +271,9 @@ class EventRepository extends ServiceEntityRepository
      *
      * @return Event[]
      */
-    public function findWithoutSummary(int $limit = 100000, int $shards = 1, int $shard = 0): array
+    public function findWithoutSummary(int $limit = 100000, int $shards = 1, int $shard = 0, ?Region $region = null): array
     {
-        $qb = $this->visibleQueryBuilder(new EventFilter())
+        $qb = $this->visibleQueryBuilder(new EventFilter(), $region)
             ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :now')
             ->andWhere('e.summary IS NULL')
             ->andWhere("e.description IS NOT NULL AND e.description != ''")
@@ -292,9 +294,9 @@ class EventRepository extends ServiceEntityRepository
      *
      * @return Event[]
      */
-    public function findSummarized(int $limit, int $offset): array
+    public function findSummarized(int $limit, int $offset, ?Region $region = null): array
     {
-        return $this->visibleQueryBuilder(new EventFilter())
+        return $this->visibleQueryBuilder(new EventFilter(), $region)
             ->andWhere("e.summary IS NOT NULL AND e.summary != ''")
             ->andWhere('s.factsOnly = false')
             ->orderBy('e.startsAt', 'ASC')
@@ -303,9 +305,9 @@ class EventRepository extends ServiceEntityRepository
             ->getQuery()->getResult();
     }
 
-    public function countSummarized(): int
+    public function countSummarized(?Region $region = null): int
     {
-        return (int) $this->visibleQueryBuilder(new EventFilter())
+        return (int) $this->visibleQueryBuilder(new EventFilter(), $region)
             ->select('COUNT(e.id)')
             ->andWhere("e.summary IS NOT NULL AND e.summary != ''")
             ->andWhere('s.factsOnly = false')
@@ -313,9 +315,9 @@ class EventRepository extends ServiceEntityRepository
     }
 
     /** Events that already have an AI teaser (for admin progress). */
-    public function countWithSummary(): int
+    public function countWithSummary(?Region $region = null): int
     {
-        return (int) $this->visibleQueryBuilder(new EventFilter())
+        return (int) $this->visibleQueryBuilder(new EventFilter(), $region)
             ->select('COUNT(e.id)')
             ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :now')
             ->andWhere('e.summary IS NOT NULL')
@@ -325,9 +327,9 @@ class EventRepository extends ServiceEntityRepository
     }
 
     /** Events eligible for a teaser (own source, upcoming, has description). */
-    public function countSummaryEligible(): int
+    public function countSummaryEligible(?Region $region = null): int
     {
-        return (int) $this->visibleQueryBuilder(new EventFilter())
+        return (int) $this->visibleQueryBuilder(new EventFilter(), $region)
             ->select('COUNT(e.id)')
             ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :now')
             ->andWhere("e.description IS NOT NULL AND e.description != ''")
@@ -337,9 +339,9 @@ class EventRepository extends ServiceEntityRepository
     }
 
     /** Upcoming published events the categorizer hasn't looked at yet (no decision). */
-    public function countWithoutCategoryDecision(): int
+    public function countWithoutCategoryDecision(?Region $region = null): int
     {
-        return (int) $this->visibleQueryBuilder(new EventFilter())
+        return (int) $this->visibleQueryBuilder(new EventFilter(), $region)
             ->select('COUNT(e.id)')
             ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :now')
             ->andWhere('e.id NOT IN (SELECT IDENTITY(aicd.event) FROM '.\App\Entity\AiCategoryDecision::class.' aicd)')
@@ -354,29 +356,35 @@ class EventRepository extends ServiceEntityRepository
      *
      * @return list<array{id:int, slug:string, lastmod:\DateTimeImmutable}>
      */
-    public function findForSitemap(int $limit = 20000): array
+    public function findForSitemap(int $limit = 20000, ?Region $region = null): array
     {
-        return $this->createQueryBuilder('e')
+        $qb = $this->createQueryBuilder('e')
             ->select('e.id AS id, e.slug AS slug, e.lastSeenAt AS lastmod')
             ->andWhere('e.status = :published')
             ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :now')
             ->setParameter('published', EventStatus::Published)
             ->setParameter('now', new \DateTimeImmutable('now', new \DateTimeZone('Europe/Berlin')))
             ->orderBy('e.startsAt', 'ASC')
-            ->setMaxResults($limit)
-            ->getQuery()
-            ->getArrayResult();
+            ->setMaxResults($limit);
+        if ($region !== null) {
+            $qb->andWhere('e.region = :region')->setParameter('region', $region);
+        }
+
+        return $qb->getQuery()->getArrayResult();
     }
 
-    public function findVisible(int $id): ?Event
+    public function findVisible(int $id, ?Region $region = null): ?Event
     {
-        return $this->createQueryBuilder('e')
+        $qb = $this->createQueryBuilder('e')
             ->andWhere('e.id = :id')
             ->andWhere('e.status = :published')
             ->setParameter('id', $id)
-            ->setParameter('published', EventStatus::Published)
-            ->getQuery()
-            ->getOneOrNullResult();
+            ->setParameter('published', EventStatus::Published);
+        if ($region !== null) {
+            $qb->andWhere('e.region = :region')->setParameter('region', $region);
+        }
+
+        return $qb->getQuery()->getOneOrNullResult();
     }
 
     /**
@@ -386,18 +394,21 @@ class EventRepository extends ServiceEntityRepository
      *
      * @return list<string>
      */
-    public function findUsedCities(): array
+    public function findUsedCities(?Region $region = null): array
     {
-        $rows = $this->createQueryBuilder('e')
+        $qb = $this->createQueryBuilder('e')
             ->select('DISTINCT v.city AS city')
             ->join('e.venue', 'v')
             ->andWhere('e.status = :published')
-            ->andWhere('v.city != :kreis')
             ->setParameter('published', EventStatus::Published)
-            ->setParameter('kreis', 'Kreis Gütersloh')
-            ->orderBy('v.city', 'ASC')
-            ->getQuery()
-            ->getScalarResult();
+            ->orderBy('v.city', 'ASC');
+        if ($region !== null) {
+            $qb->andWhere('e.region = :region')
+                ->andWhere('v.city != :defaultCity')
+                ->setParameter('region', $region)
+                ->setParameter('defaultCity', $region->getDefaultCity());
+        }
+        $rows = $qb->getQuery()->getScalarResult();
 
         return array_values(array_filter(array_column($rows, 'city')));
     }
@@ -422,18 +433,21 @@ class EventRepository extends ServiceEntityRepository
      * Find a visible event from a *different* source with the same dedup key —
      * used to flag cross-source duplicates.
      */
-    public function findCrossSourceDuplicate(string $dedupKey, int $excludeSourceId): ?Event
+    public function findCrossSourceDuplicate(string $dedupKey, int $excludeSourceId, ?Region $region = null): ?Event
     {
-        return $this->createQueryBuilder('e')
+        $qb = $this->createQueryBuilder('e')
             ->andWhere('e.dedupKey = :key')
             ->andWhere('e.source != :source')
             ->andWhere('e.status = :published')
             ->setParameter('key', $dedupKey)
             ->setParameter('source', $excludeSourceId)
             ->setParameter('published', EventStatus::Published)
-            ->setMaxResults(1)
-            ->getQuery()
-            ->getOneOrNullResult();
+            ->setMaxResults(1);
+        if ($region !== null) {
+            $qb->andWhere('e.region = :region')->setParameter('region', $region);
+        }
+
+        return $qb->getQuery()->getOneOrNullResult();
     }
 
     /**
@@ -513,7 +527,7 @@ class EventRepository extends ServiceEntityRepository
             ->getSingleScalarResult();
     }
 
-    private function visibleQueryBuilder(EventFilter $filter): QueryBuilder
+    private function visibleQueryBuilder(EventFilter $filter, ?Region $region = null): QueryBuilder
     {
         // Categories are a to-many relation, so they are NOT fetch-joined here
         // (that would multiply rows and break LIMIT/COUNT); they lazy-load for
@@ -526,6 +540,10 @@ class EventRepository extends ServiceEntityRepository
             // without waiting for a prune/cleanup run.
             ->andWhere('s.enabled = true')
             ->setParameter('published', EventStatus::Published);
+
+        if ($region !== null) {
+            $qb->andWhere('e.region = :region')->setParameter('region', $region);
+        }
 
         if ($filter->q !== null) {
             // Match title, description, venue name, venue city AND the source

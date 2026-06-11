@@ -6,6 +6,7 @@ namespace App\Tests\Calendar;
 
 use App\Calendar\IcsFeedBuilder;
 use App\Entity\Event;
+use App\Entity\Region;
 use App\Entity\Source;
 use App\Enum\SourceType;
 use PHPUnit\Framework\TestCase;
@@ -26,7 +27,8 @@ final class IcsFeedBuilderTest extends TestCase
 
     private function event(string $title, \DateTimeImmutable $startsAt, int $id = 1): Event
     {
-        $source = new Source('test', 'Testquelle', SourceType::Ics);
+        $region = new Region('guetersloh', 'dalketicker', 'Kreis Gütersloh', 'dalketicker.de');
+        $source = new Source('test', 'Testquelle', SourceType::Ics, $region);
         $event = new Event($title, $startsAt, $source);
         $event->setSlug('test-event');
 

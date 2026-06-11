@@ -14,7 +14,7 @@ use Doctrine\ORM\Mapping as ORM;
  */
 #[ORM\Entity(repositoryClass: VenueRepository::class)]
 #[ORM\Table(name: 'venue')]
-#[ORM\UniqueConstraint(name: 'uniq_venue_dedup', columns: ['dedup_key'])]
+#[ORM\UniqueConstraint(name: 'uniq_venue_region_dedup', columns: ['region_id', 'dedup_key'])]
 #[ORM\Index(name: 'idx_venue_city', columns: ['city'])]
 class Venue
 {
@@ -35,6 +35,10 @@ class Venue
     #[ORM\Column(length: 120)]
     private string $city;
 
+    #[ORM\ManyToOne(targetEntity: Region::class)]
+    #[ORM\JoinColumn(nullable: false, onDelete: 'CASCADE')]
+    private Region $region;
+
     #[ORM\Column(type: 'float', nullable: true)]
     private ?float $latitude = null;
 
@@ -48,10 +52,11 @@ class Venue
     #[ORM\Column(length: 200)]
     private string $dedupKey;
 
-    public function __construct(string $name, string $city)
+    public function __construct(string $name, string $city, Region $region)
     {
         $this->name = $name;
         $this->city = $city;
+        $this->region = $region;
         $this->dedupKey = self::buildDedupKey($name, $city);
     }
 
@@ -99,6 +104,18 @@ class Venue
     public function getCity(): string
     {
         return $this->city;
+    }
+
+    public function getRegion(): Region
+    {
+        return $this->region;
+    }
+
+    public function setRegion(Region $region): static
+    {
+        $this->region = $region;
+
+        return $this;
     }
 
     public function setCity(string $city): static

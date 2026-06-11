@@ -226,7 +226,7 @@ final class EventImporter
 
         // Map sub-localities / spelling variants onto the 13 Kreis municipalities
         // before it feeds the venue and the cross-source dedup key.
-        $dto->city = $this->cityNormalizer->normalize($dto->city);
+        $dto->city = $this->cityNormalizer->normalize($dto->city, $source->getRegion());
 
         // Skip a second occurrence of the same externalId within this run —
         // the first persist isn't flushed yet, so a DB lookup wouldn't see it
@@ -281,7 +281,8 @@ final class EventImporter
             $event->setDescription($dto->description);
         }
         $event->setLocationText($dto->locationText !== null ? mb_substr($dto->locationText, 0, 255) : null);
-        $event->setVenue($this->venues->findOrCreate($dto->venueName, $dto->city));
+        $event->setRegion($source->getRegion());
+        $event->setVenue($this->venues->findOrCreate($dto->venueName, $dto->city, $source->getRegion()));
         if (!$event->isFieldLocked('categories')) {
             $cats = [];
             foreach ($dto->allCategorySlugs() as $slug) {
@@ -315,7 +316,7 @@ final class EventImporter
         if ($isNew) {
             $event->setFirstSeenAt($now);
             // Demote to a duplicate if another source already published this.
-            $other = $this->events->findCrossSourceDuplicate($dedupKey, (int) $source->getId());
+            $other = $this->events->findCrossSourceDuplicate($dedupKey, (int) $source->getId(), $source->getRegion());
             if ($other !== null) {
                 $event->setStatus(EventStatus::Duplicate);
                 $event->setDuplicateOf($other);

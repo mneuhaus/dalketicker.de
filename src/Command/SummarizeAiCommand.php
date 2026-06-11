@@ -6,7 +6,9 @@ namespace App\Command;
 
 use App\Ai\AiSummarizer;
 use App\Ai\AiUnavailableException;
+use App\Entity\Event;
 use App\Repository\EventRepository;
+use App\Repository\RegionRepository;
 use App\Service\RunLock;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -31,6 +33,7 @@ final class SummarizeAiCommand extends Command
 
     public function __construct(
         private readonly EventRepository $events,
+        private readonly RegionRepository $regions,
         private readonly AiSummarizer $summarizer,
         private readonly EntityManagerInterface $em,
         private readonly RunLock $locks,
@@ -43,6 +46,7 @@ final class SummarizeAiCommand extends Command
         $this
             ->addOption('apply', null, InputOption::VALUE_NONE, 'Zusammenfassungen speichern (sonst Dry-Run)')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Max. Events (0 = alle)', '0')
+            ->addOption('region', null, InputOption::VALUE_REQUIRED, 'Nur diese Region verarbeiten (z. B. guetersloh)')
             ->addOption('batch', null, InputOption::VALUE_REQUIRED, 'Events pro KI-Aufruf', '20')
             ->addOption('max-calls', null, InputOption::VALUE_REQUIRED, 'Max. KI-Aufrufe (0 = unbegrenzt)', '0')
             ->addOption('shards', null, InputOption::VALUE_REQUIRED, 'Gesamtzahl paralleler Läufe', '1')
@@ -72,8 +76,18 @@ final class SummarizeAiCommand extends Command
         $limit = max(0, (int) $input->getOption('limit'));
         $batch = max(1, (int) $input->getOption('batch'));
         $maxCalls = max(0, (int) $input->getOption('max-calls'));
+        $region = null;
+        $regionKey = trim((string) $input->getOption('region'));
+        if ($regionKey !== '') {
+            $region = $this->regions->findByKey($regionKey);
+            if ($region === null) {
+                $io->error(sprintf('Region "%s" nicht gefunden.', $regionKey));
 
-        $io->title(sprintf('KI-Kurzvorschau %s – Modell: %s', $apply ? '(APPLY)' : '(Dry-Run)', $this->summarizer->getModel()));
+                return Command::INVALID;
+            }
+        }
+
+        $io->title(sprintf('KI-Kurzvorschau %s%s – Modell: %s', $apply ? '(APPLY)' : '(Dry-Run)', $region !== null ? ' '.$region->getSiteName() : '', $this->summarizer->getModel()));
         if (!$this->summarizer->isConfigured()) {
             $io->error('OPENROUTER_API_KEY ist nicht gesetzt.');
 
@@ -82,7 +96,7 @@ final class SummarizeAiCommand extends Command
 
         $shards = max(1, (int) $input->getOption('shards'));
         $shard = max(0, (int) $input->getOption('shard'));
-        $events = $this->events->findWithoutSummary($limit > 0 ? $limit : 100000, $shards, $shard);
+        $events = $this->events->findWithoutSummary($limit > 0 ? $limit : 100000, $shards, $shard, $region);
         if ($events === []) {
             $io->success('Keine Events ohne Vorschau.');
 
@@ -92,7 +106,7 @@ final class SummarizeAiCommand extends Command
 
         $calls = 0;
         $done = 0;
-        foreach (array_chunk($events, $batch) as $chunk) {
+        foreach ($this->regionChunks($events, $batch) as $chunk) {
             if ($maxCalls > 0 && $calls >= $maxCalls) {
                 $io->warning('Budget für KI-Aufrufe erreicht – Stopp.');
                 break;
@@ -135,5 +149,22 @@ final class SummarizeAiCommand extends Command
         $io->success(sprintf('%s | KI-Aufrufe: %d · Vorschauen: %d', $apply ? 'Gespeichert' : 'Dry-Run', $calls, $done));
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * @param Event[] $events
+     * @return iterable<list<Event>>
+     */
+    private function regionChunks(array $events, int $batch): iterable
+    {
+        $byRegion = [];
+        foreach ($events as $event) {
+            $byRegion[$event->getRegion()->getKey()][] = $event;
+        }
+        foreach ($byRegion as $regionEvents) {
+            foreach (array_chunk($regionEvents, $batch) as $chunk) {
+                yield $chunk;
+            }
+        }
     }
 }

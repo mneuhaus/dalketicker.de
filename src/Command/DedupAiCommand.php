@@ -10,9 +10,11 @@ use App\Ai\DuplicateMerger;
 use App\Entity\AiDedupDay;
 use App\Entity\AiDedupDecision;
 use App\Entity\Event;
+use App\Entity\Region;
 use App\Enum\EventStatus;
 use App\Importer\ImportedEvent;
 use App\Repository\EventRepository;
+use App\Repository\RegionRepository;
 use App\Search\EventFilter;
 use App\Service\RunLock;
 use Doctrine\ORM\EntityManagerInterface;
@@ -42,6 +44,7 @@ final class DedupAiCommand extends Command
 
     public function __construct(
         private readonly EventRepository $events,
+        private readonly RegionRepository $regions,
         private readonly AiDeduper $deduper,
         private readonly DuplicateMerger $merger,
         private readonly EntityManagerInterface $em,
@@ -58,6 +61,7 @@ final class DedupAiCommand extends Command
             ->addOption('from', null, InputOption::VALUE_REQUIRED, 'Startdatum YYYY-MM-DD (Standard: heute)')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Nur vorschlagen, nichts ändern')
             ->addOption('force', null, InputOption::VALUE_NONE, 'Fingerprint-Skip ignorieren (alle Tage prüfen)')
+            ->addOption('region', null, InputOption::VALUE_REQUIRED, 'Nur diese Region prüfen (z. B. guetersloh)')
             ->addOption('reset', null, InputOption::VALUE_NONE, 'Alle bestehenden AI-Merges erst rückgängig machen, dann frisch neu bewerten')
             ->addOption('max-ai-calls', null, InputOption::VALUE_REQUIRED, 'Obergrenze AI-Aufrufe pro Lauf', '200');
     }
@@ -86,6 +90,10 @@ final class DedupAiCommand extends Command
         $force = (bool) $input->getOption('force');
         $days = max(1, (int) $input->getOption('days'));
         $budget = max(1, (int) $input->getOption('max-ai-calls'));
+        $regions = $this->selectedRegions($input, $io);
+        if ($regions === []) {
+            return Command::INVALID;
+        }
 
         if (!$this->deduper->isConfigured()) {
             $io->error('OPENROUTER_API_KEY ist nicht gesetzt – AI-Dedup übersprungen.');
@@ -103,19 +111,15 @@ final class DedupAiCommand extends Command
             return Command::FAILURE;
         }
 
-        $io->title('AI-Dedup'.($dryRun ? ' (dry-run)' : ''));
+        $io->title('AI-Dedup'.($dryRun ? ' (dry-run)' : '').' – '.(\count($regions) === 1 ? $regions[0]->getSiteName() : 'alle Regionen'));
 
         // --reset: undo all active merges and wipe the per-day fingerprints, so
         // the whole window is re-decided from scratch with the current prompt
         // (e.g. after improving the "which one to keep" logic). Implies --force.
         if ($input->getOption('reset') && !$dryRun) {
-            $active = $this->em->getRepository(AiDedupDecision::class)->findBy(['active' => true]);
-            foreach ($active as $decision) {
-                $this->merger->undo($decision);
-            }
-            $this->em->createQuery('DELETE FROM '.AiDedupDay::class.' d')->execute();
+            $reset = $this->resetRegions($regions);
             $this->em->flush();
-            $io->note(sprintf('%d bestehende Merges zurückgesetzt – alles wird neu bewertet.', \count($active)));
+            $io->note(sprintf('%d bestehende Merges zurückgesetzt – alles wird neu bewertet.', $reset));
             $force = true;
         }
 
@@ -124,80 +128,83 @@ final class DedupAiCommand extends Command
         $merges = 0;
         $reviewed = 0;
 
-        for ($i = 0; $i < $days; ++$i) {
-            $day = $from->modify('+'.$i.' days');
-            $dayKey = $day->format('Y-m-d');
-            $dayStart = $day->setTime(0, 0);
-            $events = $this->events->findInRange($dayStart, $dayStart->modify('+1 day'), new EventFilter());
-            if (\count($events) < 2) {
-                continue;
-            }
-
-            $fpBefore = $this->fingerprint($events);
-            /** @var AiDedupDay|null $rec */
-            $rec = $dayRepo->find($dayKey);
-            if (!$force && $rec !== null && $rec->getFingerprint() === $fpBefore) {
-                continue; // unchanged since last review
-            }
-            if (!$this->hasCandidatePair($events)) {
-                $this->storeDay($dayRepo, $rec, $dayKey, $fpBefore);
-                $this->em->flush();
-                continue;
-            }
-            if ($aiCalls >= $budget) {
-                $io->warning(sprintf('AI-Budget (%d Aufrufe) erreicht – Rest übersprungen.', $budget));
-                break;
-            }
-
-            ++$aiCalls;
-            ++$reviewed;
-            try {
-                $proposals = $this->deduper->findDuplicates($day, $events);
-            } catch (AiUnavailableException $e) {
-                // Don't store the day's fingerprint — it gets re-reviewed next
-                // run; days processed before this one stay saved.
-                $io->error(sprintf('KI nicht verfügbar – Lauf abgebrochen, Tag %s bleibt ungeprüft: %s', $dayKey, $e->getMessage()));
-
-                return Command::FAILURE;
-            }
-
-            /** @var array<int, Event> $byId */
-            $byId = [];
-            foreach ($events as $e) {
-                $byId[$e->getId()] = $e;
-            }
-
-            foreach ($proposals as $p) {
-                $dup = $byId[$p['duplicate']] ?? null;
-                $can = $byId[$p['canonical']] ?? null;
-                // Validate: both on this day, both still Published, canonical not itself a duplicate, no self/chain.
-                if ($dup === null || $can === null || $dup === $can
-                    || $dup->getStatus() !== EventStatus::Published
-                    || $can->getStatus() !== EventStatus::Published
-                    || $can->getDuplicateOf() !== null) {
+        foreach ($regions as $region) {
+            $io->section($region->getSiteName());
+            for ($i = 0; $i < $days; ++$i) {
+                $day = $from->modify('+'.$i.' days');
+                $dayKey = $day->format('Y-m-d');
+                $dayStart = $day->setTime(0, 0);
+                $events = $this->events->findInRange($dayStart, $dayStart->modify('+1 day'), new EventFilter(), $region);
+                if (\count($events) < 2) {
                     continue;
                 }
-                $io->writeln(sprintf(
-                    '<comment>%s</comment>  „%s" (#%d) → behalte „%s" (#%d)  %s',
-                    $dayKey,
-                    $dup->getTitle(),
-                    $dup->getId(),
-                    $can->getTitle(),
-                    $can->getId(),
-                    $p['reason'] !== '' ? '– '.$p['reason'] : '',
-                ));
-                if (!$dryRun) {
-                    $this->merger->apply($dup, $can, $dayStart, $this->deduper->getModel(), $p['reason']);
-                    ++$merges;
-                }
-            }
 
-            if (!$dryRun) {
-                $this->em->flush();
-                // Recompute fingerprint from the post-merge visible set so the next run skips it.
-                $after = $this->events->findInRange($dayStart, $dayStart->modify('+1 day'), new EventFilter());
-                $this->storeDay($dayRepo, $dayRepo->find($dayKey), $dayKey, $this->fingerprint($after));
-                $this->em->flush();
+                $fpBefore = $this->fingerprint($events);
+                /** @var AiDedupDay|null $rec */
+                $rec = $dayRepo->find(['regionKey' => $region->getKey(), 'day' => $dayKey]);
+                if (!$force && $rec !== null && $rec->getFingerprint() === $fpBefore) {
+                    continue; // unchanged since last review
+                }
+                if (!$this->hasCandidatePair($events)) {
+                    $this->storeDay($dayRepo, $rec, $region, $dayKey, $fpBefore);
+                    $this->em->flush();
+                    continue;
+                }
+                if ($aiCalls >= $budget) {
+                    $io->warning(sprintf('AI-Budget (%d Aufrufe) erreicht – Rest übersprungen.', $budget));
+                    break 2;
+                }
+
+                ++$aiCalls;
+                ++$reviewed;
+                try {
+                    $proposals = $this->deduper->findDuplicates($day, $events, $region);
+                } catch (AiUnavailableException $e) {
+                    // Don't store the day's fingerprint — it gets re-reviewed next
+                    // run; days processed before this one stay saved.
+                    $io->error(sprintf('KI nicht verfügbar – Lauf abgebrochen, Tag %s/%s bleibt ungeprüft: %s', $region->getKey(), $dayKey, $e->getMessage()));
+
+                    return Command::FAILURE;
+                }
+
+                /** @var array<int, Event> $byId */
+                $byId = [];
+                foreach ($events as $e) {
+                    $byId[$e->getId()] = $e;
+                }
+
+                foreach ($proposals as $p) {
+                    $dup = $byId[$p['duplicate']] ?? null;
+                    $can = $byId[$p['canonical']] ?? null;
+                    // Validate: both on this day, both still Published, canonical not itself a duplicate, no self/chain.
+                    if ($dup === null || $can === null || $dup === $can
+                        || $dup->getStatus() !== EventStatus::Published
+                        || $can->getStatus() !== EventStatus::Published
+                        || $can->getDuplicateOf() !== null) {
+                        continue;
+                    }
+                    $io->writeln(sprintf(
+                        '<comment>%s</comment>  „%s" (#%d) → behalte „%s" (#%d)  %s',
+                        $dayKey,
+                        $dup->getTitle(),
+                        $dup->getId(),
+                        $can->getTitle(),
+                        $can->getId(),
+                        $p['reason'] !== '' ? '– '.$p['reason'] : '',
+                    ));
+                    if (!$dryRun) {
+                        $this->merger->apply($dup, $can, $dayStart, $this->deduper->getModel(), $p['reason']);
+                        ++$merges;
+                    }
+                }
+
+                if (!$dryRun) {
+                    $this->em->flush();
+                    // Recompute fingerprint from the post-merge visible set so the next run skips it.
+                    $after = $this->events->findInRange($dayStart, $dayStart->modify('+1 day'), new EventFilter(), $region);
+                    $this->storeDay($dayRepo, $dayRepo->find(['regionKey' => $region->getKey(), 'day' => $dayKey]), $region, $dayKey, $this->fingerprint($after));
+                    $this->em->flush();
+                }
             }
         }
 
@@ -288,11 +295,53 @@ final class DedupAiCommand extends Command
         return array_values(array_unique($tokens));
     }
 
-    private function storeDay(object $dayRepo, ?AiDedupDay $rec, string $dayKey, string $fp): void
+    /**
+     * @return Region[]
+     */
+    private function selectedRegions(InputInterface $input, SymfonyStyle $io): array
+    {
+        $key = trim((string) $input->getOption('region'));
+        if ($key === '') {
+            return $this->regions->findEnabled();
+        }
+
+        $region = $this->regions->findByKey($key);
+        if ($region === null) {
+            $io->error(sprintf('Region "%s" nicht gefunden.', $key));
+
+            return [];
+        }
+
+        return [$region];
+    }
+
+    /** @param Region[] $regions */
+    private function resetRegions(array $regions): int
+    {
+        $keys = array_flip(array_map(static fn (Region $region): string => $region->getKey(), $regions));
+        $active = $this->em->getRepository(AiDedupDecision::class)->findBy(['active' => true]);
+        $reset = 0;
+        foreach ($active as $decision) {
+            $event = $decision->getDuplicateEvent() ?? $decision->getCanonicalEvent();
+            if ($event !== null && isset($keys[$event->getRegion()->getKey()])) {
+                $this->merger->undo($decision);
+                ++$reset;
+            }
+        }
+        foreach ($regions as $region) {
+            $this->em->createQuery('DELETE FROM '.AiDedupDay::class.' d WHERE d.regionKey = :regionKey')
+                ->setParameter('regionKey', $region->getKey())
+                ->execute();
+        }
+
+        return $reset;
+    }
+
+    private function storeDay(object $dayRepo, ?AiDedupDay $rec, Region $region, string $dayKey, string $fp): void
     {
         $now = $this->clock->now();
         if ($rec === null) {
-            $this->em->persist(new AiDedupDay($dayKey, $fp, $now));
+            $this->em->persist(new AiDedupDay($region->getKey(), $dayKey, $fp, $now));
         } else {
             $rec->setFingerprint($fp)->setReviewedAt($now);
         }

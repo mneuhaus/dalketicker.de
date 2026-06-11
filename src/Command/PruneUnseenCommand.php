@@ -8,6 +8,7 @@ use App\Entity\Event;
 use App\Entity\ImportRun;
 use App\Enum\EventStatus;
 use App\Enum\SourceType;
+use App\Repository\RegionRepository;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Clock\ClockInterface;
@@ -40,6 +41,7 @@ final class PruneUnseenCommand extends Command
         private readonly EntityManagerInterface $em,
         private readonly Connection $db,
         private readonly ClockInterface $clock,
+        private readonly RegionRepository $regions,
     ) {
         parent::__construct();
     }
@@ -48,6 +50,7 @@ final class PruneUnseenCommand extends Command
     {
         $this
             ->addOption('apply', null, InputOption::VALUE_NONE, 'Änderungen wirklich schreiben (Standard: Dry-Run)')
+            ->addOption('region', null, InputOption::VALUE_REQUIRED, 'Nur diese Region verarbeiten (z. B. guetersloh)')
             ->addOption('days', null, InputOption::VALUE_REQUIRED, 'Nicht-mehr-gesehen-Schwelle in Tagen', '7');
     }
 
@@ -55,6 +58,16 @@ final class PruneUnseenCommand extends Command
     {
         $io = new SymfonyStyle($input, $output);
         $apply = (bool) $input->getOption('apply');
+        $region = null;
+        $regionKey = trim((string) $input->getOption('region'));
+        if ($regionKey !== '') {
+            $region = $this->regions->findByKey($regionKey);
+            if ($region === null) {
+                $io->error(sprintf('Region "%s" nicht gefunden.', $regionKey));
+
+                return Command::INVALID;
+            }
+        }
         $days = (int) $input->getOption('days');
         if ($days < 1) {
             $io->error('--days muss mindestens 1 sein.');
@@ -68,18 +81,20 @@ final class PruneUnseenCommand extends Command
         // Only sources that demonstrably imported fine within the window may
         // lose events — a broken or paused source keeps its data until it
         // works again (its events' lastSeenAt being stale proves nothing then).
-        $healthySourceIds = array_map(intval(...), $this->db->fetchFirstColumn(
-            'SELECT DISTINCT source_id FROM import_run WHERE status = :ok AND dry_run = false AND started_at >= :cutoff',
-            ['ok' => ImportRun::STATUS_OK, 'cutoff' => $cutoff->format('Y-m-d H:i:s')],
-        ));
+        $healthySql = 'SELECT DISTINCT r.source_id FROM import_run r INNER JOIN source s ON s.id = r.source_id WHERE r.status = :ok AND r.dry_run = false AND r.started_at >= :cutoff';
+        $healthyParams = ['ok' => ImportRun::STATUS_OK, 'cutoff' => $cutoff->format('Y-m-d H:i:s')];
+        if ($region !== null) {
+            $healthySql .= ' AND s.region_id = :region';
+            $healthyParams['region'] = $region->getId();
+        }
+        $healthySourceIds = array_map(intval(...), $this->db->fetchFirstColumn($healthySql, $healthyParams));
         if ($healthySourceIds === []) {
             $io->success(sprintf('Keine Quelle mit erfolgreichem Import in den letzten %d Tagen — nichts zu tun.', $days));
 
             return Command::SUCCESS;
         }
 
-        /** @var Event[] $stale */
-        $stale = $this->em->createQueryBuilder()
+        $qb = $this->em->createQueryBuilder()
             ->select('e', 's')
             ->from(Event::class, 'e')
             ->join('e.source', 's')
@@ -96,8 +111,12 @@ final class PruneUnseenCommand extends Command
             ->setParameter('healthy', $healthySourceIds)
             ->setParameter('manualType', SourceType::Manual)
             ->setParameter('manualPrefix', 'manual:%')
-            ->orderBy('e.startsAt', 'ASC')
-            ->getQuery()->getResult();
+            ->orderBy('e.startsAt', 'ASC');
+        if ($region !== null) {
+            $qb->andWhere('e.region = :region')->setParameter('region', $region);
+        }
+        /** @var Event[] $stale */
+        $stale = $qb->getQuery()->getResult();
 
         foreach ($stale as $event) {
             $io->writeln(sprintf(

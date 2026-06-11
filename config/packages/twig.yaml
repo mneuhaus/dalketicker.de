@@ -3,9 +3,6 @@ twig:
     date:
         timezone: Europe/Berlin
         format: 'd.m.Y'
-    globals:
-        site_name: 'dalketicker'
-        site_tagline: 'Was läuft im Kreis Gütersloh'
 
 when@test:
     twig:

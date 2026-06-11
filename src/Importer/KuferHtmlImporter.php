@@ -78,7 +78,7 @@ final class KuferHtmlImporter implements SourceImporter
 
             $crawler = new Crawler($html, $url);
 
-            foreach ($crawler->filter('div.kw-table-row')->each(fn (Crawler $node) => $node) as $row) {
+            foreach ($crawler->filter('div.kw-table-row, tr.kw-table-row, div.h-box')->each(fn (Crawler $node) => $node) as $row) {
                 $event = $this->mapRow($row, $base, $config);
                 if ($event === null) {
                     continue;
@@ -134,6 +134,10 @@ final class KuferHtmlImporter implements SourceImporter
 
     private function mapRow(Crawler $row, string $base, array $config): ?ImportedEvent
     {
+        if ($row->matches('tr.kw-table-row')) {
+            return $this->mapTableRow($row, $base, $config);
+        }
+
         $link = $row->filter('a.kw-kurstitel');
         if ($link->count() === 0) {
             return null;
@@ -159,6 +163,43 @@ final class KuferHtmlImporter implements SourceImporter
         $whenText = $this->valueAfterLabel($link, 'Wann');
         $whereText = $this->valueAfterLabel($link, 'Wo');
         $courseNo = $this->valueAfterLabel($link, 'Nr');
+        $price = null;
+
+        if ($whenText === null && $row->matches('div.h-box')) {
+            $properties = $this->propertyItems($row);
+            foreach ($properties as $property) {
+                if ($whenText === null && preg_match('/\d{1,2}\.\d{1,2}\.\d{4}/', $property)) {
+                    $whenText = $property;
+                    continue;
+                }
+                if ($price === null && str_contains($property, '€')) {
+                    $price = $property;
+                }
+            }
+
+            $first = $properties[0] ?? '';
+            if ($courseNo === null && preg_match('/^([^|]+)(?:\||$)/', $first, $m)) {
+                $courseNo = trim($m[1]);
+            }
+            if ($whereText === null && str_contains($first, '|')) {
+                $candidate = trim(substr($first, (int) strpos($first, '|') + 1));
+                if ($candidate !== '' && mb_strtolower($candidate) !== 'überregional') {
+                    $whereText = $candidate;
+                }
+            }
+        }
+        if ($whenText === null && $row->matches('div.kw-table-row')) {
+            $meta = $this->clean($row->filter('.text-right-md')->first()->text(''));
+            if (preg_match('/\d{1,2}\.\d{1,2}\.\d{2,4}/', $meta)) {
+                $whenText = $meta;
+            }
+            if ($whereText === null && preg_match('/Kursort:\s*([^.,]+(?:,\s*[^.,]+)?)/u', $meta, $m)) {
+                $whereText = trim($m[1]);
+            }
+            if ($courseNo === null && \is_string($href) && preg_match('/[?&]knr=([^&#]+)/', $href, $m)) {
+                $courseNo = urldecode($m[1]);
+            }
+        }
 
         $start = $whenText !== null ? $this->parseGermanDate($whenText) : null;
         if ($start === null) {
@@ -193,13 +234,69 @@ final class KuferHtmlImporter implements SourceImporter
             categorySlug: $this->mapCategory($title, $config),
             sourceUrl: $sourceUrl,
             imageUrl: null,
-            price: null,
+            price: $price,
             organizer: null,
             externalId: $externalId,
             raw: [
                 'when' => $whenText,
                 'where' => $whereText ?? '',
                 'nr' => $courseNo ?? '',
+            ],
+            isCourse: true,
+            bookingStatus: BookingStatus::fromText($statusText),
+        );
+    }
+
+    /** @param array<string, mixed> $config */
+    private function mapTableRow(Crawler $row, string $base, array $config): ?ImportedEvent
+    {
+        $link = $row->filter('td[headers="kue-columnheader2"] a[href], a[href]')->first();
+        if ($link->count() === 0) {
+            return null;
+        }
+
+        $href = $link->attr('href') ?: $row->attr('data-href');
+        $sourceUrl = $this->absoluteUrl($href, $base);
+        $title = $this->clean($link->text(''));
+        if ($title === '') {
+            return null;
+        }
+
+        $whenText = $this->cellText($row, 'kue-columnheader3');
+        $whereText = $this->cellText($row, 'kue-columnheader4');
+        $courseNo = $this->cellText($row, 'kue-columnheader5');
+        $start = $whenText !== '' ? $this->parseGermanDate($whenText) : null;
+        if ($start === null) {
+            return null;
+        }
+
+        $statusText = null;
+        $ampel = $row->filter('.ampelicon');
+        if ($ampel->count() > 0) {
+            $statusText = $this->clean($ampel->first()->attr('title') ?? $ampel->first()->text(''));
+        }
+
+        $venueName = $whereText !== '' ? $whereText : null;
+
+        return new ImportedEvent(
+            title: $title,
+            startsAt: $start,
+            endsAt: null,
+            allDay: false,
+            description: null,
+            venueName: $venueName,
+            city: $config['city'] ?? null,
+            locationText: $venueName,
+            categorySlug: $this->mapCategory($title, $config),
+            sourceUrl: $sourceUrl,
+            imageUrl: null,
+            price: null,
+            organizer: null,
+            externalId: $courseNo !== '' ? $courseNo : $this->idFromUrl($sourceUrl ?? $href),
+            raw: [
+                'when' => $whenText,
+                'where' => $whereText,
+                'nr' => $courseNo,
             ],
             isCourse: true,
             bookingStatus: BookingStatus::fromText($statusText),
@@ -230,26 +327,55 @@ final class KuferHtmlImporter implements SourceImporter
         return null;
     }
 
+    /** @return list<string> */
+    private function propertyItems(Crawler $row): array
+    {
+        $items = [];
+        foreach ($row->filter('ul.kw-kurs-properties > li')->each(fn (Crawler $node) => $node) as $item) {
+            $text = $this->clean($item->text(''));
+            if ($text !== '') {
+                $items[] = $text;
+            }
+        }
+
+        return $items;
+    }
+
+    private function cellText(Crawler $row, string $header): string
+    {
+        $cell = $row->filter(sprintf('td[headers="%s"]', $header))->first();
+
+        return $cell->count() > 0 ? $this->clean($cell->text('')) : '';
+    }
+
     /**
      * Parse the KuferWEB date format, e.g. "Fr. 29.05.2026, 19.30 Uhr"
      * (abbreviated weekday + DD.MM.YYYY + HH.MM with a dot separator). The
-     * weekday prefix and time are optional.
+     * weekday prefix and time are optional. Some installations abbreviate the
+     * year ("05.03.26").
      */
     private function parseGermanDate(string $text): ?\DateTimeImmutable
     {
         $tz = new \DateTimeZone('Europe/Berlin');
 
-        if (!preg_match('/(\d{1,2})\.(\d{1,2})\.(\d{4})/', $text, $d)) {
+        if (!preg_match('/(\d{1,2})\.(\d{1,2})\.(\d{2}|\d{4})/', $text, $d)) {
             return null;
         }
         $day = (int) $d[1];
         $month = (int) $d[2];
         $year = (int) $d[3];
+        if ($year < 100) {
+            $year += 2000;
+        }
 
         $hour = 0;
         $minute = 0;
+        if (preg_match('/,\s*(\d{1,2})[.:](\d{2})/u', $text, $t)) {
+            $hour = (int) $t[1];
+            $minute = (int) $t[2];
+        }
         // Time follows the date: "19.30 Uhr" or "19:30 Uhr".
-        if (preg_match('/(\d{1,2})[.:](\d{2})\s*Uhr/u', $text, $t)) {
+        elseif (preg_match('/(\d{1,2})[.:](\d{2})\s*Uhr/u', $text, $t)) {
             $hour = (int) $t[1];
             $minute = (int) $t[2];
         }

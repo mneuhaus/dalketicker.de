@@ -4,12 +4,26 @@
 {% set route = app.request.attributes.get('_route') %}
 {% set unread = unread_contacts() %}
 {% set aiActive = route in ['admin_dedup', 'admin_categorize', 'admin_summaries'] %}
+{% set regionFilterRoutes = ['admin_imports', 'admin_stats', 'admin_dedup', 'admin_categorize', 'admin_summaries'] %}
+{% set adminRegionKey = admin_region_key|default(app.request.query.get('region') ?: current_region.key) %}
 <div class="border-b border-black/5 bg-paper/95 backdrop-blur">
-    <div class="mx-auto max-w-6xl px-4 py-2 flex items-center gap-1.5 text-sm">
+    <div class="mx-auto max-w-6xl px-4 py-2 flex flex-wrap items-center gap-1.5 text-sm">
         <span class="mr-auto inline-flex items-center gap-1.5 text-ink/40 font-medium">
             <span class="w-1.5 h-1.5 rounded-full bg-brand-500"></span> Admin
         </span>
-        <a href="{{ path('admin_imports') }}"
+        {% if route in regionFilterRoutes %}
+            <form method="get" action="{{ path(route) }}" class="order-last basis-full sm:order-none sm:basis-auto sm:mr-2">
+                <label class="sr-only" for="admin-region-filter">Region</label>
+                <select id="admin-region-filter" name="region" onchange="this.form.submit()"
+                        class="h-8 w-full sm:w-auto rounded-lg border border-black/10 bg-white px-2.5 pr-7 text-xs font-medium text-ink/70 shadow-sm outline-none hover:border-brand-300 focus:border-brand-500">
+                    <option value="all" {{ adminRegionKey == 'all' ? 'selected' }}>Alle Regionen</option>
+                    {% for region in all_regions %}
+                        <option value="{{ region.key }}" {{ adminRegionKey == region.key ? 'selected' }}>{{ region.siteName }}</option>
+                    {% endfor %}
+                </select>
+            </form>
+        {% endif %}
+        <a href="{{ path('admin_imports', admin_region_params()) }}"
            class="px-2.5 py-1 rounded-lg transition {{ route in ['admin_imports','admin_import_run','admin_source'] ? 'bg-brand-600 text-white' : 'text-ink/60 hover:bg-black/5' }}">Quellen</a>
 
         {# AI-Werkzeuge gebündelt #}
@@ -19,13 +33,13 @@
                 <svg class="w-3.5 h-3.5 shrink-0 opacity-60" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
             </summary>
             <div class="absolute left-0 mt-1.5 w-44 rounded-xl border border-black/5 bg-white shadow-lg py-1 z-50">
-                <a href="{{ path('admin_dedup') }}" class="block px-3 py-2 text-sm hover:bg-black/5 {{ route == 'admin_dedup' ? 'font-semibold text-brand-700' : 'text-ink/70' }}">Deduplizierung</a>
-                <a href="{{ path('admin_categorize') }}" class="block px-3 py-2 text-sm hover:bg-black/5 {{ route == 'admin_categorize' ? 'font-semibold text-brand-700' : 'text-ink/70' }}">Kategorien</a>
-                <a href="{{ path('admin_summaries') }}" class="block px-3 py-2 text-sm hover:bg-black/5 {{ route == 'admin_summaries' ? 'font-semibold text-brand-700' : 'text-ink/70' }}">Vorschau</a>
+                <a href="{{ path('admin_dedup', admin_region_params()) }}" class="block px-3 py-2 text-sm hover:bg-black/5 {{ route == 'admin_dedup' ? 'font-semibold text-brand-700' : 'text-ink/70' }}">Deduplizierung</a>
+                <a href="{{ path('admin_categorize', admin_region_params()) }}" class="block px-3 py-2 text-sm hover:bg-black/5 {{ route == 'admin_categorize' ? 'font-semibold text-brand-700' : 'text-ink/70' }}">Kategorien</a>
+                <a href="{{ path('admin_summaries', admin_region_params()) }}" class="block px-3 py-2 text-sm hover:bg-black/5 {{ route == 'admin_summaries' ? 'font-semibold text-brand-700' : 'text-ink/70' }}">Vorschau</a>
             </div>
         </details>
 
-        <a href="{{ path('admin_stats') }}"
+        <a href="{{ path('admin_stats', admin_region_params()) }}"
            class="px-2.5 py-1 rounded-lg transition {{ route == 'admin_stats' ? 'bg-brand-600 text-white' : 'text-ink/60 hover:bg-black/5' }}">Statistik</a>
         <a href="{{ path('admin_contact') }}"
            class="px-2.5 py-1 rounded-lg transition inline-flex items-center gap-1.5 {{ route == 'admin_contact' ? 'bg-brand-600 text-white' : 'text-ink/60 hover:bg-black/5' }}">

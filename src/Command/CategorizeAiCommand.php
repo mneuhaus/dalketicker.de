@@ -9,6 +9,7 @@ use App\Ai\AiUnavailableException;
 use App\Ai\CategoryApplier;
 use App\Entity\Event;
 use App\Repository\EventRepository;
+use App\Repository\RegionRepository;
 use App\Service\RunLock;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -37,6 +38,7 @@ final class CategorizeAiCommand extends Command
 
     public function __construct(
         private readonly EventRepository $events,
+        private readonly RegionRepository $regions,
         private readonly AiCategorizer $categorizer,
         private readonly CategoryApplier $applier,
         private readonly EntityManagerInterface $em,
@@ -51,6 +53,7 @@ final class CategorizeAiCommand extends Command
             ->addOption('apply', null, InputOption::VALUE_NONE, 'Änderungen wirklich speichern (sonst Dry-Run)')
             ->addOption('mode', null, InputOption::VALUE_REQUIRED, 'fill | opinion | all', 'all')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Max. Events pro Pass (0 = alle)', '0')
+            ->addOption('region', null, InputOption::VALUE_REQUIRED, 'Nur diese Region verarbeiten (z. B. guetersloh)')
             ->addOption('batch', null, InputOption::VALUE_REQUIRED, 'Events pro KI-Aufruf', '25')
             ->addOption('max-calls', null, InputOption::VALUE_REQUIRED, 'Max. KI-Aufrufe insgesamt (0 = unbegrenzt)', '0')
             ->addOption('shards', null, InputOption::VALUE_REQUIRED, 'Gesamtzahl paralleler Läufe (für Sharding)', '1')
@@ -86,8 +89,18 @@ final class CategorizeAiCommand extends Command
         $limit = max(0, (int) $input->getOption('limit'));
         $batch = max(1, (int) $input->getOption('batch'));
         $maxCalls = max(0, (int) $input->getOption('max-calls'));
+        $region = null;
+        $regionKey = trim((string) $input->getOption('region'));
+        if ($regionKey !== '') {
+            $region = $this->regions->findByKey($regionKey);
+            if ($region === null) {
+                $io->error(sprintf('Region "%s" nicht gefunden.', $regionKey));
 
-        $io->title(sprintf('KI-Kategorisierung %s – Modell: %s', $apply ? '(APPLY)' : '(Dry-Run)', $this->categorizer->getModel()));
+                return Command::INVALID;
+            }
+        }
+
+        $io->title(sprintf('KI-Kategorisierung %s%s – Modell: %s', $apply ? '(APPLY)' : '(Dry-Run)', $region !== null ? ' '.$region->getSiteName() : '', $this->categorizer->getModel()));
         if (!$this->categorizer->isConfigured()) {
             $io->error('OPENROUTER_API_KEY ist nicht gesetzt.');
 
@@ -103,10 +116,10 @@ final class CategorizeAiCommand extends Command
         // One date-ordered pass: soonest events first, then further into the
         // future. Each event is a "fill" (no real category) or an "opinion"
         // (already categorized) — decided per event, not in separate phases.
-        $events = $this->events->findUncheckedUpcoming($limit > 0 ? $limit : 100000, $shards, $shard);
+        $events = $this->events->findUncheckedUpcoming($limit > 0 ? $limit : 100000, $shards, $shard, $region);
         $io->writeln(sprintf('%d ungeprüfte Events (nach Datum) …', \count($events)));
 
-        foreach (array_chunk($events, $batch) as $chunk) {
+        foreach ($this->regionChunks($events, $batch) as $chunk) {
             if ($maxCalls > 0 && $calls >= $maxCalls) {
                 $io->warning('Budget für KI-Aufrufe erreicht – Stopp.');
                 break;
@@ -153,6 +166,23 @@ final class CategorizeAiCommand extends Command
         ));
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * @param Event[] $events
+     * @return iterable<list<Event>>
+     */
+    private function regionChunks(array $events, int $batch): iterable
+    {
+        $byRegion = [];
+        foreach ($events as $event) {
+            $byRegion[$event->getRegion()->getKey()][] = $event;
+        }
+        foreach ($byRegion as $regionEvents) {
+            foreach (array_chunk($regionEvents, $batch) as $chunk) {
+                yield $chunk;
+            }
+        }
     }
 
     /** Restore pre-AI categories (undo applied decisions) and drop all decisions. */

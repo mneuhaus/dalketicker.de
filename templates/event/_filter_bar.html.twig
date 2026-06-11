@@ -31,12 +31,12 @@
             {% if allCities is not empty %}
                 <details data-dd class="relative shrink-0">
                     <summary class="list-none cursor-pointer inline-flex items-center gap-1 rounded-full border px-3 py-2 text-sm font-medium whitespace-nowrap {{ filter.city ? 'border-brand-500 bg-brand-50 text-brand-800' : 'border-black/10 bg-white text-ink/70' }}">
-                        {{ filter.city ?: 'Kreis Gütersloh' }}{{ bar.chevron() }}
+                        {{ filter.city ?: current_region.areaName }}{{ bar.chevron() }}
                     </summary>
                     <div class="absolute right-0 mt-1 z-50 w-56 max-h-72 overflow-y-auto rounded-xl border border-black/10 bg-white shadow-lg p-1.5">
                         <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-black/5 cursor-pointer text-sm">
                             <input type="radio" name="ort" value="" {{ filter.city is null ? 'checked' }} class="accent-brand-600 w-4 h-4">
-                            <span class="text-ink/80">Kreis Gütersloh</span>
+                            <span class="text-ink/80">{{ current_region.areaName }}</span>
                         </label>
                         {% for city in allCities %}
                             <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-black/5 cursor-pointer text-sm">

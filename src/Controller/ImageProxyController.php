@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Repository\EventRepository;
+use App\Service\RegionContext;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Attribute\Cache;
@@ -30,6 +31,7 @@ final class ImageProxyController extends AbstractController
         private readonly EventRepository $events,
         private readonly HttpClientInterface $http,
         private readonly string $imageCacheDir,
+        private readonly RegionContext $regions,
     ) {
     }
 
@@ -37,7 +39,7 @@ final class ImageProxyController extends AbstractController
     #[Cache(public: true, maxage: 2592000)]
     public function image(int $id): Response
     {
-        $event = $this->events->find($id);
+        $event = $this->events->findVisible($id, $this->regions->current());
         // Facts-only (aggregator) sources: never serve their images, even if a
         // URL is guessed directly — the legal safeguard holds at every layer.
         $url = ($event !== null && !$event->isFactsOnly()) ? $event->getImageUrl() : null;

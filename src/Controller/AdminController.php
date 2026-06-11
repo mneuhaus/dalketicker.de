@@ -11,19 +11,23 @@ use App\Ai\DuplicateMerger;
 use App\Entity\AiCategoryDecision;
 use App\Entity\AiDedupDecision;
 use App\Entity\ContactMessage;
-use App\Repository\ContactMessageRepository;
 use App\Entity\ImportRun;
+use App\Entity\Region;
 use App\Entity\Source;
 use App\Entity\User;
 use App\Importer\ImporterRegistry;
 use App\Repository\CategoryRepository;
+use App\Repository\ContactMessageRepository;
 use App\Repository\EventRepository;
 use App\Repository\ImportRunRepository;
+use App\Repository\RegionRepository;
 use App\Repository\SourceRepository;
 use App\Repository\UserRepository;
+use App\Service\RegionContext;
 use App\Service\RunLock;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\QueryBuilder;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\HttpFoundation\RedirectResponse;
@@ -37,6 +41,12 @@ use Symfony\Component\Routing\Attribute\Route;
 #[Route('/admin')]
 final class AdminController extends AbstractController
 {
+    public function __construct(
+        private readonly RegionContext $regionContext,
+        private readonly RegionRepository $regions,
+    ) {
+    }
+
     #[Route('', name: 'admin_home')]
     public function home(): RedirectResponse
     {
@@ -45,10 +55,11 @@ final class AdminController extends AbstractController
 
     /** Import monitoring: latest run per source + recent run history. */
     #[Route('/imports', name: 'admin_imports', methods: ['GET'])]
-    public function imports(SourceRepository $sources, ImportRunRepository $runs): Response
+    public function imports(Request $request, SourceRepository $sources, ImportRunRepository $runs): Response
     {
-        $latest = $runs->findLatestPerSource();
-        $allSources = $sources->findBy([], ['name' => 'ASC']);
+        $region = $this->resolveAdminRegion($request);
+        $latest = $runs->findLatestPerSource($region);
+        $allSources = $sources->findForAdmin($region);
 
         // Sort sources: enabled first, then by latest run time desc.
         usort($allSources, static function ($a, $b) use ($latest) {
@@ -63,15 +74,15 @@ final class AdminController extends AbstractController
             return $tb <=> $ta;
         });
 
-        $recent = $runs->findRecent(40);
+        $recent = $runs->findRecent(40, $region);
 
-        return $this->render('admin/imports.html.twig', [
+        return $this->render('admin/imports.html.twig', $this->withAdminRegion($region, [
             'sources' => $allSources,
             'latest' => $latest,
             'recent' => $recent,
             'lastRun' => $recent[0] ?? null,
             'warnings' => $this->buildSourceWarnings($allSources, $latest, $runs),
-        ]);
+        ]));
     }
 
     /**
@@ -86,11 +97,21 @@ final class AdminController extends AbstractController
      */
     private function buildSourceWarnings(array $sources, array $latest, ImportRunRepository $runs): array
     {
+        $sourceIds = array_values(array_filter(array_map(
+            static fn (Source $source): ?int => $source->getId(),
+            $sources,
+        )));
+        if ($sourceIds === []) {
+            return [];
+        }
+
         // One scalar pass over all finished runs (newest first): last
         // successful run + the "seen" counts of the last three runs per source.
         $rows = $runs->createQueryBuilder('r')
             ->select('IDENTITY(r.source) AS sid, r.status AS status, r.seen AS seen, r.startedAt AS startedAt')
+            ->andWhere('r.source IN (:sources)')
             ->andWhere('r.status != :running')
+            ->setParameter('sources', $sourceIds)
             ->setParameter('running', ImportRun::STATUS_RUNNING)
             ->orderBy('r.startedAt', 'DESC')
             ->getQuery()
@@ -144,23 +165,24 @@ final class AdminController extends AbstractController
 
     /** Details of a single import run. */
     #[Route('/imports/{id}', name: 'admin_import_run', requirements: ['id' => '\d+'], methods: ['GET'])]
-    public function importRun(int $id, ImportRunRepository $runs): Response
+    public function importRun(int $id, Request $request, ImportRunRepository $runs): Response
     {
         $run = $runs->find($id);
         if ($run === null) {
             throw $this->createNotFoundException('Lauf nicht gefunden.');
         }
 
-        return $this->render('admin/import_run.html.twig', [
+        return $this->render('admin/import_run.html.twig', $this->withAdminRegion($this->resolveAdminRegion($request), [
             'run' => $run,
             'history' => $runs->findForSource($run->getSource(), 15),
-        ]);
+        ]));
     }
 
     /** Everything about one source: origin, adapter, dedup stats, its events, run history. */
     #[Route('/sources/{id}', name: 'admin_source', requirements: ['id' => '\d+'], methods: ['GET'])]
     public function source(
         int $id,
+        Request $request,
         SourceRepository $sources,
         EventRepository $events,
         ImportRunRepository $runs,
@@ -174,7 +196,7 @@ final class AdminController extends AbstractController
         $importerAvailable = $importers->has($source);
         $importerClass = $importerAvailable ? $importers->get($source)::class : null;
 
-        return $this->render('admin/source.html.twig', [
+        return $this->render('admin/source.html.twig', $this->withAdminRegion($this->resolveAdminRegion($request), [
             'source' => $source,
             'counts' => $events->statusCountsForSource($source),
             'wonDuplicates' => $events->countWonDuplicates($source),
@@ -182,7 +204,7 @@ final class AdminController extends AbstractController
             'runs' => $runs->findForSource($source, 15),
             'importerClass' => $importerClass,
             'importerAvailable' => $importerAvailable,
-        ]);
+        ]));
     }
 
     /** Enable/disable a source (won't be imported while disabled). */
@@ -196,7 +218,7 @@ final class AdminController extends AbstractController
             $this->addFlash('success', $source->isEnabled() ? 'Quelle aktiviert.' : 'Quelle deaktiviert.');
         }
 
-        return $this->redirectToRoute('admin_source', ['id' => $id]);
+        return $this->redirectToRoute('admin_source', ['id' => $id] + $this->adminRegionRedirectParams($request));
     }
 
     /** Record/clear a publishing permission ("Freigabe") incl. an optional proof image. */
@@ -205,7 +227,7 @@ final class AdminController extends AbstractController
     {
         $source = $sources->find($id);
         if ($source === null || !$this->isCsrfTokenValid('source_approval', (string) $request->request->get('_token'))) {
-            return $this->redirectToRoute('admin_source', ['id' => $id]);
+            return $this->redirectToRoute('admin_source', ['id' => $id] + $this->adminRegionRedirectParams($request));
         }
 
         $dir = $projectDir.'/var/uploads/freigaben';
@@ -218,7 +240,7 @@ final class AdminController extends AbstractController
             $em->flush();
             $this->addFlash('success', 'Freigabe entfernt.');
 
-            return $this->redirectToRoute('admin_source', ['id' => $id]);
+            return $this->redirectToRoute('admin_source', ['id' => $id] + $this->adminRegionRedirectParams($request));
         }
 
         $approved = $request->request->getBoolean('approved');
@@ -230,7 +252,7 @@ final class AdminController extends AbstractController
             if (!str_starts_with((string) $file->getMimeType(), 'image/')) {
                 $this->addFlash('error', 'Nur Bilddateien erlaubt.');
 
-                return $this->redirectToRoute('admin_source', ['id' => $id]);
+                return $this->redirectToRoute('admin_source', ['id' => $id] + $this->adminRegionRedirectParams($request));
             }
             @mkdir($dir, 0775, true);
             if ($source->getApprovalImage() !== null) {
@@ -244,7 +266,7 @@ final class AdminController extends AbstractController
         $em->flush();
         $this->addFlash('success', 'Freigabe gespeichert.');
 
-        return $this->redirectToRoute('admin_source', ['id' => $id]);
+        return $this->redirectToRoute('admin_source', ['id' => $id] + $this->adminRegionRedirectParams($request));
     }
 
     /** Stream the uploaded approval proof image (admin only). */
@@ -262,14 +284,21 @@ final class AdminController extends AbstractController
 
     /** Cookieless visit statistics: per-day views/visitors + top pages. */
     #[Route('/statistik', name: 'admin_stats', methods: ['GET'])]
-    public function stats(Connection $db): Response
+    public function stats(Request $request, Connection $db): Response
     {
+        $region = $this->resolveAdminRegion($request);
         $today = new \DateTimeImmutable('today', new \DateTimeZone('Europe/Berlin'));
         $since = $today->modify('-29 days')->format('Y-m-d');
+        $params = ['since' => $since];
+        $regionWhere = '';
+        if ($region !== null) {
+            $regionWhere = ' AND region_id = :region';
+            $params['region'] = $region->getId();
+        }
 
         $rows = $db->fetchAllAssociative(
-            'SELECT day, views, visitors FROM daily_stat WHERE day >= :since ORDER BY day ASC',
-            ['since' => $since],
+            'SELECT day, SUM(views) AS views, SUM(visitors) AS visitors FROM daily_stat WHERE day >= :since'.$regionWhere.' GROUP BY day ORDER BY day ASC',
+            $params,
         );
         $byDay = [];
         foreach ($rows as $r) {
@@ -289,19 +318,24 @@ final class AdminController extends AbstractController
         }
 
         $totals = $db->fetchAssociative(
-            'SELECT COALESCE(SUM(views), 0) AS views, COALESCE(SUM(visitors), 0) AS visitors FROM daily_stat WHERE day >= :since',
-            ['since' => $since],
+            'SELECT COALESCE(SUM(views), 0) AS views, COALESCE(SUM(visitors), 0) AS visitors FROM daily_stat WHERE day >= :since'.$regionWhere,
+            $params,
         ) ?: ['views' => 0, 'visitors' => 0];
         $pages = $db->fetchAllAssociative(
-            'SELECT route_key, SUM(views) AS views FROM page_stat WHERE day >= :since GROUP BY route_key ORDER BY views DESC LIMIT 15',
-            ['since' => $since],
+            'SELECT route_key, SUM(views) AS views FROM page_stat WHERE day >= :since'.$regionWhere.' GROUP BY route_key ORDER BY views DESC LIMIT 15',
+            $params,
         );
         // Most popular individual events (detail-page views, last 30 days).
+        $eventWhere = '';
+        if ($region !== null) {
+            $eventWhere = ' AND e.region_id = :region';
+        }
         $topEvents = $db->fetchAllAssociative(
-            'SELECT e.id, e.slug, e.title, SUM(es.views) AS views
+            'SELECT e.id, e.slug, e.title, r.canonical_host, SUM(es.views) AS views
              FROM event_stat es JOIN event e ON e.id = es.event_id
-             WHERE es.day >= :since GROUP BY e.id, e.slug, e.title ORDER BY views DESC LIMIT 15',
-            ['since' => $since],
+             JOIN region r ON r.id = e.region_id
+             WHERE es.day >= :since'.$eventWhere.' GROUP BY e.id, e.slug, e.title, r.canonical_host ORDER BY views DESC LIMIT 15',
+            $params,
         );
 
         // Independent scales so the (smaller) visitor line is readable against
@@ -319,31 +353,28 @@ final class AdminController extends AbstractController
             'visitors' => ['heute' => (int) end($visitors), '7' => $tail($visitors, 7), '30' => array_sum($visitors)],
         ];
 
-        return $this->render('admin/stats.html.twig', [
+        return $this->render('admin/stats.html.twig', $this->withAdminRegion($region, [
             'series' => $series,
             'maxViews' => $maxViews,
             'maxVisitors' => $maxVisitors,
             'metrics' => $metrics,
             'pages' => $pages,
             'topEvents' => $topEvents,
-        ]);
+        ]));
     }
 
     /** Review the AI deduplication merges and undo them if needed. */
     #[Route('/dedup', name: 'admin_dedup', methods: ['GET'])]
-    public function dedup(EntityManagerInterface $em, AiDeduper $deduper): Response
+    public function dedup(Request $request, EntityManagerInterface $em, AiDeduper $deduper): Response
     {
-        $decisions = $em->getRepository(AiDedupDecision::class)->findBy(
-            ['active' => true],
-            ['createdAt' => 'DESC'],
-            100,
-        );
+        $region = $this->resolveAdminRegion($request);
+        $decisions = $this->findDedupDecisions($em, $region);
 
-        return $this->render('admin/dedup.html.twig', [
+        return $this->render('admin/dedup.html.twig', $this->withAdminRegion($region, [
             'decisions' => $decisions,
             'configured' => $deduper->isConfigured(),
             'model' => $deduper->getModel(),
-        ]);
+        ]));
     }
 
     /**
@@ -362,29 +393,30 @@ final class AdminController extends AbstractController
         if (!$this->isCsrfTokenValid('dedup_run', (string) $request->request->get('_token'))) {
             $this->addFlash('error', 'Ungültiges Formular.');
 
-            return $this->redirectToRoute('admin_dedup');
+            return $this->redirectToRoute('admin_dedup', $this->adminRegionRedirectParams($request));
         }
+        $region = $this->resolveAdminRegion($request);
         if (!$deduper->isConfigured()) {
             $this->addFlash('error', 'AI-Dedup ist nicht konfiguriert (OPENROUTER_API_KEY fehlt).');
 
-            return $this->redirectToRoute('admin_dedup');
+            return $this->redirectToRoute('admin_dedup', $this->adminRegionRedirectParams($request));
         }
         // The command holds the actual lock ("ai-dedup", see DedupAiCommand) —
         // this check just turns a silently exiting second run into a message.
         if ($locks->isLocked('ai-dedup')) {
             $this->addFlash('error', 'Ein Dedup-Lauf läuft bereits – bitte warten, bis er fertig ist.');
 
-            return $this->redirectToRoute('admin_dedup');
+            return $this->redirectToRoute('admin_dedup', $this->adminRegionRedirectParams($request));
         }
 
-        $error = $this->startDetachedConsoleRun('dalketicker:dedup-ai --days=60 --max-ai-calls=80', 'dedup-manual.log', $projectDir);
+        $error = $this->startDetachedConsoleRun('dalketicker:dedup-ai --days=60 --max-ai-calls=80'.$this->consoleRegionOption($region), 'dedup-manual.log', $projectDir);
         if ($error !== null) {
             $this->addFlash('error', 'AI-Dedup: '.$error);
         } else {
             $this->addFlash('success', 'AI-Dedup gestartet – läuft im Hintergrund. Liste in ~1 Minute aktualisieren.');
         }
 
-        return $this->redirectToRoute('admin_dedup');
+        return $this->redirectToRoute('admin_dedup', $this->adminRegionRedirectParams($request));
     }
 
     /** Undo a single AI merge: restore the duplicate to Published. */
@@ -394,7 +426,7 @@ final class AdminController extends AbstractController
         if (!$this->isCsrfTokenValid('dedup_undo', (string) $request->request->get('_token'))) {
             $this->addFlash('error', 'Ungültiges Formular.');
 
-            return $this->redirectToRoute('admin_dedup');
+            return $this->redirectToRoute('admin_dedup', $this->adminRegionRedirectParams($request));
         }
         $decision = $em->getRepository(AiDedupDecision::class)->find($id);
         if ($decision !== null && $decision->isActive()) {
@@ -403,35 +435,35 @@ final class AdminController extends AbstractController
             $this->addFlash('success', 'Merge rückgängig gemacht – Event wieder sichtbar.');
         }
 
-        return $this->redirectToRoute('admin_dedup');
+        return $this->redirectToRoute('admin_dedup', $this->adminRegionRedirectParams($request));
     }
 
     /** Review AI categorization: progress, pending suggestions, and a full paginated log. */
     #[Route('/kategorien', name: 'admin_categorize', methods: ['GET'])]
     public function categorize(Request $request, EntityManagerInterface $em, AiCategorizer $categorizer, EventRepository $events): Response
     {
-        $repo = $em->getRepository(AiCategoryDecision::class);
+        $region = $this->resolveAdminRegion($request);
 
         $counts = [];
         foreach (['applied', 'pending', 'agreed', 'dismissed', 'undone'] as $status) {
-            $counts[$status] = $repo->count(['status' => $status]);
+            $counts[$status] = $this->countCategoryDecisions($em, $region, $status);
         }
         $processed = array_sum($counts);
-        $remaining = $events->countWithoutCategoryDecision();
+        $remaining = $events->countWithoutCategoryDecision($region);
 
         // A run is "active" if decisions were written in the last 2 minutes — then
         // we let the page auto-refresh so progress updates live.
-        $lastAt = $em->createQuery('SELECT MAX(d.createdAt) FROM '.AiCategoryDecision::class.' d')->getSingleScalarResult();
-        $active = $lastAt !== null && new \DateTimeImmutable((string) $lastAt) > new \DateTimeImmutable('-2 minutes');
+        $lastAt = $this->latestCategoryDecisionAt($em, $region);
+        $active = $lastAt !== null && $lastAt > new \DateTimeImmutable('-2 minutes');
 
         // Full paginated log: what the categories were vs what the AI proposed/applied.
         $perPage = 50;
         $page = max(1, $request->query->getInt('seite', 1));
-        $total = (int) $repo->count([]);
+        $total = $this->countCategoryDecisions($em, $region);
 
-        return $this->render('admin/categorize.html.twig', [
-            'pending' => $repo->findBy(['status' => 'pending'], ['createdAt' => 'DESC'], 200),
-            'log' => $repo->findBy([], ['createdAt' => 'DESC'], $perPage, ($page - 1) * $perPage),
+        return $this->render('admin/categorize.html.twig', $this->withAdminRegion($region, [
+            'pending' => $this->findCategoryDecisions($em, $region, 200, 0, 'pending'),
+            'log' => $this->findCategoryDecisions($em, $region, $perPage, ($page - 1) * $perPage),
             'page' => $page,
             'pages' => max(1, (int) ceil($total / $perPage)),
             'logTotal' => $total,
@@ -441,25 +473,26 @@ final class AdminController extends AbstractController
             'processed' => $processed,
             'remaining' => $remaining,
             'active' => $active,
-            'summaryDone' => $events->countWithSummary(),
-            'summaryEligible' => $events->countSummaryEligible(),
-        ]);
+            'summaryDone' => $events->countWithSummary($region),
+            'summaryEligible' => $events->countSummaryEligible($region),
+        ]));
     }
 
     /** Review the AI short-teasers: source text vs generated summary, paginated. */
     #[Route('/vorschau', name: 'admin_summaries', methods: ['GET'])]
     public function summaries(Request $request, EventRepository $events): Response
     {
+        $region = $this->resolveAdminRegion($request);
         $perPage = 25;
         $page = max(1, $request->query->getInt('seite', 1));
-        $total = $events->countSummarized();
+        $total = $events->countSummarized($region);
 
-        return $this->render('admin/summaries.html.twig', [
-            'events' => $events->findSummarized($perPage, ($page - 1) * $perPage),
+        return $this->render('admin/summaries.html.twig', $this->withAdminRegion($region, [
+            'events' => $events->findSummarized($perPage, ($page - 1) * $perPage, $region),
             'page' => $page,
             'pages' => max(1, (int) ceil($total / $perPage)),
             'total' => $total,
-        ]);
+        ]));
     }
 
     /** Trigger the AI categorization pass by hand (detached, like the dedup run). */
@@ -473,29 +506,30 @@ final class AdminController extends AbstractController
         if (!$this->isCsrfTokenValid('categorize', (string) $request->request->get('_token'))) {
             $this->addFlash('error', 'Ungültiges Formular.');
 
-            return $this->redirectToRoute('admin_categorize');
+            return $this->redirectToRoute('admin_categorize', $this->adminRegionRedirectParams($request));
         }
+        $region = $this->resolveAdminRegion($request);
         if (!$categorizer->isConfigured()) {
             $this->addFlash('error', 'AI ist nicht konfiguriert (OPENROUTER_API_KEY fehlt).');
 
-            return $this->redirectToRoute('admin_categorize');
+            return $this->redirectToRoute('admin_categorize', $this->adminRegionRedirectParams($request));
         }
         // The command holds the actual lock ("ai-categorize", see
         // CategorizeAiCommand) — this check just provides a friendly message.
         if ($locks->isLocked('ai-categorize')) {
             $this->addFlash('error', 'Ein Kategorisierungs-Lauf läuft bereits – bitte warten, bis er fertig ist.');
 
-            return $this->redirectToRoute('admin_categorize');
+            return $this->redirectToRoute('admin_categorize', $this->adminRegionRedirectParams($request));
         }
 
-        $error = $this->startDetachedConsoleRun('dalketicker:categorize-ai --apply --max-calls=120', 'categorize-manual.log', $projectDir);
+        $error = $this->startDetachedConsoleRun('dalketicker:categorize-ai --apply --max-calls=120'.$this->consoleRegionOption($region), 'categorize-manual.log', $projectDir);
         if ($error !== null) {
             $this->addFlash('error', 'KI-Kategorisierung: '.$error);
         } else {
             $this->addFlash('success', 'KI-Kategorisierung gestartet – läuft im Hintergrund. Liste in ~1–2 Minuten aktualisieren.');
         }
 
-        return $this->redirectToRoute('admin_categorize');
+        return $this->redirectToRoute('admin_categorize', $this->adminRegionRedirectParams($request));
     }
 
     /**
@@ -545,7 +579,7 @@ final class AdminController extends AbstractController
         if (!$this->isCsrfTokenValid('categorize', (string) $request->request->get('_token'))) {
             $this->addFlash('error', 'Ungültiges Formular.');
 
-            return $this->redirectToRoute('admin_categorize');
+            return $this->redirectToRoute('admin_categorize', $this->adminRegionRedirectParams($request));
         }
         $decision = $em->getRepository(AiCategoryDecision::class)->find($id);
         if ($decision !== null) {
@@ -563,7 +597,7 @@ final class AdminController extends AbstractController
             });
         }
 
-        return $this->redirectToRoute('admin_categorize');
+        return $this->redirectToRoute('admin_categorize', $this->adminRegionRedirectParams($request));
     }
 
     /** Edit & pin individual event fields so a correction survives re-imports. */
@@ -591,7 +625,7 @@ final class AdminController extends AbstractController
         if (!$this->isCsrfTokenValid('event_edit', (string) $request->request->get('_token'))) {
             $this->addFlash('error', 'Ungültiges Formular.');
 
-            return $this->redirectToRoute('admin_event_edit', ['id' => $id]);
+            return $this->redirectToRoute('admin_event_edit', ['id' => $id] + $this->adminRegionRedirectParams($request));
         }
 
         $event->setTitle(mb_substr(trim((string) $request->request->get('title', '')), 0, 300) ?: $event->getTitle());
@@ -627,7 +661,123 @@ final class AdminController extends AbstractController
 
         $this->addFlash('success', 'Event gespeichert. Gepinnte Felder bleiben beim nächsten Import erhalten.');
 
-        return $this->redirectToRoute('admin_event_edit', ['id' => $id]);
+        return $this->redirectToRoute('admin_event_edit', ['id' => $id] + $this->adminRegionRedirectParams($request));
+    }
+
+    private function resolveAdminRegion(Request $request): ?Region
+    {
+        $key = trim((string) $request->query->get('region', ''));
+        if ($key === 'all') {
+            return null;
+        }
+        if ($key !== '') {
+            return $this->regions->findByKey($key) ?? $this->regionContext->current();
+        }
+
+        return $this->regionContext->current();
+    }
+
+    /**
+     * @param array<string, mixed> $vars
+     *
+     * @return array<string, mixed>
+     */
+    private function withAdminRegion(?Region $region, array $vars): array
+    {
+        return $vars + [
+            'admin_region' => $region,
+            'admin_region_key' => $region?->getKey() ?? 'all',
+        ];
+    }
+
+    /** @return array<string, string> */
+    private function adminRegionRedirectParams(Request $request): array
+    {
+        $region = $request->query->get('region', $request->request->get('region'));
+
+        return \is_string($region) && $region !== '' ? ['region' => $region] : [];
+    }
+
+    private function consoleRegionOption(?Region $region): string
+    {
+        return $region !== null ? ' --region='.escapeshellarg($region->getKey()) : '';
+    }
+
+    /** @return AiDedupDecision[] */
+    private function findDedupDecisions(EntityManagerInterface $em, ?Region $region): array
+    {
+        $qb = $em->getRepository(AiDedupDecision::class)->createQueryBuilder('d')
+            ->leftJoin('d.duplicateEvent', 'dup')->addSelect('dup')
+            ->leftJoin('dup.source', 'dupSource')->addSelect('dupSource')
+            ->leftJoin('dup.venue', 'dupVenue')->addSelect('dupVenue')
+            ->leftJoin('d.canonicalEvent', 'can')->addSelect('can')
+            ->leftJoin('can.source', 'canSource')->addSelect('canSource')
+            ->leftJoin('can.venue', 'canVenue')->addSelect('canVenue')
+            ->andWhere('d.active = :active')
+            ->setParameter('active', true)
+            ->orderBy('d.createdAt', 'DESC')
+            ->setMaxResults(100);
+
+        if ($region !== null) {
+            $qb->andWhere('dup.region = :region OR can.region = :region')
+                ->setParameter('region', $region);
+        }
+
+        return $qb->getQuery()->getResult();
+    }
+
+    private function countCategoryDecisions(EntityManagerInterface $em, ?Region $region, ?string $status = null): int
+    {
+        $qb = $this->categoryDecisionQuery($em, $region)
+            ->select('COUNT(d.id)');
+
+        if ($status !== null) {
+            $qb->andWhere('d.status = :status')->setParameter('status', $status);
+        }
+
+        return (int) $qb->getQuery()->getSingleScalarResult();
+    }
+
+    private function latestCategoryDecisionAt(EntityManagerInterface $em, ?Region $region): ?\DateTimeImmutable
+    {
+        $value = $this->categoryDecisionQuery($em, $region)
+            ->select('MAX(d.createdAt)')
+            ->getQuery()
+            ->getSingleScalarResult();
+
+        return $value !== null ? new \DateTimeImmutable((string) $value) : null;
+    }
+
+    /** @return AiCategoryDecision[] */
+    private function findCategoryDecisions(EntityManagerInterface $em, ?Region $region, int $limit, int $offset = 0, ?string $status = null): array
+    {
+        $qb = $this->categoryDecisionQuery($em, $region)
+            ->addSelect('e', 's', 'v')
+            ->leftJoin('e.source', 's')
+            ->leftJoin('e.venue', 'v')
+            ->orderBy('d.createdAt', 'DESC')
+            ->setMaxResults($limit)
+            ->setFirstResult($offset);
+
+        if ($status !== null) {
+            $qb->andWhere('d.status = :status')->setParameter('status', $status);
+        }
+
+        return $qb->getQuery()->getResult();
+    }
+
+    private function categoryDecisionQuery(EntityManagerInterface $em, ?Region $region): QueryBuilder
+    {
+        $qb = $em->createQueryBuilder()
+            ->select('d')
+            ->from(AiCategoryDecision::class, 'd')
+            ->leftJoin('d.event', 'e');
+
+        if ($region !== null) {
+            $qb->andWhere('e.region = :region')->setParameter('region', $region);
+        }
+
+        return $qb;
     }
 
     private function blankToNull(string $v): ?string

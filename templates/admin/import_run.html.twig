@@ -12,16 +12,16 @@
 
 {% block body %}
     {% import _self as ui %}
-    <a href="{{ path('admin_imports') }}" class="text-sm text-ink/50 hover:text-brand-700 inline-flex items-center gap-1 mb-4">← Quellen</a>
+    <a href="{{ path('admin_imports', admin_region_params()) }}" class="text-sm text-ink/50 hover:text-brand-700 inline-flex items-center gap-1 mb-4">← Quellen</a>
 
     <div class="max-w-3xl">
         <div class="flex items-center gap-3 mb-1">
             <h1 class="font-[family-name:var(--font-display)] text-2xl font-extrabold tracking-tight text-ink">
-                <a href="{{ path('admin_source', {id: run.source.id}) }}" class="hover:text-brand-700 hover:underline">{{ run.source.name }}</a>
+                <a href="{{ path('admin_source', admin_region_params({id: run.source.id})) }}" class="hover:text-brand-700 hover:underline">{{ run.source.name }}</a>
             </h1>
             {{ ui.badge(run.status) }}
         </div>
-        <p class="text-ink/50 text-sm mb-6">{{ run.source.key }} · Importer „{{ run.source.importer }}" · Lauf #{{ run.id }}{% if run.dryRun %} · Testlauf{% endif %}</p>
+        <p class="text-ink/50 text-sm mb-6">{{ run.source.region.siteName }} · {{ run.source.key }} · Importer „{{ run.source.importer }}" · Lauf #{{ run.id }}{% if run.dryRun %} · Testlauf{% endif %}</p>
 
         <div class="grid sm:grid-cols-2 gap-4 mb-6">
             <div class="bg-white rounded-2xl border border-black/5 shadow-sm p-5">
@@ -55,7 +55,7 @@
         <h2 class="font-[family-name:var(--font-display)] text-lg font-bold text-ink mb-3">Verlauf dieser Quelle</h2>
         <div class="bg-white rounded-2xl border border-black/5 shadow-sm divide-y divide-black/5">
             {% for h in history %}
-                <a href="{{ path('admin_import_run', {id: h.id}) }}" class="flex items-center gap-4 px-4 py-2.5 text-sm hover:bg-black/[0.02] {{ h.id == run.id ? 'bg-brand-50/60' : '' }}">
+                <a href="{{ path('admin_import_run', admin_region_params({id: h.id})) }}" class="flex items-center gap-4 px-4 py-2.5 text-sm hover:bg-black/[0.02] {{ h.id == run.id ? 'bg-brand-50/60' : '' }}">
                     <span class="text-ink/40 text-xs w-28 shrink-0">{{ h.startedAt|de_date }} {{ h.startedAt|date('H:i') }}</span>
                     {{ ui.badge(h.status) }}
                     <span class="text-ink/50 tabular-nums flex-1 text-right">{{ h.seen }} ges. · {{ h.created }} neu · {{ h.errors }} Fehler</span>

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\EventListener;
 
+use App\Service\RegionContext;
 use Doctrine\DBAL\Connection;
 use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
@@ -34,6 +35,7 @@ final class VisitCounter
     public function __construct(
         private readonly Connection $db,
         private readonly ClockInterface $clock,
+        private readonly RegionContext $regions,
         #[Autowire('%kernel.secret%')] private readonly string $secret,
     ) {
     }
@@ -65,15 +67,19 @@ final class VisitCounter
         }
 
         $day = $this->clock->now()->setTimezone(new \DateTimeZone('Europe/Berlin'))->format('Y-m-d');
+        $regionId = $this->regions->current()->getId();
+        if ($regionId === null) {
+            return;
+        }
 
         try {
             $this->db->executeStatement(
-                'INSERT INTO daily_stat (day, views, visitors) VALUES (:d, 1, 0) ON CONFLICT (day) DO UPDATE SET views = daily_stat.views + 1',
-                ['d' => $day],
+                'INSERT INTO daily_stat (region_id, day, views, visitors) VALUES (:region, :d, 1, 0) ON CONFLICT (region_id, day) DO UPDATE SET views = daily_stat.views + 1',
+                ['region' => $regionId, 'd' => $day],
             );
             $this->db->executeStatement(
-                'INSERT INTO page_stat (day, route_key, views) VALUES (:d, :r, 1) ON CONFLICT (day, route_key) DO UPDATE SET views = page_stat.views + 1',
-                ['d' => $day, 'r' => mb_substr($route, 0, 64)],
+                'INSERT INTO page_stat (region_id, day, route_key, views) VALUES (:region, :d, :r, 1) ON CONFLICT (region_id, day, route_key) DO UPDATE SET views = page_stat.views + 1',
+                ['region' => $regionId, 'd' => $day, 'r' => mb_substr($route, 0, 64)],
             );
 
             // Per-event popularity: count views of individual detail pages too.
@@ -88,13 +94,13 @@ final class VisitCounter
             }
 
             // Rough unique visitors: a salted, day-scoped hash (never the IP).
-            $token = hash('sha256', $this->secret.'|'.$day.'|'.$request->getClientIp().'|'.$ua);
+            $token = hash('sha256', $this->secret.'|'.$regionId.'|'.$day.'|'.$request->getClientIp().'|'.$ua);
             $isNew = $this->db->executeStatement(
-                'INSERT INTO visitor_day (day, token) VALUES (:d, :t) ON CONFLICT (day, token) DO NOTHING',
-                ['d' => $day, 't' => $token],
+                'INSERT INTO visitor_day (region_id, day, token) VALUES (:region, :d, :t) ON CONFLICT (region_id, day, token) DO NOTHING',
+                ['region' => $regionId, 'd' => $day, 't' => $token],
             );
             if ($isNew === 1) {
-                $this->db->executeStatement('UPDATE daily_stat SET visitors = visitors + 1 WHERE day = :d', ['d' => $day]);
+                $this->db->executeStatement('UPDATE daily_stat SET visitors = visitors + 1 WHERE region_id = :region AND day = :d', ['region' => $regionId, 'd' => $day]);
             }
 
             // Occasionally drop yesterday's tokens — we only keep the counts.

@@ -6,11 +6,13 @@ namespace App\Service;
 
 use App\Entity\Category;
 use App\Entity\Event;
+use App\Entity\Region;
 use App\Entity\Source;
 use App\Entity\Venue;
 use App\Enum\EventStatus;
 use App\Enum\SourceType;
 use App\Repository\CategoryRepository;
+use App\Repository\RegionRepository;
 use App\Repository\SourceRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Clock\ClockInterface;
@@ -28,18 +30,27 @@ final class CatalogSeeder
      * these we only show facts (title/date/place/price) + a link, never their
      * description text or images. {@see Source::isFactsOnly()}.
      */
-    private const FACTS_ONLY_SOURCES = ['auf_schluer', 'radio_gt', 'erfolgskreis_gt', 'marktcom', 'flowl'];
+    private const FACTS_ONLY_SOURCES = [
+        'auf_schluer', 'radio_gt', 'erfolgskreis_gt', 'marktcom', 'flowl',
+        'paderborner_land_events', 'teutoburgerwald_events', 'teutoburgerwald_minden_luebbecke_events', 'westliches_weserbergland_events',
+        'owl_live_paderborn', 'nw_kreis_paderborn_events',
+        'ewu_bund_reitsport', 'ewu_bund_reitsport_paderborn',
+        'ewu_bund_reitsport_minden_luebbecke', 'ewu_bund_reitsport_bielefeld',
+    ];
 
     /** @var array<string, Category> */
     private array $categories = [];
     /** @var array<string, Venue> */
     private array $venues = [];
+    /** @var array<string, Region> */
+    private array $regions = [];
     /** @var array<string, Source> */
     private array $sources = [];
 
     public function __construct(
         private readonly EntityManagerInterface $em,
         private readonly CategoryRepository $categoryRepo,
+        private readonly RegionRepository $regionRepo,
         private readonly SourceRepository $sourceRepo,
         private readonly SluggerInterface $slugger,
         private readonly ClockInterface $clock,
@@ -49,6 +60,24 @@ final class CatalogSeeder
     /** Idempotently create/update categories and sources. Safe to run anytime. */
     public function seedCatalog(): void
     {
+        foreach ($this->regionDefs() as $key => $def) {
+            $region = $this->regionRepo->findByKey($key) ?? new Region($key, $def['siteName'], $def['areaName'], $def['canonicalHost']);
+            $region
+                ->setSiteName($def['siteName'])
+                ->setAreaName($def['areaName'])
+                ->setTagline($def['tagline'])
+                ->setCanonicalHost($def['canonicalHost'])
+                ->setHostAliases($def['hostAliases'])
+                ->setThemeColor($def['themeColor'])
+                ->setLogoLetter($def['logoLetter'])
+                ->setDefaultCity($def['defaultCity'])
+                ->setCities($def['cities'])
+                ->setCityAliases($def['cityAliases'])
+                ->setEnabled($def['enabled']);
+            $this->em->persist($region);
+            $this->regions[$key] = $region;
+        }
+
         foreach ($this->categoryDefs() as $slug => [$name, $color, $order]) {
             $category = $this->categoryRepo->findBySlug($slug) ?? new Category($name, $slug);
             $category->setName($name)->setColor($color)->setIcon(null)->setSortOrder($order);
@@ -56,14 +85,23 @@ final class CatalogSeeder
             $this->categories[$slug] = $category;
         }
 
-        foreach ($this->sourceDefs() as $key => [$name, $type, $url, $importer, $city, $enabled]) {
+        foreach ($this->sourceDefs() as $key => $def) {
+            [$regionKey, $name, $type, $url, $importer, $city, $enabled] = array_slice($def, 0, 7);
+            $sourceConfig = \is_array($def[7] ?? null) ? $def[7] : [];
+            $region = $this->regions[$regionKey] ?? $this->regionRepo->findByKey($regionKey);
+            if ($region === null) {
+                throw new \RuntimeException(sprintf('Region "%s" for source "%s" is not configured.', $regionKey, $key));
+            }
             $isNew = false;
-            $source = $this->sourceRepo->findByKey($key);
+            $source = $this->sourceRepo->findByKey($key, $region);
             if ($source === null) {
-                $source = new Source($key, $name, $type);
+                $source = new Source($key, $name, $type, $region);
                 $isNew = true;
             }
-            $source->setName($name)->setType($type)->setUrl($url)->setImporter($importer);
+            $source->setRegion($region)->setName($name)->setType($type)->setUrl($url)->setImporter($importer);
+            if ($sourceConfig !== []) {
+                $source->setConfig(array_merge($source->getConfig(), $sourceConfig));
+            }
             if ($city !== null) {
                 $config = $source->getConfig();
                 $config['city'] = $city;
@@ -72,8 +110,10 @@ final class CatalogSeeder
             // Don't override an operator's choices on re-seed:
             if ($isNew) {
                 $source->setEnabled($enabled);
-                // Aggregators that bundle third-party events → facts only (no
-                // foreign description text/images), per the legal safeguard.
+            }
+            // Aggregators that bundle third-party events -> facts only (no
+            // foreign description text/images), per the legal safeguard.
+            if ($isNew || \in_array($key, self::FACTS_ONLY_SOURCES, true)) {
                 $source->setFactsOnly(\in_array($key, self::FACTS_ONLY_SOURCES, true));
             }
             $this->em->persist($source);
@@ -128,12 +168,134 @@ final class CatalogSeeder
 
     private function loadVenues(): void
     {
+        $region = $this->regions['guetersloh'] ?? $this->regionRepo->findByKey('guetersloh');
+        if ($region === null) {
+            throw new \RuntimeException('Region "guetersloh" is not configured.');
+        }
         foreach ($this->venueDefs() as $name => [$street, $plz, $city]) {
-            $venue = new Venue($name, $city);
+            $venue = new Venue($name, $city, $region);
             $venue->setStreet($street)->setPostalCode($plz);
             $this->em->persist($venue);
             $this->venues[$name] = $venue;
         }
+    }
+
+    /**
+     * @return array<string, array{
+     *     siteName:string,
+     *     areaName:string,
+     *     tagline:string,
+     *     canonicalHost:string,
+     *     hostAliases:list<string>,
+     *     themeColor:string,
+     *     logoLetter:string,
+     *     defaultCity:string,
+     *     cities:list<string>,
+     *     cityAliases:array<string,string>,
+     *     enabled:bool
+     * }>
+     */
+    private function regionDefs(): array
+    {
+        return [
+            'guetersloh' => [
+                'siteName' => 'dalketicker',
+                'areaName' => 'Kreis Gütersloh',
+                'tagline' => 'Was läuft im Kreis Gütersloh',
+                'canonicalHost' => 'dalketicker.de',
+                'hostAliases' => ['www.dalketicker.de', 'dalketicker.neuhaus.nrw', 'dalketicker.traefik.me'],
+                'themeColor' => '#0a8da3',
+                'logoLetter' => 'd',
+                'defaultCity' => 'Kreis Gütersloh',
+                'cities' => [
+                    'Gütersloh', 'Rheda-Wiedenbrück', 'Rietberg', 'Harsewinkel', 'Schloß Holte-Stukenbrock',
+                    'Verl', 'Halle (Westf.)', 'Steinhagen', 'Borgholzhausen', 'Werther (Westf.)',
+                    'Langenberg', 'Versmold', 'Herzebrock-Clarholz', 'Kreis Gütersloh',
+                ],
+                'cityAliases' => [
+                    'guetersloh' => 'Gütersloh', 'gutersloh' => 'Gütersloh',
+                    'isselhorst' => 'Gütersloh', 'avenwedde' => 'Gütersloh', 'spexard' => 'Gütersloh',
+                    'friedrichsdorf' => 'Gütersloh', 'blankenhagen' => 'Gütersloh', 'niehorst' => 'Gütersloh',
+                    'hollen' => 'Gütersloh', 'ebbesloh' => 'Gütersloh', 'kattenstroth' => 'Gütersloh', 'pavenstaedt' => 'Gütersloh',
+                    'rhedawiedenbrueck' => 'Rheda-Wiedenbrück', 'rhedawiedenbruck' => 'Rheda-Wiedenbrück',
+                    'batenhorst' => 'Rheda-Wiedenbrück', 'lintel' => 'Rheda-Wiedenbrück',
+                    'stvit' => 'Rheda-Wiedenbrück', 'sanktvit' => 'Rheda-Wiedenbrück', 'nordrheda' => 'Rheda-Wiedenbrück',
+                    'rietberg' => 'Rietberg', 'druffel' => 'Rietberg', 'varensell' => 'Rietberg', 'mastholte' => 'Rietberg',
+                    'neuenkirchen' => 'Rietberg', 'westerwiehe' => 'Rietberg',
+                    'verl' => 'Verl', 'suerenheide' => 'Verl', 'kaunitz' => 'Verl',
+                    'harsewinkel' => 'Harsewinkel', 'marienfeld' => 'Harsewinkel', 'greffen' => 'Harsewinkel',
+                    'hallewestf' => 'Halle (Westf.)', 'hallewestfalen' => 'Halle (Westf.)',
+                    'hoerste' => 'Halle (Westf.)', 'kuensebeck' => 'Halle (Westf.)', 'koelkebeck' => 'Halle (Westf.)',
+                    'steinhagen' => 'Steinhagen', 'brockhagen' => 'Steinhagen', 'amshausen' => 'Steinhagen',
+                    'borgholzhausen' => 'Borgholzhausen', 'westbarthausen' => 'Borgholzhausen', 'cleve' => 'Borgholzhausen',
+                    'schlossholtestukenbrock' => 'Schloß Holte-Stukenbrock', 'schlossholte' => 'Schloß Holte-Stukenbrock',
+                    'stukenbrock' => 'Schloß Holte-Stukenbrock', 'sende' => 'Schloß Holte-Stukenbrock', 'liemke' => 'Schloß Holte-Stukenbrock',
+                    'langenberg' => 'Langenberg', 'benteler' => 'Langenberg',
+                    'versmold' => 'Versmold', 'bockhorst' => 'Versmold', 'peckeloh' => 'Versmold', 'oesterweg' => 'Versmold',
+                    'hesselteich' => 'Versmold', 'loxten' => 'Versmold',
+                    'herzebrockclarholz' => 'Herzebrock-Clarholz', 'clarholz' => 'Herzebrock-Clarholz',
+                    'kreisguetersloh' => 'Kreis Gütersloh', 'kreisgutersloh' => 'Kreis Gütersloh',
+                ],
+                'enabled' => true,
+            ],
+            'paderborn' => [
+                'siteName' => 'paderticker',
+                'areaName' => 'Kreis Paderborn',
+                'tagline' => 'Was läuft im Kreis Paderborn',
+                'canonicalHost' => 'paderticker.neuhaus.nrw',
+                'hostAliases' => ['paderticker.de', 'www.paderticker.de', 'paderticker.traefik.me'],
+                'themeColor' => '#1d7f64',
+                'logoLetter' => 'p',
+                'defaultCity' => 'Kreis Paderborn',
+                'cities' => ['Paderborn', 'Altenbeken', 'Bad Lippspringe', 'Bad Wünnenberg', 'Borchen', 'Büren', 'Delbrück', 'Hövelhof', 'Lichtenau', 'Salzkotten', 'Kreis Paderborn'],
+                'cityAliases' => [
+                    'paderborn' => 'Paderborn', 'altenbeken' => 'Altenbeken', 'badlippspringe' => 'Bad Lippspringe',
+                    'badwuennenberg' => 'Bad Wünnenberg', 'badwunnenberg' => 'Bad Wünnenberg',
+                    'borchen' => 'Borchen', 'bueren' => 'Büren', 'buren' => 'Büren', 'delbrueck' => 'Delbrück',
+                    'delbruck' => 'Delbrück', 'hoevelhof' => 'Hövelhof', 'hovelhof' => 'Hövelhof',
+                    'lichtenau' => 'Lichtenau', 'salzkotten' => 'Salzkotten', 'kreispaderborn' => 'Kreis Paderborn',
+                ],
+                'enabled' => true,
+            ],
+            'minden-luebbecke' => [
+                'siteName' => 'weserticker',
+                'areaName' => 'Kreis Minden-Lübbecke',
+                'tagline' => 'Was läuft im Kreis Minden-Lübbecke',
+                'canonicalHost' => 'weserticker.neuhaus.nrw',
+                'hostAliases' => ['weserticker.de', 'www.weserticker.de', 'weserticker.traefik.me'],
+                'themeColor' => '#527d08',
+                'logoLetter' => 'w',
+                'defaultCity' => 'Kreis Minden-Lübbecke',
+                'cities' => ['Minden', 'Bad Oeynhausen', 'Espelkamp', 'Hille', 'Hüllhorst', 'Lübbecke', 'Petershagen', 'Porta Westfalica', 'Preußisch Oldendorf', 'Rahden', 'Stemwede', 'Kreis Minden-Lübbecke'],
+                'cityAliases' => [
+                    'minden' => 'Minden', 'badoeynhausen' => 'Bad Oeynhausen', 'espelkamp' => 'Espelkamp',
+                    'hille' => 'Hille', 'huellhorst' => 'Hüllhorst', 'hullhorst' => 'Hüllhorst',
+                    'luebbecke' => 'Lübbecke', 'lubbecke' => 'Lübbecke', 'petershagen' => 'Petershagen',
+                    'portawestfalica' => 'Porta Westfalica', 'preussischoldendorf' => 'Preußisch Oldendorf',
+                    'preusischoldendorf' => 'Preußisch Oldendorf', 'rahden' => 'Rahden', 'stemwede' => 'Stemwede',
+                    'kreismindenluebbecke' => 'Kreis Minden-Lübbecke', 'kreismindenlubbecke' => 'Kreis Minden-Lübbecke',
+                ],
+                'enabled' => true,
+            ],
+            'bielefeld' => [
+                'siteName' => 'sparrenticker',
+                'areaName' => 'Bielefeld',
+                'tagline' => 'Was läuft in Bielefeld',
+                'canonicalHost' => 'sparrenticker.de',
+                'hostAliases' => ['www.sparrenticker.de', 'sparrenticker.neuhaus.nrw', 'sparrenticker.traefik.me'],
+                'themeColor' => '#e30014',
+                'logoLetter' => 's',
+                'defaultCity' => 'Bielefeld',
+                'cities' => ['Bielefeld'],
+                'cityAliases' => [
+                    'bielefeld' => 'Bielefeld', 'brackwede' => 'Bielefeld', 'senne' => 'Bielefeld',
+                    'sennestadt' => 'Bielefeld', 'dornberg' => 'Bielefeld', 'heepen' => 'Bielefeld',
+                    'joellenbeck' => 'Bielefeld', 'jollenbeck' => 'Bielefeld', 'schildesche' => 'Bielefeld',
+                    'stieghorst' => 'Bielefeld', 'gadderbaum' => 'Bielefeld',
+                ],
+                'enabled' => true,
+            ],
+        ];
     }
 
     /** @return array<string, array{0:string,1:string,2:int}> */
@@ -167,7 +329,7 @@ final class CatalogSeeder
      * their choice. We enable a source out of the box only when a working
      * importer exists for it (one of the built keys plus the generic "ics").
      *
-     * @return array<string, array{0:string,1:SourceType,2:?string,3:?string,4:?string,5:bool}>
+     * @return array<string, array{0:string,1:string,2:SourceType,3:?string,4:?string,5:?string,6:bool,7?:array<string,mixed>}>
      */
     private function sourceDefs(): array
     {
@@ -182,6 +344,17 @@ final class CatalogSeeder
             'gem_langenberg', 'burg_ravensberg', 'owl_arena', 'glanzlichter', 'musikschule_gt',
             'bib_verl', 'bib_borgholzhausen', 'gartenschaupark', 'weberei_fv',
             'club_hangover', 'kulturig', 'tribe_events', 'gt_isselhorst', 'sv_pavenstaedt',
+            'kommunal_events', 'hnf', 'ewu_bund', 'paderhalle', 'kloster_dalheim',
+            'bielefeld_jetzt', 'ikiss_modid11', 'museum_pab', 'sitepark_teasers',
+            'stadtbib_rietberg',
+        ];
+        $disabledInitially = [
+            // Site currently returns 403 to the importer user agent; keep the
+            // source visible in the catalogue, but don't run it automatically.
+            'bad_wuennenberg_veranstaltungen',
+            // The research signature looked like The Events Calendar, but the
+            // public Tribe REST route currently returns 404.
+            'bad_holzhausen_tribe',
         ];
 
         // [key => [name, type, url, importer, city]]
@@ -212,7 +385,7 @@ final class CatalogSeeder
             ['stadt_rietberg', 'Stadt Rietberg Veranstaltungskalender', SourceType::Html, 'https://www.rietberg.de/tourismus/freizeitangebote/veranstaltungen/uebersicht.html', 'stadt_rietberg', 'Rietberg'],
             ['gartenschaupark', 'Gartenschaupark Rietberg', SourceType::Html, 'https://www.gartenschaupark-rietberg.de/veranstaltungen/veranstaltungen-konzerte-feste-etc.html', 'gartenschaupark', 'Rietberg'],
             ['kulturig', 'kulturig e.V.', SourceType::Html, 'https://www.kulturig.de/events-tickets/eventkalender.html', 'kulturig', 'Rietberg'],
-            ['stadtbib_rietberg', 'Stadtbibliothek Rietberg', SourceType::Html, 'https://www.rietberg.de/tourismus/freizeitangebote/veranstaltungen/veranstaltungsort/stadtbibliothek-rietberg-394.html', 'manual', 'Rietberg'],
+            ['stadtbib_rietberg', 'Stadtbibliothek Rietberg', SourceType::Html, 'https://www.rietberg.de/tourismus/freizeitangebote/veranstaltungen/veranstaltungsort/stadtbibliothek-rietberg-394.html', 'stadtbib_rietberg', 'Rietberg'],
             ['stadt_harsewinkel', 'Stadt Harsewinkel Veranstaltungskalender', SourceType::Ics, 'https://www.harsewinkel.de/veranstaltungen/veranstaltungen.ical?zeitauswahl=1&auswahl_woche_tage=730&onlyMonat_select=0&selected_kommune=34050', 'ics', 'Harsewinkel'],
             ['wilhalm', 'Kulturort Wilhalm', SourceType::Html, 'https://www.wilhalm.de/api/events.php', 'wilhalm', 'Harsewinkel'],
             ['stadt_shs', 'Stadt Schloß Holte-Stukenbrock Veranstaltungskalender', SourceType::Html, 'https://www.teutonavigator.de/de/schlossholtestukenbrock/wlan/portal', 'stadt_shs', 'Schloß Holte-Stukenbrock'],
@@ -225,7 +398,7 @@ final class CatalogSeeder
             ['vhs_ravensberg', 'VHS Ravensberg', SourceType::Ics, 'https://www.vhs-ravensberg.de/kurs?tx_itemkgconnect_coursedetails%5Baction%5D=iCal&tx_itemkgconnect_coursedetails%5Bcontroller%5D=Course&tx_itemkgconnect_coursedetails%5Bcourse%5D=786-C-261-31045&cHash=17bb7e7b6f426e5949dae4732c586643', 'ics', 'Halle (Westf.)'],
             ['stadt_werther', 'Stadt Werther Veranstaltungen', SourceType::Html, 'https://www.stadt-werther.de/entdecken/veranstaltungskalender', 'manual', 'Werther (Westf.)'],
             ['stadtbib_werther', 'Stadtbibliothek Werther', SourceType::Html, 'https://werther.bibliotheca-open.de/', 'manual', 'Werther (Westf.)'],
-            ['museum_pab', 'Museum Peter August Böckstiegel', SourceType::Html, 'https://www.museumpab.de/kunstvermittlung/veranstaltungen/', 'manual', 'Werther (Westf.)'],
+            ['museum_pab', 'Museum Peter August Böckstiegel', SourceType::Html, 'https://www.museumpab.de/kunstvermittlung/veranstaltungen/', 'museum_pab', 'Werther (Westf.)'],
             ['gem_steinhagen', 'Gemeinde Steinhagen', SourceType::Html, 'https://www.steinhagen-app.de/veranstaltungen', 'gem_steinhagen', 'Steinhagen'],
             ['bib_steinhagen', 'Gemeindebibliothek Steinhagen', SourceType::Html, 'https://steinhagen.bibliotheca-open.de/Veranstaltungen/Mach-mit', 'manual', 'Steinhagen'],
             ['burg_ravensberg', 'Burg Ravensberg', SourceType::Html, 'https://burg-ravensberg.de/veranstaltungskalender/', 'burg_ravensberg', 'Borgholzhausen'],
@@ -246,11 +419,169 @@ final class CatalogSeeder
 
         $out = [];
         foreach ($catalog as [$key, $name, $type, $url, $importer, $city]) {
-            $out[$key] = [$name, $type, $url, $importer, $city, \in_array($importer, $ready, true)];
+            $out[$key] = ['guetersloh', $name, $type, $url, $importer, $city, \in_array($importer, $ready, true)];
+        }
+
+        // [key => [name, type, url, importer, city, optional config]]
+        $paderbornCatalog = [
+            ['paderborner_land_events', 'Paderborner Land Veranstaltungskalender', SourceType::Html, 'https://www.paderborner-land.de/deu/veranstaltungen/', 'erfolgskreis_gt', 'Kreis Paderborn', [
+                'experience' => 'paderborner-land',
+                'bootstrapUrl' => 'https://pages.destination.one/de/paderborner-land/default/search/Event/mode:next_months,12/sort:chronological',
+                'maxItems' => 1200,
+            ]],
+            ['teutoburgerwald_events', 'Teutoburger Wald Veranstaltungskalender OWL', SourceType::Html, 'https://www.teutoburgerwald.de/region/gastro-event/veranstaltungskalender', 'erfolgskreis_gt', 'Kreis Paderborn', [
+                'experience' => 'teutoburgerwald',
+                'bootstrapUrl' => 'https://pages.destination.one/de/teutoburgerwald/default/search/Event/mode:next_months,12/sort:chronological',
+                'allowedCities' => ['Paderborn', 'Altenbeken', 'Bad Lippspringe', 'Bad Wünnenberg', 'Borchen', 'Büren', 'Delbrück', 'Hövelhof', 'Lichtenau', 'Salzkotten'],
+                'postalPrefixes' => ['3309', '3310', '3312', '3314', '3315', '3316', '3317', '3318'],
+                'maxItems' => 1200,
+            ]],
+            ['vhs_vor_ort', 'VHS vor Ort', SourceType::Html, 'https://www.vhs-vor-ort.de/kurssuche/liste', 'vhs_re', 'Kreis Paderborn'],
+            ['vhs_paderborn_webbasys', 'VHS Paderborn Kurssystem', SourceType::Html, 'https://vhskurse.paderborn.de/webbasys/index.php', 'vhs_re', 'Kreis Paderborn', [
+                'category' => 'bildung',
+                'maxPages' => 6,
+            ]],
+            ['kulturtipp_spl', 'KulturTipp Südliches Paderborner Land', SourceType::Pdf, 'https://www.leader-spl.eu/images/KulturTipp%20FS_25_26_03.pdf', 'manual', 'Kreis Paderborn'],
+            ['altenbeken_veranstaltungen', 'Gemeinde Altenbeken Veranstaltungskalender', SourceType::Html, 'https://www.altenbeken.de/de/veranstaltungen/', 'kommunal_events', 'Altenbeken'],
+            ['bad_lippspringe_veranstaltungen', 'Stadt Bad Lippspringe Veranstaltungen', SourceType::Html, 'https://www.bad-lippspringe.de/bali/veranstaltungen/', 'kommunal_events', 'Bad Lippspringe'],
+            ['bad_wuennenberg_veranstaltungen', 'Stadt Bad Wünnenberg Veranstaltungen', SourceType::Html, 'https://www.bad-wuennenberg.de/de/veranstaltungen/', 'kommunal_events', 'Bad Wünnenberg'],
+            ['borchen_veranstaltungen', 'Gemeinde Borchen Veranstaltungen', SourceType::Html, 'https://www.borchen.de/de/veranstaltungen/', 'kommunal_events', 'Borchen'],
+            ['bueren_veranstaltungen', 'Stadt Büren Veranstaltungen', SourceType::Html, 'https://www.bueren.de/de/veranstaltungen/', 'kommunal_events', 'Büren'],
+            ['delbrueck_veranstaltungen', 'Stadt Delbrück Veranstaltungskalender', SourceType::Html, 'https://www.stadt-delbrueck.de/de/aktuelles/veranstaltungen.php?navid=641030641030', 'kommunal_events', 'Delbrück'],
+            ['hoevelhof_veranstaltungen', 'Sennegemeinde Hövelhof Veranstaltungskalender', SourceType::Html, 'https://www.hoevelhof.de/de/veranstaltungen/', 'kommunal_events', 'Hövelhof'],
+            ['lichtenau_veranstaltungen', 'Stadt Lichtenau Veranstaltungen', SourceType::Html, 'https://www.lichtenau.de/de/veranstaltungen/', 'kommunal_events', 'Lichtenau'],
+            ['paderborn_veranstaltungskalender', 'Stadt Paderborn Veranstaltungskalender', SourceType::Html, 'https://www.paderborn.de/tourismus-kultur/veranstaltungen/veranstaltungskalender.php', 'sitepark_teasers', 'Paderborn', [
+                'maxPages' => 40,
+                'maxEvents' => 500,
+            ]],
+            ['salzkotten_veranstaltungen', 'Stadt Salzkotten Veranstaltungen', SourceType::Html, 'https://www.salzkotten.de/de/veranstaltungen/', 'kommunal_events', 'Salzkotten'],
+            ['stadtbibliothek_paderborn_events', 'Stadtbibliothek Paderborn', SourceType::Html, 'https://www.paderborn.de/veranstaltungsorte/109010100000089642.php', 'sitepark_teasers', 'Paderborn', [
+                'venue' => 'Stadtbibliothek Paderborn',
+                'maxPages' => 10,
+                'maxEvents' => 120,
+            ]],
+            ['musikschule_paderborn_events', 'Städtische Musikschule Paderborn', SourceType::Html, 'https://www.paderborn.de/microsite/musikschule/unterricht/Veranstaltungen.php', 'manual', 'Paderborn'],
+            ['stadthalle_delbrueck', 'Stadthalle Delbrück', SourceType::Html, 'https://www.stadthalle-delbrueck.de/de/events-erleben/programm/veranstaltungen.php', 'kommunal_events', 'Delbrück'],
+            ['delbrueck_kauft_lokal', 'Delbrücker Marketinggemeinschaft', SourceType::Html, 'https://www.delbrueckkauftlokal.de/', 'manual', 'Delbrück'],
+            ['verkehrsverein_hoevelhof', 'Verkehrsverein Hövelhof', SourceType::Html, 'https://www.hoevelhof.de/de/tourismus/hoevelhof-feiert.php', 'manual', 'Hövelhof'],
+            ['salzkotten_marketing', 'Salzkotten Marketing e.V.', SourceType::Html, 'https://www.salzkotten-marketing.de/', 'manual', 'Salzkotten'],
+            ['wewelsburg_veranstaltungen', 'Kreismuseum Wewelsburg', SourceType::Html, 'https://www.wewelsburg.de/de/aktuelles/veranstaltungen.php', 'kommunal_events', 'Büren'],
+            ['kloster_dalheim_veranstaltungen', 'Stiftung Kloster Dalheim', SourceType::Html, 'https://www.stiftung-kloster-dalheim.lwl.org/de/veranstaltungen/veranstaltungskalender/', 'kloster_dalheim', 'Lichtenau', [
+                'fetchDetails' => true,
+            ]],
+            ['paderhalle_events', 'PaderHalle', SourceType::Html, 'https://www.paderhalle.de/veranstaltungen/', 'paderhalle', 'Paderborn', [
+                'dataUrl' => 'https://www.paderhalle.de/data/events.json',
+            ]],
+            ['theater_paderborn_kalender', 'Theater Paderborn', SourceType::Html, 'https://www.theater-paderborn.de/kalender-und-karten', 'manual', 'Paderborn'],
+            ['hnf_veranstaltungen', 'Heinz Nixdorf MuseumsForum', SourceType::Html, 'https://www.hnf.de/veranstaltungen.html', 'hnf', 'Paderborn'],
+            ['schuetzenhof_paderborn_programm', 'Schützenhof Paderborn', SourceType::Html, 'https://www.schuetzenhof.de/programm/', 'manual', 'Paderborn'],
+            ['owl_live_paderborn', 'OWL live – Kreis Paderborn', SourceType::Html, 'https://www.owl-live.de/paderborn', 'manual', 'Kreis Paderborn'],
+            ['nw_kreis_paderborn_events', 'Neue Westfälische – Veranstaltungen im Kreis Paderborn', SourceType::Html, 'https://www.nw.de/themen/lokal/kreis_paderborn/veranstaltungen-im-kreis-paderborn', 'manual', 'Kreis Paderborn'],
+        ];
+        foreach ($paderbornCatalog as $entry) {
+            [$key, $name, $type, $url, $importer, $city] = array_slice($entry, 0, 6);
+            $config = \is_array($entry[6] ?? null) ? $entry[6] : [];
+            $out[$key] = [
+                'paderborn',
+                $name,
+                $type,
+                $url,
+                $importer,
+                $city,
+                \in_array($importer, $ready, true) && !\in_array($key, $disabledInitially, true),
+                $config,
+            ];
+        }
+
+        $mindenLuebbeckePostalPrefixes = ['32312', '32339', '32351', '32361', '32369', '32423', '32425', '32427', '32429', '32457', '32469', '32479', '32545', '32547', '32549', '32609'];
+        $mindenLuebbeckeCities = ['Minden', 'Bad Oeynhausen', 'Espelkamp', 'Hille', 'Hüllhorst', 'Lübbecke', 'Petershagen', 'Porta Westfalica', 'Preußisch Oldendorf', 'Rahden', 'Stemwede'];
+        $mindenLuebbeckeCatalog = [
+            ['muehlenkreis_events', 'Portal Minden-Lübbecke / Mühlenkreis Veranstaltungen', SourceType::Html, 'https://www.muehlenkreis.de/Erleben-Entdecken/Erkunden/Veranstaltungen/index.php?La=1&ModID=11&NavID=3147.45&catsum=1&k_sub=1&kat=2832.78.1&object=tx%2C1891.869.1', 'ikiss_modid11', 'Kreis Minden-Lübbecke', [
+                'maxEvents' => 180,
+            ]],
+            ['teutoburgerwald_minden_luebbecke_events', 'Teutoburger Wald Veranstaltungskalender – Kreis Minden-Lübbecke', SourceType::Html, 'https://www.teutoburgerwald.de/region/gastro-event/veranstaltungskalender', 'erfolgskreis_gt', 'Kreis Minden-Lübbecke', [
+                'experience' => 'teutoburgerwald',
+                'bootstrapUrl' => 'https://pages.destination.one/de/teutoburgerwald/default/search/Event/mode:next_months,12/sort:chronological',
+                'allowedCities' => $mindenLuebbeckeCities,
+                'postalPrefixes' => $mindenLuebbeckePostalPrefixes,
+                'maxItems' => 1200,
+            ]],
+            ['westliches_weserbergland_events', 'Westliches Weserbergland Veranstaltungskalender', SourceType::Html, 'https://www.westliches-weserbergland.de/', 'erfolgskreis_gt', 'Kreis Minden-Lübbecke', [
+                'experience' => 'westliches-weserbergland',
+                'bootstrapUrl' => 'https://pages.destination.one/de/westliches-weserbergland/default/search/Event/mode:next_months,12/sort:chronological',
+                'allowedCities' => ['Porta Westfalica', 'Petershagen'],
+                'postalPrefixes' => ['32457', '32469'],
+                'maxItems' => 500,
+            ]],
+            ['vhs_minden_bad_oeynhausen', 'VHS Minden / Bad Oeynhausen', SourceType::Html, 'https://www.vhs-minden.de/kurssuche/liste', 'vhs_re', 'Kreis Minden-Lübbecke', [
+                'category' => 'bildung',
+                'maxPages' => 12,
+            ]],
+            ['bad_holzhausen_tribe', 'Bad Holzhausen Veranstaltungen', SourceType::Json, 'https://www.bad-holzhausen.de/wp-json/tribe/events/v1/events', 'tribe_events', 'Preußisch Oldendorf'],
+        ];
+        foreach ($mindenLuebbeckeCatalog as $entry) {
+            [$key, $name, $type, $url, $importer, $city] = array_slice($entry, 0, 6);
+            $config = \is_array($entry[6] ?? null) ? $entry[6] : [];
+            $out[$key] = [
+                'minden-luebbecke',
+                $name,
+                $type,
+                $url,
+                $importer,
+                $city,
+                \in_array($importer, $ready, true) && !\in_array($key, $disabledInitially, true),
+                $config,
+            ];
+        }
+
+        // [key => [name, type, url, importer, city, optional config]]
+        $bielefeldCatalog = [
+            ['bielefeld_jetzt_cityteam_events', 'Bielefeld.JETZT / City.Team Veranstaltungskalender', SourceType::Html, 'https://www.citybielefeld.de/termine/monat', 'bielefeld_jetzt', 'Bielefeld'],
+            ['uni_bielefeld_veranstaltungen', 'Universität Bielefeld – Veranstaltungskalender', SourceType::Html, 'https://aktuell.uni-bielefeld.de/alle-events/', 'tribe_events', 'Bielefeld'],
+            ['stadtbibliothek_bielefeld_events', 'Stadtbibliothek Bielefeld', SourceType::Ics, 'https://events.stadtbibliothek-bielefeld.de/events/ical/?locale=de', 'ics', 'Bielefeld', [
+                'venue' => 'Stadtbibliothek Bielefeld',
+                'category' => 'bildung',
+            ]],
+            ['historisches_museum_bielefeld', 'Historisches Museum Bielefeld', SourceType::Html, 'https://www.historisches-museum-bielefeld.de/events/', 'tribe_events', 'Bielefeld'],
+            ['vhs_bielefeld', 'Volkshochschule Bielefeld', SourceType::Html, 'https://www.vhs-bielefeld.de/kurssuche/liste', 'vhs_re', 'Bielefeld', [
+                'category' => 'bildung',
+                'maxPages' => 12,
+            ]],
+            ['stereo_bielefeld', 'Stereo Bielefeld', SourceType::Html, 'https://stereo-bielefeld.de/programm/', 'jsonld', 'Bielefeld', [
+                'venue' => 'Stereo Bielefeld',
+                'category' => 'party',
+            ]],
+        ];
+        foreach ($bielefeldCatalog as $entry) {
+            [$key, $name, $type, $url, $importer, $city] = array_slice($entry, 0, 6);
+            $config = \is_array($entry[6] ?? null) ? $entry[6] : [];
+            $out[$key] = [
+                'bielefeld',
+                $name,
+                $type,
+                $url,
+                $importer,
+                $city,
+                \in_array($importer, $ready, true),
+                $config,
+            ];
+        }
+
+        foreach ($this->ewuBundSourceDefs() as [$regionKey, $key, $name, $city, $postalPrefixes]) {
+            $out[$key] = [
+                $regionKey,
+                $name,
+                SourceType::Json,
+                'https://ewu-bund.com/wp-json/tribe/events/v1/events',
+                'ewu_bund',
+                $city,
+                true,
+                ['postalPrefixes' => $postalPrefixes],
+            ];
         }
 
         // Throwaway demo source for the optional demo-event batch.
-        $out['demo'] = ['Dalketicker (Demo-Daten)', SourceType::Manual, null, null, null, true];
+        $out['demo'] = ['guetersloh', 'Dalketicker (Demo-Daten)', SourceType::Manual, null, null, null, true];
 
         // Legacy demo-event sources kept (disabled) so seedDemoEvents() still works.
         $demoSources = [
@@ -262,11 +593,24 @@ final class CatalogSeeder
         ];
         foreach ($demoSources as $key => [$name, $type, $url]) {
             if (!isset($out[$key])) {
-                $out[$key] = [$name, $type, $url, 'manual', 'Gütersloh', false];
+                $out[$key] = ['guetersloh', $name, $type, $url, 'manual', 'Gütersloh', false];
             }
         }
 
         return $out;
+    }
+
+    /**
+     * @return list<array{0:string,1:string,2:string,3:string,4:list<string>}>
+     */
+    private function ewuBundSourceDefs(): array
+    {
+        return [
+            ['guetersloh', 'ewu_bund_reitsport', 'EWU Bund – Reitsporttermine im Kreis Gütersloh', 'Kreis Gütersloh', ['3333', '3337', '3339', '3341', '3342', '3344', '3375', '3377', '3380', '3382']],
+            ['paderborn', 'ewu_bund_reitsport_paderborn', 'EWU Bund – Reitsporttermine im Kreis Paderborn', 'Kreis Paderborn', ['3309', '3310', '3312', '3314', '3315', '3316', '3317', '3318']],
+            ['minden-luebbecke', 'ewu_bund_reitsport_minden_luebbecke', 'EWU Bund – Reitsporttermine im Kreis Minden-Lübbecke', 'Kreis Minden-Lübbecke', ['3231', '3233', '3235', '3236', '3237', '3242', '3245', '3254', '3258', '3260', '3262']],
+            ['bielefeld', 'ewu_bund_reitsport_bielefeld', 'EWU Bund – Reitsporttermine in Bielefeld', 'Bielefeld', ['336', '3371', '3372', '3373']],
+        ];
     }
 
     /** @return array<string, array{0:string,1:string,2:string}> */

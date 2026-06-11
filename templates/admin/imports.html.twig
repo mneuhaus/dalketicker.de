@@ -43,7 +43,7 @@
                     <tr class="{{ source.enabled ? '' : 'opacity-50' }}">
                         <td class="px-4 py-3">
                             <div class="flex items-center gap-1.5 flex-wrap">
-                                <a href="{{ path('admin_source', {id: source.id}) }}" class="font-medium text-ink hover:text-brand-700 hover:underline">{{ source.name }}</a>
+                                <a href="{{ path('admin_source', admin_region_params({id: source.id})) }}" class="font-medium text-ink hover:text-brand-700 hover:underline">{{ source.name }}</a>
                                 {% if source.factsOnly %}
                                     <span class="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800" title="Aggregator">Aggr.</span>
                                 {% else %}
@@ -63,11 +63,11 @@
                                     {% endif %}
                                 {% endif %}
                             </div>
-                            <div class="text-xs text-ink/40">{{ source.key }}{% if not source.enabled %} · inaktiv{% endif %}</div>
+                            <div class="text-xs text-ink/40">{{ source.region.siteName }} · {{ source.key }}{% if not source.enabled %} · inaktiv{% endif %}</div>
                         </td>
                         <td class="px-4 py-3 text-ink/60">{{ source.importer }}</td>
                         <td class="px-4 py-3 text-ink/60">
-                            {% if run %}<a href="{{ path('admin_import_run', {id: run.id}) }}" class="text-brand-700 hover:underline">{{ run.startedAt|de_date }}, {{ run.startedAt|date('H:i') }}</a>{% else %}–{% endif %}
+                            {% if run %}<a href="{{ path('admin_import_run', admin_region_params({id: run.id})) }}" class="text-brand-700 hover:underline">{{ run.startedAt|de_date }}, {{ run.startedAt|date('H:i') }}</a>{% else %}–{% endif %}
                         </td>
                         <td class="px-4 py-3">{{ run ? ui.status_badge(run.status) : '<span class="text-ink/30">noch nie</span>'|raw }}</td>
                         <td class="px-4 py-3 text-right tabular-nums">
@@ -85,13 +85,13 @@
 
     <div class="flex items-baseline justify-between mb-2">
         <h2 class="font-[family-name:var(--font-display)] text-lg font-bold text-ink">Verlauf</h2>
-        <span class="text-xs text-ink/40">chronologisch über alle Quellen · für Details anklicken</span>
+        <span class="text-xs text-ink/40">chronologisch {{ admin_region_key == 'all' ? 'über alle Quellen' : 'für diese Region' }} · für Details anklicken</span>
     </div>
     <div class="bg-white rounded-2xl border border-black/5 shadow-sm divide-y divide-black/5">
         {% for run in recent %}
-            <a href="{{ path('admin_import_run', {id: run.id}) }}" class="flex items-center gap-4 px-4 py-2.5 text-sm hover:bg-black/[0.02] transition">
+            <a href="{{ path('admin_import_run', admin_region_params({id: run.id})) }}" class="flex items-center gap-4 px-4 py-2.5 text-sm hover:bg-black/[0.02] transition">
                 <span class="text-ink/40 text-xs w-28 shrink-0">{{ run.startedAt|de_date }} {{ run.startedAt|date('H:i') }}</span>
-                <span class="font-medium text-ink flex-1 truncate">{{ run.source.name }}</span>
+                <span class="font-medium text-ink flex-1 truncate">{{ run.source.region.siteName }} · {{ run.source.name }}</span>
                 {{ ui.status_badge(run.status) }}
                 <span class="text-ink/50 tabular-nums w-44 text-right">{{ run.seen }} ges. · {{ run.created }} neu · {{ run.errors }} Fehler</span>
             </a>

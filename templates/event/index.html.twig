@@ -2,7 +2,7 @@
 
 {# Let calendar apps auto-discover the (full) subscribable feed. #}
 {% block head_links %}
-    <link rel="alternate" type="text/calendar" title="dalketicker – Veranstaltungen Kreis Gütersloh" href="{{ url('event_feed') }}">
+    <link rel="alternate" type="text/calendar" title="{{ site_name }} – Veranstaltungen {{ current_region.areaInPhrase }}" href="{{ url('event_feed') }}">
 {% endblock %}
 
 {% block content %}

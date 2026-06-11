@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Repository;
 
 use App\Entity\ImportRun;
+use App\Entity\Region;
 use App\Entity\Source;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
@@ -20,10 +21,15 @@ class ImportRunRepository extends ServiceEntityRepository
     }
 
     /** @return ImportRun[] */
-    public function findRecent(int $limit = 100): array
+    public function findRecent(int $limit = 100, ?Region $region = null): array
     {
-        return $this->createQueryBuilder('r')
-            ->leftJoin('r.source', 's')->addSelect('s')
+        $qb = $this->createQueryBuilder('r')
+            ->leftJoin('r.source', 's')->addSelect('s');
+        if ($region !== null) {
+            $qb->andWhere('s.region = :region')->setParameter('region', $region);
+        }
+
+        return $qb
             ->orderBy('r.startedAt', 'DESC')
             ->setMaxResults($limit)
             ->getQuery()
@@ -35,11 +41,16 @@ class ImportRunRepository extends ServiceEntityRepository
      *
      * @return array<int, ImportRun>
      */
-    public function findLatestPerSource(): array
+    public function findLatestPerSource(?Region $region = null): array
     {
+        $qb = $this->createQueryBuilder('r')
+            ->leftJoin('r.source', 's')->addSelect('s');
+        if ($region !== null) {
+            $qb->andWhere('s.region = :region')->setParameter('region', $region);
+        }
+
         /** @var ImportRun[] $runs */
-        $runs = $this->createQueryBuilder('r')
-            ->leftJoin('r.source', 's')->addSelect('s')
+        $runs = $qb
             ->orderBy('r.startedAt', 'DESC')
             ->getQuery()
             ->getResult();

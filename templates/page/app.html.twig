@@ -1,16 +1,16 @@
 {% extends 'base.html.twig' %}
 
 {% block title %}Als App speichern – {{ site_name }}{% endblock %}
-{% block meta_description %}dalketicker lässt sich wie eine App auf dem Homescreen ablegen – ohne Store, ohne Installation.{% endblock %}
+{% block meta_description %}{{ site_name }} lässt sich wie eine App auf dem Homescreen ablegen – ohne Store, ohne Installation.{% endblock %}
 
 {% block body %}
     <article class="max-w-2xl mx-auto">
         <div class="flex items-center gap-3 mb-4">
             <img src="/icons/icon-192.png" alt="" width="48" height="48" class="w-12 h-12 rounded-xl shadow-sm">
-            <h1 class="font-[family-name:var(--font-display)] text-3xl font-extrabold tracking-tight text-ink">dalketicker als App</h1>
+            <h1 class="font-[family-name:var(--font-display)] text-3xl font-extrabold tracking-tight text-ink">{{ site_name }} als App</h1>
         </div>
         <p class="text-ink/70 leading-relaxed mb-8">
-            Du kannst dalketicker wie eine App auf deinem Homescreen ablegen – ohne App-Store, ohne echte Installation.
+            Du kannst {{ site_name }} wie eine App auf deinem Homescreen ablegen – ohne App-Store, ohne echte Installation.
             Es öffnet sich dann im Vollbild, ganz ohne Browser-Leiste.
         </p>
 
@@ -38,7 +38,7 @@
                 <ol class="list-decimal list-inside space-y-1 text-ink/70 text-sm leading-relaxed">
                     <li>Oben auf das <strong class="text-ink/80">Menü ⋮</strong> tippen.</li>
                     <li><strong class="text-ink/80">„App installieren"</strong> bzw. <strong class="text-ink/80">„Zum Startbildschirm hinzufügen"</strong> wählen.</li>
-                    <li>Bestätigen – dalketicker liegt dann als Icon auf dem Homescreen.</li>
+                    <li>Bestätigen – {{ site_name }} liegt dann als Icon auf dem Homescreen.</li>
                 </ol>
                 <p class="text-xs text-ink/45 mt-3">Tipp: Wenn der Button oben erscheint, geht’s auch mit einem Tipp.</p>
             </section>

@@ -1,4 +1,4 @@
-# Production deployment for dalketicker.de (www + dalketicker.neuhaus.nrw 301 → apex).
+# Production deployment for dalketicker.de plus temporary regional aliases.
 # Runs on the shared host behind Traefik (external network "web", certresolver "neuhaus").
 #   docker compose -f docker-compose.prod.yml up -d --build
 # Secrets (APP_SECRET, DB_PASSWORD) come from a sibling .env file (not committed).
@@ -57,11 +57,11 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=web"
-      # Primary domain — serves the app (https only; http handled by the redirect router below).
+      # Canonical domains for live regional tickers — one app, region selected by Host.
       - "traefik.http.routers.dalketicker.entrypoints=websecure"
       - "traefik.http.routers.dalketicker.tls=true"
       - "traefik.http.routers.dalketicker.tls.certresolver=neuhaus"
-      - "traefik.http.routers.dalketicker.rule=Host(`dalketicker.de`)"
+      - "traefik.http.routers.dalketicker.rule=Host(`dalketicker.de`) || Host(`paderticker.neuhaus.nrw`) || Host(`sparrenticker.neuhaus.nrw`) || Host(`weserticker.neuhaus.nrw`)"
       # Retry on the healthy replica if a request hits the old container while
       # it's being torn down during a blue-green swap → no visible 502/504.
       - "traefik.http.routers.dalketicker.middlewares=dalketicker-retry"
@@ -75,20 +75,29 @@ services:
       - "traefik.http.services.dalketicker.loadbalancer.healthcheck.path=/healthz"
       - "traefik.http.services.dalketicker.loadbalancer.healthcheck.interval=1s"
       - "traefik.http.services.dalketicker.loadbalancer.healthcheck.timeout=2s"
-      # Aliases (www + old test domain) → 301 to the canonical apex domain.
-      - "traefik.http.routers.dalketicker-redirect.entrypoints=websecure"
-      - "traefik.http.routers.dalketicker-redirect.tls=true"
-      - "traefik.http.routers.dalketicker-redirect.tls.certresolver=neuhaus"
-      - "traefik.http.routers.dalketicker-redirect.rule=Host(`www.dalketicker.de`) || Host(`dalketicker.neuhaus.nrw`)"
-      - "traefik.http.routers.dalketicker-redirect.service=dalketicker"
-      - "traefik.http.routers.dalketicker-redirect.middlewares=dalketicker-toapex"
-      - "traefik.http.middlewares.dalketicker-toapex.redirectregex.regex=^https?://[^/]+/(.*)"
-      - "traefik.http.middlewares.dalketicker-toapex.redirectregex.replacement=https://dalketicker.de/$${1}"
-      - "traefik.http.middlewares.dalketicker-toapex.redirectregex.permanent=true"
+      # www alias → apex. Old test domain → dalketicker.de.
+      - "traefik.http.routers.dalketicker-www-redirect.entrypoints=websecure"
+      - "traefik.http.routers.dalketicker-www-redirect.tls=true"
+      - "traefik.http.routers.dalketicker-www-redirect.tls.certresolver=neuhaus"
+      - "traefik.http.routers.dalketicker-www-redirect.rule=Host(`www.dalketicker.de`)"
+      - "traefik.http.routers.dalketicker-www-redirect.service=dalketicker"
+      - "traefik.http.routers.dalketicker-www-redirect.middlewares=dalketicker-strip-www"
+      - "traefik.http.middlewares.dalketicker-strip-www.redirectregex.regex=^https?://www\\.([^/]+)/(.*)"
+      - "traefik.http.middlewares.dalketicker-strip-www.redirectregex.replacement=https://$${1}/$${2}"
+      - "traefik.http.middlewares.dalketicker-strip-www.redirectregex.permanent=true"
+      - "traefik.http.routers.dalketicker-old-redirect.entrypoints=websecure"
+      - "traefik.http.routers.dalketicker-old-redirect.tls=true"
+      - "traefik.http.routers.dalketicker-old-redirect.tls.certresolver=neuhaus"
+      - "traefik.http.routers.dalketicker-old-redirect.rule=Host(`dalketicker.neuhaus.nrw`)"
+      - "traefik.http.routers.dalketicker-old-redirect.service=dalketicker"
+      - "traefik.http.routers.dalketicker-old-redirect.middlewares=dalketicker-to-dalke"
+      - "traefik.http.middlewares.dalketicker-to-dalke.redirectregex.regex=^https?://[^/]+/(.*)"
+      - "traefik.http.middlewares.dalketicker-to-dalke.redirectregex.replacement=https://dalketicker.de/$${1}"
+      - "traefik.http.middlewares.dalketicker-to-dalke.redirectregex.permanent=true"
       # Force http → https for all our hosts (ACME challenge on :80 is handled by
       # Traefik's resolver before routers, so renewals keep working).
       - "traefik.http.routers.dalketicker-http.entrypoints=web"
-      - "traefik.http.routers.dalketicker-http.rule=Host(`dalketicker.de`) || Host(`www.dalketicker.de`) || Host(`dalketicker.neuhaus.nrw`)"
+      - "traefik.http.routers.dalketicker-http.rule=Host(`dalketicker.de`) || Host(`www.dalketicker.de`) || Host(`dalketicker.neuhaus.nrw`) || Host(`paderticker.neuhaus.nrw`) || Host(`sparrenticker.neuhaus.nrw`) || Host(`weserticker.neuhaus.nrw`)"
       - "traefik.http.routers.dalketicker-http.service=dalketicker"
       - "traefik.http.routers.dalketicker-http.middlewares=dalketicker-https"
       # Calendar apps subscribe via webcal://, which resolves to plain http; many
@@ -96,7 +105,7 @@ services:
       # empty subscription. So serve the feed directly over http too (higher
       # priority than the redirect router). It's public, cookieless data.
       - "traefik.http.routers.dalketicker-feed.entrypoints=web"
-      - "traefik.http.routers.dalketicker-feed.rule=Host(`dalketicker.de`) && Path(`/kalender.ics`)"
+      - "traefik.http.routers.dalketicker-feed.rule=(Host(`dalketicker.de`) || Host(`paderticker.neuhaus.nrw`) || Host(`sparrenticker.neuhaus.nrw`) || Host(`weserticker.neuhaus.nrw`)) && Path(`/kalender.ics`)"
       - "traefik.http.routers.dalketicker-feed.service=dalketicker"
       - "traefik.http.routers.dalketicker-feed.priority=1000"
       - "traefik.http.middlewares.dalketicker-https.redirectscheme.scheme=https"
@@ -111,6 +120,12 @@ services:
     restart: always
     logging: *default-logging
     command: ["bash", "docker/cron.sh"]
+    healthcheck:
+      test: ["CMD-SHELL", "tr '\\0' ' ' < /proc/1/cmdline | grep -q 'bash docker/cron.sh'"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
     environment:
       <<: *app-environment
       # cron.sh schedules by wall-clock time via `date`; the image defaults to

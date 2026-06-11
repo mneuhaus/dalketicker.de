@@ -162,7 +162,18 @@ final class JsonLdImporter implements SourceImporter
         try {
             return json_decode($raw, true, 64, \JSON_THROW_ON_ERROR);
         } catch (\JsonException) {
-            return null;
+            // Some EventON/WordPress installs emit almost-JSON-LD with trailing
+            // commas in arrays/objects. Keep the repair deliberately narrow.
+            $repaired = preg_replace('/,\s*([\]}])/m', '$1', $raw) ?? $raw;
+            if ($repaired === $raw) {
+                return null;
+            }
+
+            try {
+                return json_decode($repaired, true, 64, \JSON_THROW_ON_ERROR);
+            } catch (\JsonException) {
+                return null;
+            }
         }
     }
 
@@ -462,7 +473,7 @@ final class JsonLdImporter implements SourceImporter
         $tz = new \DateTimeZone('Europe/Berlin');
 
         // ISO 8601 (with or without time/offset) is the schema.org default.
-        if (preg_match('#^\d{4}-\d{2}-\d{2}#', $value)) {
+        if (preg_match('#^\d{4}-\d{1,2}-\d{1,2}#', $value)) {
             try {
                 $date = new \DateTimeImmutable($value, $tz);
 

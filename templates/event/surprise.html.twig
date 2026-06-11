@@ -1,7 +1,7 @@
 {% extends 'base.html.twig' %}
 
 {% block title %}Überrasch mich – {{ site_name }}{% endblock %}
-{% block meta_description %}Keine Idee? Lass dir zufällig eine Veranstaltung für heute im Kreis Gütersloh vorschlagen.{% endblock %}
+{% block meta_description %}Keine Idee? Lass dir zufällig eine Veranstaltung für heute {{ current_region.areaInPhrase }} vorschlagen.{% endblock %}
 
 {% block body %}
     <div class="max-w-md md:max-w-2xl mx-auto">

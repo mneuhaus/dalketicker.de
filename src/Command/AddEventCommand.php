@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\Importer\ImportedEvent;
+use App\Repository\RegionRepository;
 use App\Repository\SourceRepository;
 use App\Service\EventImporter;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -32,6 +33,7 @@ final class AddEventCommand extends Command
 {
     public function __construct(
         private readonly SourceRepository $sources,
+        private readonly RegionRepository $regions,
         private readonly EventImporter $importer,
     ) {
         parent::__construct();
@@ -41,6 +43,7 @@ final class AddEventCommand extends Command
     {
         $this
             ->addOption('source', null, InputOption::VALUE_REQUIRED, 'Quellen-Key (z. B. sv_pavenstaedt)')
+            ->addOption('region', null, InputOption::VALUE_REQUIRED, 'Region-Key, falls der Quellen-Key nicht global eindeutig ist')
             ->addOption('title', null, InputOption::VALUE_REQUIRED, 'Titel')
             ->addOption('date', null, InputOption::VALUE_REQUIRED, 'Startdatum (YYYY-MM-DD oder DD.MM.YYYY)')
             ->addOption('time', null, InputOption::VALUE_REQUIRED, 'Startuhrzeit HH:MM (leer = ganztägig)')
@@ -61,6 +64,7 @@ final class AddEventCommand extends Command
         $tz = new \DateTimeZone('Europe/Berlin');
 
         $sourceKey = (string) $input->getOption('source');
+        $regionKey = trim((string) $input->getOption('region'));
         $title = trim((string) $input->getOption('title'));
         if ($sourceKey === '' || $title === '') {
             $io->error('--source und --title sind erforderlich.');
@@ -68,7 +72,14 @@ final class AddEventCommand extends Command
             return Command::INVALID;
         }
 
-        $source = $this->sources->findByKey($sourceKey);
+        $region = $regionKey !== '' ? $this->regions->findByKey($regionKey) : null;
+        if ($regionKey !== '' && $region === null) {
+            $io->error(sprintf('Region "%s" nicht gefunden.', $regionKey));
+
+            return Command::FAILURE;
+        }
+
+        $source = $this->sources->findByKey($sourceKey, $region);
         if ($source === null) {
             $io->error(sprintf('Quelle "%s" nicht gefunden.', $sourceKey));
 

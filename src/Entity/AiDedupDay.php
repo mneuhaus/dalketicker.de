@@ -17,6 +17,10 @@ use Doctrine\ORM\Mapping as ORM;
 class AiDedupDay
 {
     #[ORM\Id]
+    #[ORM\Column(length: 64)]
+    private string $regionKey;
+
+    #[ORM\Id]
     #[ORM\Column(length: 10)]
     private string $day; // 'Y-m-d'
 
@@ -26,11 +30,17 @@ class AiDedupDay
     #[ORM\Column(type: Types::DATETIME_IMMUTABLE)]
     private \DateTimeImmutable $reviewedAt;
 
-    public function __construct(string $day, string $fingerprint, \DateTimeImmutable $reviewedAt)
+    public function __construct(string $regionKey, string $day, string $fingerprint, \DateTimeImmutable $reviewedAt)
     {
+        $this->regionKey = $regionKey;
         $this->day = $day;
         $this->fingerprint = $fingerprint;
         $this->reviewedAt = $reviewedAt;
+    }
+
+    public function getRegionKey(): string
+    {
+        return $this->regionKey;
     }
 
     public function getDay(): string
