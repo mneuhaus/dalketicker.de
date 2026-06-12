@@ -262,7 +262,7 @@ final class CatalogSeeder
                 'areaName' => 'Kreis Minden-Lübbecke',
                 'tagline' => 'Was läuft im Kreis Minden-Lübbecke',
                 'canonicalHost' => 'weserticker.neuhaus.nrw',
-                'hostAliases' => ['weserticker.de', 'www.weserticker.de', 'weserticker.traefik.me'],
+                'hostAliases' => ['weserticker.de', 'www.weserticker.de', 'veserticker.de', 'www.veserticker.de', 'weserticker.traefik.me'],
                 'themeColor' => '#527d08',
                 'logoLetter' => 'w',
                 'defaultCity' => 'Kreis Minden-Lübbecke',
