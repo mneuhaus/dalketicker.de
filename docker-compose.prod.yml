@@ -101,18 +101,6 @@ services:
       - "traefik.http.routers.weserticker-www-domain.rule=Host(`www.weserticker.de`)"
       - "traefik.http.routers.weserticker-www-domain.service=dalketicker"
       - "traefik.http.routers.weserticker-www-domain.middlewares=dalketicker-retry"
-      - "traefik.http.routers.veserticker-domain.entrypoints=websecure"
-      - "traefik.http.routers.veserticker-domain.tls=true"
-      - "traefik.http.routers.veserticker-domain.tls.certresolver=neuhaus"
-      - "traefik.http.routers.veserticker-domain.rule=Host(`veserticker.de`)"
-      - "traefik.http.routers.veserticker-domain.service=dalketicker"
-      - "traefik.http.routers.veserticker-domain.middlewares=dalketicker-retry"
-      - "traefik.http.routers.veserticker-www-domain.entrypoints=websecure"
-      - "traefik.http.routers.veserticker-www-domain.tls=true"
-      - "traefik.http.routers.veserticker-www-domain.tls.certresolver=neuhaus"
-      - "traefik.http.routers.veserticker-www-domain.rule=Host(`www.veserticker.de`)"
-      - "traefik.http.routers.veserticker-www-domain.service=dalketicker"
-      - "traefik.http.routers.veserticker-www-domain.middlewares=dalketicker-retry"
       # Retry on the healthy replica if a request hits the old container while
       # it's being torn down during a blue-green swap → no visible 502/504.
       - "traefik.http.routers.dalketicker.middlewares=dalketicker-retry"
@@ -148,7 +136,7 @@ services:
       # Force http → https for all our hosts (ACME challenge on :80 is handled by
       # Traefik's resolver before routers, so renewals keep working).
       - "traefik.http.routers.dalketicker-http.entrypoints=web"
-      - "traefik.http.routers.dalketicker-http.rule=Host(`dalketicker.de`) || Host(`www.dalketicker.de`) || Host(`dalketicker.neuhaus.nrw`) || Host(`paderticker.neuhaus.nrw`) || Host(`sparrenticker.neuhaus.nrw`) || Host(`weserticker.neuhaus.nrw`) || Host(`paderticker.de`) || Host(`www.paderticker.de`) || Host(`sparrenticker.de`) || Host(`www.sparrenticker.de`) || Host(`weserticker.de`) || Host(`www.weserticker.de`) || Host(`veserticker.de`) || Host(`www.veserticker.de`)"
+      - "traefik.http.routers.dalketicker-http.rule=Host(`dalketicker.de`) || Host(`www.dalketicker.de`) || Host(`dalketicker.neuhaus.nrw`) || Host(`paderticker.neuhaus.nrw`) || Host(`sparrenticker.neuhaus.nrw`) || Host(`weserticker.neuhaus.nrw`) || Host(`paderticker.de`) || Host(`www.paderticker.de`) || Host(`sparrenticker.de`) || Host(`www.sparrenticker.de`) || Host(`weserticker.de`) || Host(`www.weserticker.de`)"
       - "traefik.http.routers.dalketicker-http.service=dalketicker"
       - "traefik.http.routers.dalketicker-http.middlewares=dalketicker-https"
       # Calendar apps subscribe via webcal://, which resolves to plain http; many
@@ -156,7 +144,7 @@ services:
       # empty subscription. So serve the feed directly over http too (higher
       # priority than the redirect router). It's public, cookieless data.
       - "traefik.http.routers.dalketicker-feed.entrypoints=web"
-      - "traefik.http.routers.dalketicker-feed.rule=(Host(`dalketicker.de`) || Host(`paderticker.neuhaus.nrw`) || Host(`sparrenticker.neuhaus.nrw`) || Host(`weserticker.neuhaus.nrw`) || Host(`paderticker.de`) || Host(`www.paderticker.de`) || Host(`sparrenticker.de`) || Host(`www.sparrenticker.de`) || Host(`weserticker.de`) || Host(`www.weserticker.de`) || Host(`veserticker.de`) || Host(`www.veserticker.de`)) && Path(`/kalender.ics`)"
+      - "traefik.http.routers.dalketicker-feed.rule=(Host(`dalketicker.de`) || Host(`paderticker.neuhaus.nrw`) || Host(`sparrenticker.neuhaus.nrw`) || Host(`weserticker.neuhaus.nrw`) || Host(`paderticker.de`) || Host(`www.paderticker.de`) || Host(`sparrenticker.de`) || Host(`www.sparrenticker.de`) || Host(`weserticker.de`) || Host(`www.weserticker.de`)) && Path(`/kalender.ics`)"
       - "traefik.http.routers.dalketicker-feed.service=dalketicker"
       - "traefik.http.routers.dalketicker-feed.priority=1000"
       - "traefik.http.middlewares.dalketicker-https.redirectscheme.scheme=https"
