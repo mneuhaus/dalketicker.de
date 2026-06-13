@@ -4,7 +4,7 @@
 {% block meta_description %}{{ event.description ? event.description|striptags|slice(0, 160) : event.title }}{% endblock %}
 {# Share preview: this event's own image + title. #}
 {% block og_title %}{{ event.title }}{% endblock %}
-{% block og_image %}{% if event.imageUrl and not event.isFactsOnly %}{{ app.request.schemeAndHttpHost }}{{ path('image_proxy', {id: event.id}) }}{% else %}{{ parent() }}{% endif %}{% endblock %}
+{% block og_image %}{% if event.canShowImage %}{{ app.request.schemeAndHttpHost }}{{ path('image_proxy', {id: event.id}) }}{% else %}{{ parent() }}{% endif %}{% endblock %}
 
 {# Structured data for Google's event rich results. #}
 {% block head_links %}<script type="application/ld+json">{{ jsonLd|raw }}</script>{% endblock %}
@@ -21,9 +21,9 @@
 {% macro neighbor(e, filter) %}
     <a href="{{ path('event_show', {id: e.id, slug: e.slug}|merge(filter.toQueryParams|default({}))) }}"
        class="flex gap-3 rounded-xl border border-black/5 bg-white p-2.5 hover:border-brand-200 hover:shadow-sm transition">
-        {% if e.imageUrl %}
+        {% if e.canShowImage %}
             <div class="shrink-0 w-14 h-14 rounded-lg overflow-hidden bg-black/5">
-                <img src="{{ path('image_proxy', {id: e.id}) }}" alt="" loading="lazy" class="w-full h-full object-cover">
+                <img src="{{ path('image_proxy', {id: e.id}) }}" alt="Bild: {{ e.source.name }}" loading="lazy" class="w-full h-full object-cover">
             </div>
         {% endif %}
         <div class="min-w-0">
@@ -60,9 +60,17 @@
         {# Left column: the detail box + the previous/next row beneath it #}
         <div class="min-w-0">
             <article data-evdetail class="evdetail bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden">
-                {% if event.imageUrl and not event.isFactsOnly %}
+                {% if event.canShowImage %}
                     <div class="evimg-wrap">
-                        <img data-evimg src="{{ path('image_proxy', {id: event.id}) }}" alt="" class="evimg">
+                        <img data-evimg src="{{ path('image_proxy', {id: event.id}) }}" alt="Bild: {{ event.source.name }}" class="evimg">
+                        <p class="mt-1.5 text-xs text-ink/40">
+                            Bild:
+                            {% if event.sourceUrl matches '#^https?://#' %}
+                                <a href="{{ event.sourceUrl }}" target="_blank" rel="noopener" class="hover:text-ink/60 hover:underline">{{ event.source.name }}</a>
+                            {% else %}
+                                {{ event.source.name }}
+                            {% endif %}
+                        </p>
                     </div>
                 {% endif %}
 

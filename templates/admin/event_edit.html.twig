@@ -89,9 +89,20 @@
             </div>
 
             {% if event.imageUrl %}
+                {# Preview loads the raw source URL: the public proxy only serves
+                   images we may actually show (approved, non-facts-only). #}
                 <div>
                     <span class="block text-xs font-semibold uppercase tracking-wide text-ink/40 mb-1">Bild-Vorschau</span>
-                    <img src="{{ path('image_proxy', {id: event.id}) }}" alt="" class="max-h-48 rounded-xl border border-black/5">
+                    <img src="{{ event.imageUrl }}" alt="" class="max-h-48 rounded-xl border border-black/5">
+                    <p class="mt-1 text-xs {{ event.canShowImage ? 'text-emerald-700' : 'text-amber-700' }}">
+                        {% if event.canShowImage %}
+                            Öffentlich sichtbar – mit Bildnachweis „{{ event.source.name }}".
+                        {% elseif event.isFactsOnly %}
+                            Nicht öffentlich – Sammelquelle (nur Fakten, keine Bilder).
+                        {% else %}
+                            Nur Vorschau – Quelle nicht freigegeben, Bild wird öffentlich nicht gezeigt.
+                        {% endif %}
+                    </p>
                 </div>
             {% endif %}
 

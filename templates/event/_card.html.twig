@@ -67,11 +67,14 @@
     {%- if not series and multiDay %} · bis {{ event.endsAt|de_date }}{% endif -%}
 {% endset %}
 <article data-event-card="{{ event.id }}" class="card-media group relative rounded-2xl border border-black/5 bg-white shadow-sm overflow-hidden transition hover:shadow-md hover:border-black/10 {{ soldOut ? 'opacity-60' }}">
-    {# Facts-only (aggregator) sources: no foreign image or text — just facts. #}
-    {% set showImage = event.imageUrl and not event.isFactsOnly %}
+    {# No foreign image for facts-only (aggregator) sources, nor for sources
+       without a recorded publishing permission. Where we do show one, it carries
+       a visible credit (§ 13 UrhG). #}
+    {% set showImage = event.canShowImage %}
     {% if showImage %}
-        <div class="cm-img">
-            <img src="{{ path('image_proxy', {id: event.id}) }}" alt="" loading="lazy" class="cm-img-el">
+        <div class="cm-img relative">
+            <img src="{{ path('image_proxy', {id: event.id}) }}" alt="Bild: {{ event.source.name }}" loading="lazy" class="cm-img-el">
+            <span class="pointer-events-none absolute bottom-[.75rem] right-[.75rem] max-w-[calc(100%-1.5rem)] truncate rounded bg-black/45 px-1 py-px text-[10px] leading-tight text-white/90">Bild: {{ event.source.name }}</span>
         </div>
     {% endif %}
     {{ bookmark }}

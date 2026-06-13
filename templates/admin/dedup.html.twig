@@ -12,7 +12,8 @@
         {% if event %}
             <div class="aspect-[16/9] bg-black/5">
                 {% if event.imageUrl %}
-                    <img src="{{ path('image_proxy', {id: event.id}) }}" alt="" loading="lazy" class="w-full h-full object-cover">
+                    {# Raw source URL (admin preview): the proxy only serves images cleared for public display. #}
+                    <img src="{{ event.imageUrl }}" alt="" loading="lazy" class="w-full h-full object-cover">
                 {% else %}
                     <div class="w-full h-full flex items-center justify-center text-ink/25 text-xs">kein Bild</div>
                 {% endif %}

@@ -16,10 +16,18 @@
                     {% set color = event.category ? event.category.color : 'var(--color-brand-600)' %}
                     <article data-surprise-card data-url="{{ path('event_show', {id: event.id, slug: event.slug}) }}"
                              class="surprise-card rounded-2xl border border-black/5 bg-white shadow-sm overflow-hidden">
-                        {% if event.imageUrl and not event.isFactsOnly %}
+                        {% if event.canShowImage %}
                             <div class="bg-black/[0.03] flex items-center justify-center">
-                                <img data-fitcap src="{{ path('image_proxy', {id: event.id}) }}" alt="" loading="lazy" class="fitcap">
+                                <img data-fitcap src="{{ path('image_proxy', {id: event.id}) }}" alt="Bild: {{ event.source.name }}" loading="lazy" class="fitcap">
                             </div>
+                            <p class="px-5 pt-2 text-xs text-ink/40">
+                                Bild:
+                                {% if event.sourceUrl matches '#^https?://#' %}
+                                    <a href="{{ event.sourceUrl }}" target="_blank" rel="noopener" class="hover:text-ink/60 hover:underline">{{ event.source.name }}</a>
+                                {% else %}
+                                    {{ event.source.name }}
+                                {% endif %}
+                            </p>
                         {% endif %}
                         <div class="p-5">
                             <div class="flex items-center justify-between gap-2 mb-2">

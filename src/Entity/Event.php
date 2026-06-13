@@ -374,6 +374,23 @@ class Event
         return $this->source->isFactsOnly();
     }
 
+    /**
+     * Whether we may publicly display this event's image: there has to be one,
+     * the source must not be facts-only (aggregator), and we need a recorded
+     * publishing permission ("Freigabe", {@see Source::isApproved()}). We show a
+     * third-party image only where the rights are cleared — re-hosting and
+     * displaying it is a Vervielfältigung + öffentliche Zugänglichmachung
+     * (§§ 16, 19a UrhG), and even a licensed image needs attribution (§ 13).
+     * Admins still preview an unapproved image in the backend (from the raw
+     * source URL, not through the proxy) to decide on the Freigabe.
+     */
+    public function canShowImage(): bool
+    {
+        return $this->imageUrl !== null && $this->imageUrl !== ''
+            && !$this->isFactsOnly()
+            && $this->source->isApproved();
+    }
+
     public function getSourceUrl(): ?string
     {
         return $this->sourceUrl;

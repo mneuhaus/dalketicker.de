@@ -40,9 +40,13 @@ final class ImageProxyController extends AbstractController
     public function image(int $id): Response
     {
         $event = $this->events->findVisible($id, $this->regions->current());
-        // Facts-only (aggregator) sources: never serve their images, even if a
-        // URL is guessed directly — the legal safeguard holds at every layer.
-        $url = ($event !== null && !$event->isFactsOnly()) ? $event->getImageUrl() : null;
+        // We only serve an image where we may actually show it: a real URL, a
+        // non-facts-only source, and a recorded publishing permission
+        // ({@see Event::canShowImage()}). The legal safeguard holds at every
+        // layer — even a directly guessed URL yields nothing for an aggregator
+        // or not-yet-cleared source. Admins preview an unapproved image via the
+        // raw source URL in the backend, not through this public proxy.
+        $url = ($event !== null && $event->canShowImage()) ? $event->getImageUrl() : null;
         if ($url === null || $url === '') {
             return $this->transparentPixel();
         }
