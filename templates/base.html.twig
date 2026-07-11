@@ -13,8 +13,8 @@
         <meta property="og:locale" content="de_DE">
         <meta property="og:title" content="{% block og_title %}{{ site_name }} – {{ site_tagline }}{% endblock %}">
         <meta property="og:description" content="{% block og_description %}{{ block('meta_description') }}{% endblock %}">
-        <meta property="og:url" content="{{ app.request.schemeAndHttpHost }}{{ app.request.pathInfo }}">
-        <meta property="og:image" content="{% block og_image %}{{ app.request.schemeAndHttpHost }}/share/status.png{% endblock %}">
+        <meta property="og:url" content="{{ current_region.baseUrl }}{{ app.request.pathInfo }}">
+        <meta property="og:image" content="{% block og_image %}{{ region_share_image() }}{% endblock %}">
         <meta name="twitter:card" content="summary_large_image">
         <meta name="twitter:title" content="{{ block('og_title') }}">
         <meta name="twitter:description" content="{{ block('og_description') }}">
@@ -25,11 +25,13 @@
     {# Installable as a home-screen app (no store; offered via the App page and the mobile badge). #}
     <link rel="manifest" href="{{ path('site_manifest') }}">
     <meta name="theme-color" content="{{ current_region.themeColor }}">
-    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+    <link rel="apple-touch-icon" href="{{ path('apple_touch_icon') }}">
     <meta name="apple-mobile-web-app-title" content="{{ site_name }}">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
-    <link rel="canonical" href="{{ app.request.schemeAndHttpHost }}{{ app.request.pathInfo }}">
+    {# Canonical/og:url always point at the region's canonical host so alias
+       hosts (www., *.neuhaus.nrw) aren't indexed as duplicate sites. #}
+    <link rel="canonical" href="{{ current_region.baseUrl }}{{ app.request.pathInfo }}">
     {% block head_links %}{% endblock %}
     {% block stylesheets %}
         {# Linked directly (not imported via JS) so the browser applies it

@@ -74,4 +74,37 @@ final class GermanDateExtensionTest extends TestCase
         self::assertSame('März', $this->extension->monthName(3));
         self::assertSame('', $this->extension->monthName(0));
     }
+
+    public function testDisplayEndShiftsTimedMidnightEndToThePreviousDay(): void
+    {
+        // 20:00-24:00 ends "at the end of the same day", not on the next one.
+        $end = $this->extension->displayEnd($this->berlin('2026-07-13 00:00'), $this->berlin('2026-07-12 20:00'));
+
+        self::assertSame('2026-07-12', $end->format('Y-m-d'));
+    }
+
+    public function testDisplayEndShiftsMultiDayMidnightEndByOneDay(): void
+    {
+        $end = $this->extension->displayEnd($this->berlin('2026-07-15 00:00'), $this->berlin('2026-07-12 10:00'));
+
+        self::assertSame('2026-07-14', $end->format('Y-m-d'));
+    }
+
+    public function testDisplayEndKeepsNonMidnightAndAllDayEnds(): void
+    {
+        $timed = $this->extension->displayEnd($this->berlin('2026-07-13 23:00'), $this->berlin('2026-07-12 20:00'));
+        self::assertSame('2026-07-13 23:00', $timed->format('Y-m-d H:i'));
+
+        // All-day ends are already stored inclusive — never shifted.
+        $allDay = $this->extension->displayEnd($this->berlin('2026-07-13 00:00'), $this->berlin('2026-07-12 00:00'), true);
+        self::assertSame('2026-07-13', $allDay->format('Y-m-d'));
+    }
+
+    public function testDisplayEndLeavesMidnightEndEqualToTheStart(): void
+    {
+        $start = $this->berlin('2026-07-12 00:00');
+
+        self::assertSame('2026-07-12', $this->extension->displayEnd($start, $start)->format('Y-m-d'));
+        self::assertNull($this->extension->displayEnd(null, $start));
+    }
 }

@@ -2,7 +2,8 @@
    Two shapes: a media card (image front-and-center, full-width banner on top)
    when the event has an image; otherwise a compact row (time column + body).
    The title link stretches over the whole card; the bookmark sits above it. #}
-{% set multiDay = event.endsAt and event.endsAt|date('Y-m-d') != event.startsAt|date('Y-m-d') %}
+{% set displayEnd = event.endsAt|de_display_end(event.startsAt, event.allDay) %}
+{% set multiDay = displayEnd and displayEnd|date('Y-m-d') != event.startsAt|date('Y-m-d') %}
 {% set showUrl = path('event_show', {id: event.id, slug: event.slug}|merge(filter.toQueryParams|default({}))) %}
 {% set soldOut = event.bookingStatus and event.bookingStatus.isSoldOut %}
 
@@ -64,7 +65,7 @@
     {%- else -%}
         {{ event.startsAt|date('H:i') }} Uhr
     {%- endif -%}
-    {%- if not series and multiDay %} · bis {{ event.endsAt|de_date }}{% endif -%}
+    {%- if not series and multiDay %} · bis {{ displayEnd|de_date }}{% endif -%}
 {% endset %}
 <article data-event-card="{{ event.id }}" class="card-media group relative rounded-2xl border border-black/5 bg-white shadow-sm overflow-hidden transition hover:shadow-md hover:border-black/10 {{ soldOut ? 'opacity-60' }}">
     {# No foreign image for facts-only (aggregator) sources, nor for sources

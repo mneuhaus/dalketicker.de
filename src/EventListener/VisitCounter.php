@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\EventListener;
 
-use App\Service\RegionContext;
+use App\Repository\RegionRepository;
 use Doctrine\DBAL\Connection;
 use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
@@ -35,7 +35,7 @@ final class VisitCounter
     public function __construct(
         private readonly Connection $db,
         private readonly ClockInterface $clock,
-        private readonly RegionContext $regions,
+        private readonly RegionRepository $regions,
         #[Autowire('%kernel.secret%')] private readonly string $secret,
     ) {
     }
@@ -67,7 +67,11 @@ final class VisitCounter
         }
 
         $day = $this->clock->now()->setTimezone(new \DateTimeZone('Europe/Berlin'))->format('Y-m-d');
-        $regionId = $this->regions->current()->getId();
+        // Resolve the region from the request host: at terminate time the
+        // request stack is already empty, so RegionContext would only work by
+        // the side effect of an earlier call having memoized the region.
+        $region = $this->regions->findByHost($request->getHost()) ?? $this->regions->findDefault();
+        $regionId = $region->getId();
         if ($regionId === null) {
             return;
         }

@@ -3,20 +3,22 @@
 <form method="get" action="{{ app.request.pathInfo }}" data-autosubmit class="space-y-6">
     {# Search #}
     <div>
-        <label class="block text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">Suche</label>
+        <label for="sidebar-q" class="block text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">Suche</label>
         <div class="relative">
-            <input type="search" name="q" value="{{ filter.q }}" placeholder="Titel, Ort, Stichwort…"
+            <input type="search" id="sidebar-q" name="q" value="{{ filter.q }}" placeholder="Titel, Ort, Stichwort…"
                    class="w-full rounded-xl border border-black/10 bg-white px-3 py-2.5 pl-9 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 outline-none">
             <svg class="w-4 h-4 absolute left-3 top-3 text-ink/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z"/></svg>
         </div>
     </div>
 
     {# Categories as coloured toggle buttons: outline when off, filled when on. #}
-    <div>
+    <div role="group" aria-labelledby="sidebar-kategorien">
         <div class="flex items-center justify-between mb-2">
-            <span class="text-xs font-semibold uppercase tracking-wide text-ink/40">Kategorien</span>
+            <span id="sidebar-kategorien" class="text-xs font-semibold uppercase tracking-wide text-ink/40">Kategorien</span>
             {% if filter.categorySlugs is not empty %}
-                <a href="{{ app.request.pathInfo }}{{ filter.q ? '?q=' ~ filter.q : '' }}" class="text-xs text-brand-700 hover:underline">alle</a>
+                {# Reset only the category selection; keep every other filter. #}
+                {% set categoryReset = filter.toQueryParams|filter((v, k) => k != 'kategorie') %}
+                <a href="{{ app.request.pathInfo }}{{ categoryReset ? '?' ~ categoryReset|url_encode : '' }}" class="text-xs text-brand-700 hover:underline">alle</a>
             {% endif %}
         </div>
         <div class="flex flex-wrap gap-1.5">
@@ -32,8 +34,8 @@
     </div>
 
     {# Courses — secondary classification toggle (only / hide). #}
-    <div>
-        <label class="block text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">Kurse</label>
+    <fieldset>
+        <legend class="block text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">Kurse</legend>
         <div class="flex flex-wrap gap-2">
             <label class="cursor-pointer {{ filter.course == 'only' ? 'chip-active' : 'chip-muted' }}">
                 <input type="radio" name="kurse" value="only" {{ filter.course == 'only' ? 'checked' }} class="sr-only">Nur Kurse
@@ -42,12 +44,12 @@
                 <input type="radio" name="kurse" value="hide" {{ filter.course == 'hide' ? 'checked' }} class="sr-only">Kurse ausblenden
             </label>
         </div>
-    </div>
+    </fieldset>
 
     {# Place — single-select tag bubbles #}
     {% if allCities is not empty %}
-        <div>
-            <label class="block text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">Ort</label>
+        <fieldset>
+            <legend class="block text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">Ort</legend>
             <div class="flex flex-wrap gap-2">
                 <label class="cursor-pointer {{ filter.city is null ? 'chip-active' : 'chip-muted' }}">
                     <input type="radio" name="ort" value="" {{ filter.city is null ? 'checked' }} class="sr-only">{{ current_region.areaName }}
@@ -58,13 +60,13 @@
                     </label>
                 {% endfor %}
             </div>
-        </div>
+        </fieldset>
     {% endif %}
 
     {# Period — quick presets + an optional custom date range (list view only). #}
     {% if view|default('list') == 'list' %}
-        <div>
-            <label class="block text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">Zeitraum</label>
+        <fieldset>
+            <legend class="block text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">Zeitraum</legend>
             <div class="flex flex-wrap gap-2">
                 {% for key, label in constant('App\\Search\\EventFilter::PERIODS') %}
                     {% set active = filter.period == key %}
@@ -81,7 +83,7 @@
                 <input type="date" name="bis" value="{{ filter.hasCustomDate and filter.to ? filter.to|date('Y-m-d') }}" aria-label="bis"
                        class="rounded-xl border border-black/10 bg-white px-2.5 py-2 text-sm focus:border-brand-500 outline-none">
             </div>
-        </div>
+        </fieldset>
     {% endif %}
 
     {# "Meine Events" lives in the top navbar. Keep its state in hidden fields so

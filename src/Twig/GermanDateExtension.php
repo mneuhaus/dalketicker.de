@@ -30,7 +30,26 @@ final class GermanDateExtension extends AbstractExtension
             new TwigFilter('de_date', $this->date(...)),
             new TwigFilter('de_time', $this->time(...)),
             new TwigFilter('de_month', $this->monthName(...)),
+            new TwigFilter('de_display_end', $this->displayEnd(...)),
         ];
+    }
+
+    /**
+     * End of an event as displayed: for timed events an end at exactly midnight
+     * means "until the end of the previous day" (same rule as the month grid),
+     * so a 20:00-24:00 event doesn't read as running into the next day.
+     */
+    public function displayEnd(?\DateTimeInterface $end, \DateTimeInterface $start, bool $allDay = false): ?\DateTimeImmutable
+    {
+        if ($end === null) {
+            return null;
+        }
+        $end = \DateTimeImmutable::createFromInterface($end);
+        if (!$allDay && $end->format('His') === '000000' && $end > $start) {
+            return $end->modify('-1 day');
+        }
+
+        return $end;
     }
 
     /** "Heute", "Morgen" or e.g. "Samstag, 31. Mai". */

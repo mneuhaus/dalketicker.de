@@ -1,10 +1,12 @@
 {% extends 'base.html.twig' %}
 
 {% block title %}{{ event.title }} – {{ site_name }}{% endblock %}
-{% block meta_description %}{{ event.description ? event.description|striptags|slice(0, 160) : event.title }}{% endblock %}
+{# Facts-only (aggregator) sources: never leak their description text — the
+   snippet falls back to bare facts (title + place), like the body/JSON-LD. #}
+{% block meta_description %}{% if event.description and not event.isFactsOnly %}{{ event.description|striptags|slice(0, 160) }}{% else %}{{ event.title }}{{ event.displayLocation ? ' – ' ~ event.displayLocation }}{% endif %}{% endblock %}
 {# Share preview: this event's own image + title. #}
 {% block og_title %}{{ event.title }}{% endblock %}
-{% block og_image %}{% if event.canShowImage %}{{ app.request.schemeAndHttpHost }}{{ path('image_proxy', {id: event.id}) }}{% else %}{{ parent() }}{% endif %}{% endblock %}
+{% block og_image %}{% if event.canShowImage %}{{ current_region.baseUrl }}{{ path('image_proxy', {id: event.id}) }}{% else %}{{ parent() }}{% endif %}{% endblock %}
 
 {# Structured data for Google's event rich results. #}
 {% block head_links %}<script type="application/ld+json">{{ jsonLd|raw }}</script>{% endblock %}
@@ -39,7 +41,8 @@
 {% block body %}
     {% import _self as ui %}
     {% set color = event.category ? event.category.color : 'var(--color-brand-600)' %}
-    {% set multiDay = event.endsAt and event.endsAt|date('Y-m-d') != event.startsAt|date('Y-m-d') %}
+    {% set displayEnd = event.endsAt|de_display_end(event.startsAt, event.allDay) %}
+    {% set multiDay = displayEnd and displayEnd|date('Y-m-d') != event.startsAt|date('Y-m-d') %}
     {% set prev = before ? before|last : null %}
     {% set next = after ? after|first : null %}
     {% set prevUrl = prev ? path('event_show', {id: prev.id, slug: prev.slug}|merge(filter.toQueryParams|default({}))) : '' %}
@@ -94,7 +97,7 @@
                     {# When — the prominent secondary line #}
                     <p class="mt-3 text-lg font-semibold text-brand-800">
                         {% if multiDay %}
-                            {{ event.startsAt|de_weekday }}, {{ event.startsAt|de_date }} – {{ event.endsAt|de_weekday }}, {{ event.endsAt|de_date(true) }}{% if not event.allDay %} · {{ event.startsAt|de_time }}{% endif %}
+                            {{ event.startsAt|de_weekday }}, {{ event.startsAt|de_date }} – {{ displayEnd|de_weekday }}, {{ displayEnd|de_date(true) }}{% if not event.allDay %} · {{ event.startsAt|de_time }}{% endif %}
                         {% else %}
                             {{ event.startsAt|de_weekday(true) }}, {{ event.startsAt|de_date(true) }}{% if not event.allDay %} · {{ event.startsAt|de_time }}{% if event.endsAt %}–{{ event.endsAt|date('H:i') }} Uhr{% endif %}{% endif %}
                         {% endif %}

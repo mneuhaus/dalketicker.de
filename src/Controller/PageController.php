@@ -10,7 +10,6 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\JsonResponse;
-use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 
@@ -76,8 +75,8 @@ final class PageController extends AbstractController
             'background_color' => '#faf9f6',
             'theme_color' => $region->getThemeColor(),
             'icons' => [
-                ['src' => '/icons/icon-192.png', 'sizes' => '192x192', 'type' => 'image/png', 'purpose' => 'any maskable'],
-                ['src' => '/icons/icon-512.png', 'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'any maskable'],
+                ['src' => $this->iconPath('icon-192.png'), 'sizes' => '192x192', 'type' => 'image/png', 'purpose' => 'any maskable'],
+                ['src' => $this->iconPath('icon-512.png'), 'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'any maskable'],
             ],
         ], Response::HTTP_OK, ['Content-Type' => 'application/manifest+json']);
     }
@@ -96,9 +95,10 @@ final class PageController extends AbstractController
     }
 
     #[Route('/robots.txt', name: 'robots_txt', methods: ['GET'])]
-    public function robots(Request $request): Response
+    public function robots(): Response
     {
-        $host = $request->getSchemeAndHttpHost();
+        // Advertise the sitemap on the canonical host, not on alias hosts.
+        $base = $this->regions->current()->getBaseUrl();
         $body = <<<TXT
             User-agent: *
             Allow: /
@@ -106,16 +106,27 @@ final class PageController extends AbstractController
             Disallow: /login
             Disallow: /logout
 
-            Sitemap: {$host}/sitemap.xml
+            Sitemap: {$base}/sitemap.xml
 
             TXT;
 
         return new Response($body, Response::HTTP_OK, ['Content-Type' => 'text/plain; charset=utf-8']);
     }
 
+    /**
+     * Web path of an app icon: public/icons/{regionKey}/{file} when a
+     * region-specific set exists, otherwise the shared default set.
+     */
+    private function iconPath(string $filename): string
+    {
+        $regional = '/icons/'.$this->regions->current()->getKey().'/'.$filename;
+
+        return is_file($this->projectDir.'/public'.$regional) ? $regional : '/icons/'.$filename;
+    }
+
     private function iconResponse(string $filename): BinaryFileResponse
     {
-        $response = new BinaryFileResponse($this->projectDir.'/public/icons/'.$filename);
+        $response = new BinaryFileResponse($this->projectDir.'/public'.$this->iconPath($filename));
         $response->headers->set('Content-Type', 'image/png');
         $response->headers->set('X-Robots-Tag', 'noindex');
         $response->setPublic();
