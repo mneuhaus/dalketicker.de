@@ -40,15 +40,21 @@ class EventRepository extends ServiceEntityRepository
         // today, so long-runners don't dominate the top with old start dates.
         $todayStart = (new \DateTimeImmutable('today', new \DateTimeZone('Europe/Berlin')));
 
-        return $qb
+        $events = $qb
             ->addSelect('CASE WHEN e.startsAt < :todayStart THEN :todayStart ELSE e.startsAt END AS HIDDEN effStart')
             ->setParameter('todayStart', $todayStart)
             ->orderBy('effStart', 'ASC')
             ->addOrderBy('e.startsAt', 'ASC')
+            // Unique tiebreaker: without it, ties (same startsAt) have no stable
+            // order and OFFSET pagination can duplicate/drop events across pages.
+            ->addOrderBy('e.id', 'ASC')
             ->setMaxResults($limit)
             ->setFirstResult($offset)
             ->getQuery()
             ->getResult();
+        $this->preloadCategories($events);
+
+        return $events;
     }
 
     public function countUpcoming(EventFilter $filter, ?Region $region = null): int
@@ -75,8 +81,8 @@ class EventRepository extends ServiceEntityRepository
         }
 
         $qb = $this->visibleQueryBuilder($filter, $region);
-        $qb->andWhere('COALESCE(e.endsAt, e.startsAt) >= :seriesFloor')
-            ->setParameter('seriesFloor', $this->seriesFloor($filter));
+        $qb->andWhere(self::stillRelevantDql('e', 'seriesFloor'));
+        $this->setRelevanceFloor($qb, 'seriesFloor', $this->seriesFloor($filter));
         if ($filter->to !== null) {
             $qb->andWhere('e.startsAt < :seriesTo')->setParameter('seriesTo', $filter->to->modify('+1 day'));
         }
@@ -134,19 +140,42 @@ class EventRepository extends ServiceEntityRepository
         }
 
         // Keep only the soonest still-upcoming occurrence of each series
-        // (same title + venue). Title/venue/course/city are series-invariant; a
-        // category filter is applied on the outer row, so the representative is
-        // still chosen among the visible occurrences.
+        // (same title + venue). The representative must be picked among the
+        // occurrences that are actually visible under the current filter —
+        // otherwise a series whose earliest occurrence doesn't match the
+        // category/search filter (categories are assigned per occurrence) or
+        // comes from a disabled source would suppress the whole series.
+        // Title/venue/city are series-invariant and need no repetition here.
+        // The :q/:categorySlugs parameters are shared with the outer query.
+        $joins = ' JOIN e2.source s2';
+        $conditions = '';
+        if ($filter->q !== null) {
+            $joins .= ' LEFT JOIN e2.venue v2';
+            $conditions .= ' AND (LOWER(e2.title) LIKE :q OR LOWER(e2.description) LIKE :q OR LOWER(v2.name) LIKE :q OR LOWER(v2.city) LIKE :q OR LOWER(s2.name) LIKE :q)';
+        }
+        if ($filter->categorySlugs !== []) {
+            $joins .= ' JOIN e2.categories c2';
+            $conditions .= ' AND c2.slug IN (:categorySlugs)';
+        }
+        if ($filter->course === 'only') {
+            $conditions .= ' AND e2.isCourse = true';
+        } elseif ($filter->course === 'hide') {
+            $conditions .= ' AND e2.isCourse = false';
+        }
+
         $qb->andWhere(
             'e.startsAt = ('
-            .'SELECT MIN(e2.startsAt) FROM '.Event::class.' e2 '
+            .'SELECT MIN(e2.startsAt) FROM '.Event::class.' e2'.$joins.' '
             .'WHERE e2.title = e.title '
             .'AND (IDENTITY(e2.venue) = IDENTITY(e.venue) OR (e2.venue IS NULL AND e.venue IS NULL)) '
             .'AND e2.region = e.region '
             .'AND e2.status = :published '
-            .'AND COALESCE(e2.endsAt, e2.startsAt) >= :seriesFloor'
+            .'AND s2.enabled = true '
+            .'AND '.self::stillRelevantDql('e2', 'seriesFloor')
+            .$conditions
             .')'
-        )->setParameter('seriesFloor', $this->seriesFloor($filter));
+        );
+        $this->setRelevanceFloor($qb, 'seriesFloor', $this->seriesFloor($filter));
     }
 
     /**
@@ -157,14 +186,18 @@ class EventRepository extends ServiceEntityRepository
      */
     public function findInRange(\DateTimeImmutable $start, \DateTimeImmutable $end, EventFilter $filter, ?Region $region = null): array
     {
-        return $this->visibleQueryBuilder($filter, $region)
+        $events = $this->visibleQueryBuilder($filter, $region)
             ->andWhere('e.startsAt < :end')
             ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :start')
             ->setParameter('start', $start)
             ->setParameter('end', $end)
             ->orderBy('e.startsAt', 'ASC')
+            ->addOrderBy('e.id', 'ASC')
             ->getQuery()
             ->getResult();
+        $this->preloadCategories($events);
+
+        return $events;
     }
 
     /**
@@ -188,7 +221,13 @@ class EventRepository extends ServiceEntityRepository
      */
     public function findAround(EventFilter $filter, Event $current, int $limit = 8, ?Region $region = null): array
     {
-        $after = $this->visibleQueryBuilder($filter, $region)
+        // Same time window and series collapse as the list — otherwise the
+        // neighbours would point at past events or collapsed occurrences the
+        // list never shows.
+        $afterQb = $this->visibleQueryBuilder($filter, $region);
+        $this->applyUpcomingWindow($afterQb, $filter);
+        $this->applySeriesCollapse($afterQb, $filter);
+        $after = $afterQb
             ->andWhere('(e.startsAt > :start OR (e.startsAt = :start AND e.id > :id))')
             ->andWhere('e.id != :id')
             ->setParameter('start', $current->getStartsAt())
@@ -197,7 +236,10 @@ class EventRepository extends ServiceEntityRepository
             ->setMaxResults($limit)
             ->getQuery()->getResult();
 
-        $before = $this->visibleQueryBuilder($filter, $region)
+        $beforeQb = $this->visibleQueryBuilder($filter, $region);
+        $this->applyUpcomingWindow($beforeQb, $filter);
+        $this->applySeriesCollapse($beforeQb, $filter);
+        $before = $beforeQb
             ->andWhere('(e.startsAt < :start OR (e.startsAt = :start AND e.id < :id))')
             ->andWhere('e.id != :id')
             ->setParameter('start', $current->getStartsAt())
@@ -223,13 +265,39 @@ class EventRepository extends ServiceEntityRepository
         $tz = new \DateTimeZone('Europe/Berlin');
         $now = new \DateTimeImmutable('now', $tz);
 
-        return $this->visibleQueryBuilder($filter, $region)
-            ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :now')
+        $qb = $this->visibleQueryBuilder($filter, $region)
+            ->andWhere(self::stillRelevantDql('e', 'now'))
             ->andWhere('e.startsAt < :until')
-            ->setParameter('now', $now)
             ->setParameter('until', $now->modify('+1 year'))
             ->orderBy('e.startsAt', 'ASC')
-            ->setMaxResults($limit)
+            ->addOrderBy('e.id', 'ASC')
+            ->setMaxResults($limit);
+        $this->setRelevanceFloor($qb, 'now', $now);
+        $events = $qb->getQuery()->getResult();
+        $this->preloadCategories($events);
+
+        return $events;
+    }
+
+    /**
+     * Batch-initialize the lazy category collections of already-loaded events in
+     * a single query (instead of one query per event when a list/feed renders
+     * them). Doctrine hydrates the fetch-joined collections onto the managed
+     * entities.
+     *
+     * @param Event[] $events
+     */
+    private function preloadCategories(array $events): void
+    {
+        if ($events === []) {
+            return;
+        }
+
+        $this->createQueryBuilder('e')
+            ->select('e', 'c')
+            ->leftJoin('e.categories', 'c')
+            ->andWhere('e.id IN (:preloadIds)')
+            ->setParameter('preloadIds', array_map(static fn (Event $e) => $e->getId(), $events))
             ->getQuery()
             ->getResult();
     }
@@ -360,12 +428,16 @@ class EventRepository extends ServiceEntityRepository
     {
         $qb = $this->createQueryBuilder('e')
             ->select('e.id AS id, e.slug AS slug, e.lastSeenAt AS lastmod')
+            ->join('e.source', 's')
             ->andWhere('e.status = :published')
-            ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :now')
+            // Disabled sources are off the site — don't advertise their URLs.
+            ->andWhere('s.enabled = true')
+            ->andWhere(self::stillRelevantDql('e', 'now'))
             ->setParameter('published', EventStatus::Published)
-            ->setParameter('now', new \DateTimeImmutable('now', new \DateTimeZone('Europe/Berlin')))
             ->orderBy('e.startsAt', 'ASC')
+            ->addOrderBy('e.id', 'ASC')
             ->setMaxResults($limit);
+        $this->setRelevanceFloor($qb, 'now', new \DateTimeImmutable('now', new \DateTimeZone('Europe/Berlin')));
         if ($region !== null) {
             $qb->andWhere('e.region = :region')->setParameter('region', $region);
         }
@@ -376,8 +448,12 @@ class EventRepository extends ServiceEntityRepository
     public function findVisible(int $id, ?Region $region = null): ?Event
     {
         $qb = $this->createQueryBuilder('e')
+            ->join('e.source', 's')
             ->andWhere('e.id = :id')
             ->andWhere('e.status = :published')
+            // Disabling a source takes its detail pages (and proxied images)
+            // offline too, not just the listings.
+            ->andWhere('s.enabled = true')
             ->setParameter('id', $id)
             ->setParameter('published', EventStatus::Published);
         if ($region !== null) {
@@ -436,9 +512,14 @@ class EventRepository extends ServiceEntityRepository
     public function findCrossSourceDuplicate(string $dedupKey, int $excludeSourceId, ?Region $region = null): ?Event
     {
         $qb = $this->createQueryBuilder('e')
+            ->join('e.source', 's')
             ->andWhere('e.dedupKey = :key')
             ->andWhere('e.source != :source')
             ->andWhere('e.status = :published')
+            // A disabled source's events are off the site — they must not act
+            // as canonical, or the new event would vanish behind an invisible
+            // duplicate target.
+            ->andWhere('s.enabled = true')
             ->setParameter('key', $dedupKey)
             ->setParameter('source', $excludeSourceId)
             ->setParameter('published', EventStatus::Published)
@@ -595,11 +676,39 @@ class EventRepository extends ServiceEntityRepository
         // saved past events still show up.
         $floor = $filter->from ?? (!$filter->onlySaved ? $now : null);
         if ($floor !== null) {
-            $qb->andWhere('COALESCE(e.endsAt, e.startsAt) >= :floor')->setParameter('floor', $floor);
+            $qb->andWhere(self::stillRelevantDql('e', 'floor'));
+            $this->setRelevanceFloor($qb, 'floor', $floor);
         }
 
         if ($filter->to !== null) {
             $qb->andWhere('e.startsAt < :to')->setParameter('to', $filter->to->modify('+1 day'));
         }
+    }
+
+    /**
+     * DQL predicate "the event still counts at the :<param> floor". A timed
+     * event with a real end time ends exactly then. All-day events and events
+     * without an end time carry midnight timestamps that mark a DAY, not a
+     * clock time — they count through the end of their last day, otherwise
+     * today's fest vanishes from "heute" one second after midnight.
+     * "Its day is not over yet" is expressed midnight-free as
+     * timestamp >= startOfDay(floor); {@see setRelevanceFloor} binds both
+     * parameters.
+     */
+    private static function stillRelevantDql(string $alias, string $param): string
+    {
+        return sprintf(
+            '((%1$s.allDay = false AND %1$s.endsAt IS NOT NULL AND %1$s.endsAt >= :%2$s)'
+            .' OR ((%1$s.allDay = true OR %1$s.endsAt IS NULL) AND COALESCE(%1$s.endsAt, %1$s.startsAt) >= :%2$sDay))',
+            $alias,
+            $param,
+        );
+    }
+
+    /** Bind the exact floor and its Berlin day floor for {@see stillRelevantDql}. */
+    private function setRelevanceFloor(QueryBuilder $qb, string $param, \DateTimeImmutable $floor): void
+    {
+        $qb->setParameter($param, $floor)
+            ->setParameter($param.'Day', $floor->setTimezone(new \DateTimeZone('Europe/Berlin'))->setTime(0, 0));
     }
 }

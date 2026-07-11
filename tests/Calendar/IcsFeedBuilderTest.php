@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Calendar;
 
 use App\Calendar\IcsFeedBuilder;
+use App\Entity\Category;
 use App\Entity\Event;
 use App\Entity\Region;
 use App\Entity\Source;
@@ -86,6 +87,17 @@ final class IcsFeedBuilderTest extends TestCase
 
         self::assertStringContainsString('DTSTART:20260701T170000Z', $ics);
         self::assertStringNotContainsString('DTEND', $ics);
+    }
+
+    public function testCategoriesAreEmittedAsCategoriesProperty(): void
+    {
+        $event = $this->event('Konzert', $this->berlin('2026-07-01 19:00'))
+            ->addCategory(new Category('Musik', 'musik'))
+            ->addCategory(new Category('Bühne', 'buehne'));
+
+        $ics = $this->builder->build([$event], 'Testkalender');
+
+        self::assertStringContainsString('CATEGORIES:Musik,Bühne', $ics);
     }
 
     public function testCalendarCarriesNameAndUidAndDetailUrl(): void

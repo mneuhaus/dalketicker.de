@@ -28,6 +28,13 @@ final class SitemapController extends AbstractController
             'events' => $events->findForSitemap(region: $region),
         ]);
 
-        return new Response($xml, Response::HTTP_OK, ['Content-Type' => 'application/xml; charset=utf-8']);
+        $response = new Response($xml, Response::HTTP_OK, ['Content-Type' => 'application/xml; charset=utf-8']);
+        // Regenerating up to 20000 URLs per crawler hit is wasteful — the
+        // sitemap may be an hour stale without any harm.
+        $response->setPublic();
+        $response->setMaxAge(3600);
+        $response->setSharedMaxAge(3600);
+
+        return $response;
     }
 }

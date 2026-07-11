@@ -11,6 +11,7 @@ use App\Repository\CategoryRepository;
 use App\Repository\EventRepository;
 use App\Search\EventFilter;
 use App\Service\RegionContext;
+use App\Twig\RegionExtension;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\HttpFoundation\Request;
@@ -28,6 +29,7 @@ final class EventController extends AbstractController
         private readonly ClockInterface $clock,
         private readonly IcsFeedBuilder $icsFeed,
         private readonly RegionContext $regions,
+        private readonly RegionExtension $regionExtension,
     ) {
     }
 
@@ -174,6 +176,11 @@ final class EventController extends AbstractController
 
         $response = new Response($ics, Response::HTTP_OK, ['Content-Type' => 'text/calendar; charset=utf-8']);
         $response->headers->set('Content-Disposition', 'inline; filename="'.$region->getSiteName().'.ics"');
+        // Nothing user-specific in the feed; let clients and the proxy absorb
+        // the frequent calendar-app polls (imports run twice a day anyway).
+        $response->setPublic();
+        $response->setMaxAge(3600);
+        $response->setSharedMaxAge(3600);
 
         return $response;
     }
@@ -249,13 +256,19 @@ final class EventController extends AbstractController
             '@context' => 'https://schema.org',
             '@type' => 'Event',
             'name' => $event->getTitle(),
-            'startDate' => $event->getStartsAt()->format('Y-m-d\TH:i:s'),
+            // All-day events get a date-only startDate per schema.org; timed
+            // ones carry the local offset so Google doesn't guess a timezone.
+            'startDate' => $event->isAllDay()
+                ? $event->getStartsAt()->format('Y-m-d')
+                : $event->getStartsAt()->format('Y-m-d\TH:i:sP'),
             'eventStatus' => 'https://schema.org/EventScheduled',
             'eventAttendanceMode' => 'https://schema.org/OfflineEventAttendanceMode',
             'url' => $url,
         ];
         if ($event->getEndsAt() !== null) {
-            $data['endDate'] = $event->getEndsAt()->format('Y-m-d\TH:i:s');
+            $data['endDate'] = $event->isAllDay()
+                ? $event->getEndsAt()->format('Y-m-d')
+                : $event->getEndsAt()->format('Y-m-d\TH:i:sP');
         }
         $venue = $event->getVenue();
         if ($venue !== null) {
@@ -295,7 +308,7 @@ final class EventController extends AbstractController
         if (!$event->isFactsOnly() && $event->getImageUrl() !== null) {
             $data['image'] = $this->generateUrl('image_proxy', ['id' => $event->getId()], UrlGeneratorInterface::ABSOLUTE_URL);
         } else {
-            $data['image'] = preg_replace('#(https?://[^/]+).*#', '$1', $url).'/share/status.png';
+            $data['image'] = $this->regionExtension->shareImage();
         }
         $desc = !$event->isFactsOnly()
             ? ($event->getSummary() ?: ($event->getDescription() !== null ? trim(strip_tags($event->getDescription())) : null))
@@ -390,6 +403,10 @@ final class EventController extends AbstractController
     private function buildMonthGrid(\DateTimeImmutable $first, array $events): array
     {
         $tz = $first->getTimezone();
+        // Visible grid window: at most six leading days back to Monday, at most
+        // six trailing days to complete the last week.
+        $gridStart = $first->modify('-6 days');
+        $gridEnd = $first->modify('last day of this month')->modify('+6 days');
         $byDay = [];
         foreach ($events as $event) {
             $start = $event->getStartsAt()->setTimezone($tz)->setTime(0, 0);
@@ -401,6 +418,15 @@ final class EventController extends AbstractController
             // exclusive DTEND back), so no further adjustment there.
             if (!$event->isAllDay() && $endsAt !== null && $endsAt->format('His') === '000000' && $end > $start) {
                 $end = $end->modify('-1 day');
+            }
+            // Clamp to the grid window, so a long-runner that started months
+            // earlier is still painted in the viewed month (the guard below is
+            // only a safety net and must not swallow it).
+            if ($start < $gridStart) {
+                $start = $gridStart;
+            }
+            if ($end > $gridEnd) {
+                $end = $gridEnd;
             }
             $cursor = $start;
             $guard = 0;
