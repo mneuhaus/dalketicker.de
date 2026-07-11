@@ -2,7 +2,10 @@
 # Daily pg_dump sidecar for the prod "db-backup" service (docker-compose.prod.yml).
 # Sleeps until the next 03:00, dumps the database in custom format (-Fc) into
 # /backups (named volume dalketicker-db-backups) and prunes dumps older than
-# 14 days. Connection settings come from the compose environment (PGHOST,
+# 14 days — but only after a verified fresh dump, so persistent failures can
+# never age out the last good backup. Each success touches /backups/.last-success;
+# the compose healthcheck flags the service unhealthy when that marker goes
+# stale. Connection settings come from the compose environment (PGHOST,
 # PGUSER, PGDATABASE, PGPASSWORD). Restore: pg_restore -d dalketicker <file>.
 # POSIX sh — runs inside postgres:16-alpine (busybox). "03:00" is Berlin
 # local time — the compose file sets TZ=Europe/Berlin (`date` honors it).
@@ -24,15 +27,31 @@ seconds_until_3am() {
 
 dump() {
     file="$BACKUP_DIR/dalketicker-$(date +%Y-%m-%d_%H%M%S).dump"
+    tmp="$file.part"
     log "Dump nach $file"
-    if pg_dump -Fc -f "$file"; then
+    # Dump to a temp name and only promote a verified result (pg_dump exit 0
+    # AND non-trivial size); the ".part" suffix keeps it out of the prune glob.
+    if pg_dump -Fc -f "$tmp" && [ "$(wc -c < "$tmp")" -ge 1024 ]; then
+        mv "$tmp" "$file"
+        touch "$BACKUP_DIR/.last-success"
         log "Fertig: $(du -h "$file" | cut -f1)"
+        # Prune ONLY after a verified fresh dump — otherwise consecutive
+        # failures would eventually delete the last remaining good backup.
+        find "$BACKUP_DIR" -name 'dalketicker-*.dump' -mtime +"$RETENTION_DAYS" -delete
     else
-        log "FEHLER: pg_dump fehlgeschlagen"
-        rm -f "$file"
+        log "FEHLER: pg_dump fehlgeschlagen oder Dump unplausibel klein — Retention uebersprungen"
+        rm -f "$tmp"
     fi
-    find "$BACKUP_DIR" -name 'dalketicker-*.dump' -mtime +"$RETENTION_DAYS" -delete
 }
+
+# Upgrade path: seed the freshness marker from the newest existing dump so a
+# recreated container is not "unhealthy" until the next nightly run.
+if [ ! -f "$BACKUP_DIR/.last-success" ]; then
+    newest=$(ls -t "$BACKUP_DIR"/dalketicker-*.dump 2>/dev/null | head -n 1)
+    if [ -n "$newest" ]; then
+        touch -r "$newest" "$BACKUP_DIR/.last-success"
+    fi
+fi
 
 # First start ever (empty volume): take an initial dump right away.
 if [ -z "$(find "$BACKUP_DIR" -name 'dalketicker-*.dump' 2>/dev/null)" ]; then

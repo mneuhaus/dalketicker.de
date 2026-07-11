@@ -207,7 +207,15 @@ services:
     container_name: dalketicker-db-backup
     restart: always
     logging: *default-logging
-    command: ["sh", "/backup.sh"]
+    command: ["sh", "/opt/scripts/backup.sh"]
+    healthcheck:
+      # Unhealthy when the last verified dump is older than ~26h; backup.sh
+      # touches /backups/.last-success after every successful pg_dump.
+      test: ["CMD-SHELL", "find /backups/.last-success -mmin -1560 | grep -q ."]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 5m
     environment:
       PGHOST: database
       PGUSER: dalke
@@ -217,7 +225,10 @@ services:
       # UTC clock would shift the dump time against Berlin local time.
       TZ: Europe/Berlin
     volumes:
-      - ./docker/backup.sh:/backup.sh:ro
+      # Whole directory instead of a single file: rsync replaces files via
+      # rename (new inode), which a file bind mount would never see. Deploys
+      # additionally force-recreate this service (make deploy/sidecars).
+      - ./docker:/opt/scripts:ro
       - dalketicker-db-backups:/backups
     depends_on:
       database:

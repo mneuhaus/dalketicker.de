@@ -51,7 +51,9 @@ services:
     volumes:
       - database_data:/var/lib/postgresql/data:rw
     ports:
-      - "5432"
+      # Loopback only — with a bare "5432" Docker would publish an ephemeral
+      # port on 0.0.0.0, exposing the dev DB (default password) to the LAN.
+      - "127.0.0.1::5432"
     networks:
       - default
 

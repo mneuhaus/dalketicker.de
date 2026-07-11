@@ -33,7 +33,10 @@ mark_today() { date +%F > "$MARKER_DIR/$1"; }
 # after the planned time. This prevents evening deploys from running nightly
 # maintenance immediately after the scheduler restarts.
 daily() {
-    local marker=$1 at=$2
+    local marker=$1 at
+    # Normalize to 4 digits ("315" -> "0315") — the 2+2 slicing below would
+    # otherwise read "315" as hour 31 and the job would never trigger.
+    at=$(printf '%04d' "$((10#$2))")
     shift 2
     local now_hm now_minutes at_minutes late_minutes
     now_hm=$(date +%H%M)
@@ -60,14 +63,14 @@ while true; do
         run dalketicker:import --all-regions --workers=4
     fi
 
-    daily dedup-ai      315 dalketicker:dedup-ai
-    daily categorize-ai 345 dalketicker:categorize-ai --apply
-    daily summarize-ai  415 dalketicker:summarize-ai --apply
-    daily rededup       445 dalketicker:rededup
+    daily dedup-ai      0315 dalketicker:dedup-ai
+    daily categorize-ai 0345 dalketicker:categorize-ai --apply
+    daily summarize-ai  0415 dalketicker:summarize-ai --apply
+    daily rededup       0445 dalketicker:rededup
 
     # Sundays: drop events their source no longer lists.
     if [ "$(date +%u)" = "7" ]; then
-        daily prune-unseen 515 dalketicker:prune-unseen --apply
+        daily prune-unseen 0515 dalketicker:prune-unseen --apply
     fi
 
     sleep 60

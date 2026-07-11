@@ -10,6 +10,10 @@ RUN install-php-extensions \
     pdo_pgsql pgsql intl opcache zip gd apcu
 
 COPY docker/php.ini /usr/local/etc/php/conf.d/app.ini
+# Prod-only override (zz- sorts after app.ini): the code is baked into the
+# image, so never stat source files for changes — dev keeps validate_timestamps=1
+# from php.ini via docker/Dockerfile.
+RUN printf 'opcache.validate_timestamps = 0\n' > /usr/local/etc/php/conf.d/zz-prod.ini
 COPY docker/Caddyfile /etc/frankenphp/Caddyfile
 
 # Composer

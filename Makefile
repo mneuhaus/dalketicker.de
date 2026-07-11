@@ -213,10 +213,20 @@ deploy/rollout: ## Blue-green swap: start new container, wait until healthy, the
 	ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && \
 	  OLD=$$($(PROD) ps -q app | head -1); \
 	  if [ -z "$$OLD" ]; then echo "kein laufender app-Container - Erststart"; $(PROD) up -d --no-deps app; exit $$?; fi; \
+	  if [ "$$($(PROD) ps -q app | wc -l)" -gt 1 ]; then \
+	    echo "ABBRUCH: mehrere app-Container aktiv (unterbrochener Rollout?) - erst aufraeumen: docker ps, ueberzaehligen Container stoppen"; \
+	    exit 1; \
+	  fi; \
 	  echo "alter Container: $$OLD"; \
 	  $(PROD) up -d --no-deps --no-recreate --scale app=2 app; \
 	  NEW=$$($(PROD) ps -q app | grep -v "$$OLD" | head -1); \
 	  if [ -z "$$NEW" ]; then echo "ABBRUCH: neuer Container nicht gestartet - alter bleibt aktiv"; exit 1; fi; \
+	  WANT=$$(docker image inspect -f "{{.Id}}" dalketicker-app:latest); \
+	  if [ "$$(docker inspect -f "{{.Image}}" "$$NEW")" != "$$WANT" ]; then \
+	    echo "ABBRUCH: neuer Container laeuft nicht auf dem frisch gebauten Image - alter bleibt aktiv"; \
+	    docker rm -f "$$NEW" >/dev/null 2>&1 || true; \
+	    exit 1; \
+	  fi; \
 	  echo "neuer Container: $$NEW"; \
 	  for i in $$(seq 1 45); do \
 	    s=$$(docker inspect -f "{{.State.Health.Status}}" "$$NEW" 2>/dev/null || echo none); \
@@ -233,8 +243,11 @@ deploy/rollout: ## Blue-green swap: start new container, wait until healthy, the
 	  docker stop "$$OLD" >/dev/null && docker rm "$$OLD" >/dev/null; \
 	  echo "Swap abgeschlossen"'
 
-deploy/sidecars: ## Recreate scheduler + db-backup (picks up the freshly built image)
-	ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && $(PROD) up -d scheduler db-backup'
+# --force-recreate: db-backup reads the mounted backup.sh only at start, and
+# rsync replaces the file with a new inode — without recreate the running
+# container would keep executing the old script forever.
+deploy/sidecars: ## Recreate scheduler + db-backup (fresh image resp. fresh backup.sh)
+	ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && $(PROD) up -d --force-recreate scheduler db-backup'
 
 deploy/backup: ## Manual pg_dump on the server (into the backup volume, see docker/backup.sh)
 	ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && \
