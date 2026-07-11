@@ -18,11 +18,12 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  *
  * Security: it only ever fetches the image URL stored for a known event (no
  * arbitrary ?url= parameter → no open proxy / SSRF surface), plus scheme,
- * private-IP, size and content-type guards as defence in depth.
+ * private-IP, size, pixel-dimension and content-type guards as defence in depth.
  */
 final class ImageProxyController extends AbstractController
 {
     private const MAX_BYTES = 8 * 1024 * 1024;
+    private const MAX_PIXELS = 40_000_000;
     private const MAX_WIDTH = 1000;
     private const MAX_REDIRECTS = 3;
     private const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif'];
@@ -115,7 +116,8 @@ final class ImageProxyController extends AbstractController
                 }
                 $resp = $this->http->request('GET', $url, [
                     'headers' => ['User-Agent' => 'Dalketicker/1.0 (+https://dalketicker.neuhaus.nrw)'],
-                    'timeout' => 15,
+                    'timeout' => 15, // idle timeout
+                    'max_duration' => 20, // hard cap — a slow-drip upstream can't pin the worker
                     'max_redirects' => 0,
                     'resolve' => [$host => $ip],
                 ]);
@@ -136,8 +138,32 @@ final class ImageProxyController extends AbstractController
                 if (!in_array($type, self::ALLOWED_TYPES, true)) {
                     return [null, ''];
                 }
-                $data = $resp->getContent(false);
-                if (strlen($data) > self::MAX_BYTES) {
+                if ((int) ($resp->getHeaders(false)['content-length'][0] ?? 0) > self::MAX_BYTES) {
+                    return [null, ''];
+                }
+                // Stream the body so an upstream that lies about (or omits) its
+                // Content-Length can never materialize hundreds of MB in memory
+                // — abort as soon as the cap is crossed.
+                $data = '';
+                foreach ($this->http->stream($resp) as $chunk) {
+                    if ($chunk->isTimeout()) {
+                        $resp->cancel();
+
+                        return [null, ''];
+                    }
+                    $data .= $chunk->getContent();
+                    if (strlen($data) > self::MAX_BYTES) {
+                        $resp->cancel();
+
+                        return [null, ''];
+                    }
+                }
+                // Cheap header sniff before anything GD-decodes the bytes: a
+                // well-compressed bomb far below MAX_BYTES expands to gigabytes
+                // of pixels (uncatchable OOM). Reject it entirely — such a file
+                // is never cached or served.
+                $info = @getimagesizefromstring($data);
+                if ($info === false || $info[0] * $info[1] > self::MAX_PIXELS) {
                     return [null, ''];
                 }
 
