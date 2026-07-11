@@ -69,6 +69,7 @@ final class IcsImporter implements SourceImporter
 
         foreach ($matches[1] as $block) {
             $fields = [];
+            $depth = 0;
             foreach (explode("\n", trim($block)) as $line) {
                 if (!str_contains($line, ':')) {
                     continue;
@@ -77,6 +78,19 @@ final class IcsImporter implements SourceImporter
                 $params = [];
                 $parts = explode(';', $name);
                 $key = strtoupper(array_shift($parts));
+                // Skip sub-components (VALARM etc.): their DESCRIPTION/SUMMARY
+                // must not overwrite the event's own properties (last-wins map).
+                if ($key === 'BEGIN') {
+                    ++$depth;
+                    continue;
+                }
+                if ($key === 'END') {
+                    $depth = max(0, $depth - 1);
+                    continue;
+                }
+                if ($depth > 0) {
+                    continue;
+                }
                 foreach ($parts as $param) {
                     if (str_contains($param, '=')) {
                         [$pk, $pv] = explode('=', $param, 2);

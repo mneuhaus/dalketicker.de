@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Importer;
 
+use App\Entity\Event;
 use App\Entity\Source;
 use Symfony\Component\DependencyInjection\Attribute\AutoconfigureTag;
 use Symfony\Component\DomCrawler\Crawler;
@@ -58,15 +59,18 @@ final class JsonLdImporter implements SourceImporter
 
         $events = $this->extractEventObjects($html);
         $seenIds = [];
+        $collected = [];
 
         // The listing page already carries Event JSON-LD: use it directly.
         if ($events !== []) {
             foreach ($events as $event) {
                 $mapped = $this->mapEvent($event, $config, $url);
                 if ($mapped !== null && $this->markSeen($mapped, $seenIds)) {
-                    yield $mapped;
+                    $collected[] = $mapped;
                 }
             }
+
+            yield from $this->disambiguateExternalIds($collected);
 
             return;
         }
@@ -87,10 +91,48 @@ final class JsonLdImporter implements SourceImporter
             foreach ($this->extractEventObjects($detailHtml) as $event) {
                 $mapped = $this->mapEvent($event, $config, $detailUrl);
                 if ($mapped !== null && $this->markSeen($mapped, $seenIds)) {
-                    yield $mapped;
+                    $collected[] = $mapped;
                 }
             }
         }
+
+        yield from $this->disambiguateExternalIds($collected);
+    }
+
+    /**
+     * Several occurrences of one production often share a single schema.org
+     * `url` (recurring shows on a listing page) and would collapse onto one
+     * externalId, i.e. one database row that flip-flops between the dates.
+     * Only colliding ids get the start moment appended; the common
+     * single-occurrence case keeps its stable id so existing rows don't churn.
+     *
+     * @param list<ImportedEvent> $events
+     *
+     * @return list<ImportedEvent>
+     */
+    private function disambiguateExternalIds(array $events): array
+    {
+        // Collisions must be detected on the truncated id — that is the
+        // identity the database sees ({@see Event::truncateExternalId()}).
+        $counts = [];
+        foreach ($events as $event) {
+            $id = Event::truncateExternalId($event->externalId);
+            if ($id !== null) {
+                $counts[$id] = ($counts[$id] ?? 0) + 1;
+            }
+        }
+
+        foreach ($events as $event) {
+            $id = Event::truncateExternalId($event->externalId);
+            if ($id !== null && $counts[$id] > 1) {
+                // Shorten the base so the suffix survives the length cap —
+                // a stripped suffix would re-collapse the occurrences.
+                $suffix = '#'.$event->startsAt->format('Y-m-d-Hi');
+                $event->externalId = mb_substr($id, 0, Event::EXTERNAL_ID_MAX_LENGTH - mb_strlen($suffix)).$suffix;
+            }
+        }
+
+        return $events;
     }
 
     /** Fetch a URL or throw, so a dead source surfaces as a failed run. */
@@ -411,6 +453,11 @@ final class JsonLdImporter implements SourceImporter
         $pattern = isset($config['linkPattern']) && \is_string($config['linkPattern'])
             ? $config['linkPattern']
             : '~/events?/[^?\#]+~i';
+        // A broken configured regex must fail the run instead of silently
+        // matching nothing (which would look like an empty but healthy feed).
+        if (@preg_match($pattern, '') === false) {
+            throw new \RuntimeException(sprintf('Invalid linkPattern regex: %s', $pattern));
+        }
 
         $links = [];
         $crawler->filter('a[href]')->each(function (Crawler $node) use (&$links, $baseUrl, $pattern): void {
@@ -418,7 +465,7 @@ final class JsonLdImporter implements SourceImporter
             if ($href === null || $href === '') {
                 return;
             }
-            if (@preg_match($pattern, $href) !== 1) {
+            if (preg_match($pattern, $href) !== 1) {
                 return;
             }
             $abs = $this->absolutize($href, $baseUrl);

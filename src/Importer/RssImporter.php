@@ -76,7 +76,9 @@ final class RssImporter implements SourceImporter
 
         $xml = $this->parseXml($body);
         if ($xml === null) {
-            return;
+            // Fail loudly: a silently empty run would count as healthy and
+            // eventually let the prune pass hide all events of this source.
+            throw new \RuntimeException(sprintf('RSS feed %s could not be parsed.', $url));
         }
 
         $config = $source->getConfig();
@@ -480,8 +482,12 @@ final class RssImporter implements SourceImporter
             return null;
         }
 
+        $tz = new \DateTimeZone(self::TZ);
+
         try {
-            return (new \DateTimeImmutable($value))->setTimezone(new \DateTimeZone(self::TZ));
+            // The constructor timezone only applies to offset-less values, so
+            // the parse never depends on the php.ini default timezone.
+            return (new \DateTimeImmutable($value, $tz))->setTimezone($tz);
         } catch (\Exception) {
             return null;
         }

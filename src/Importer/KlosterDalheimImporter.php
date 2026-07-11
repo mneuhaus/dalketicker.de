@@ -87,7 +87,10 @@ final class KlosterDalheimImporter implements SourceImporter
             return null;
         }
 
-        $detailUrl = $this->absoluteUrl($entry->filter('a[href]')->first()->attr('href'), $listUrl);
+        // attr() throws on an empty node list, so a card without a link must
+        // be tolerated (null detail URL) instead of aborting the whole run.
+        $link = $entry->filter('a[href]');
+        $detailUrl = $link->count() > 0 ? $this->absoluteUrl($link->first()->attr('href'), $listUrl) : null;
         $description = $this->descriptionFromList($entry);
         $imageUrl = $this->imageUrl($entry, $listUrl);
         $venue = self::VENUE;

@@ -88,7 +88,10 @@ final class TheaterGtImporter implements SourceImporter
             }
             $prevMonth = $month;
 
-            $titleLink = $teaser->filter('.teaser-detail h3')->closest('a');
+            // closest() throws on an empty node list, so a title-less teaser
+            // (promo/notice block) must be skipped instead of killing the run.
+            $h3 = $teaser->filter('.teaser-detail h3');
+            $titleLink = $h3->count() > 0 ? $h3->closest('a') : null;
             $title = $this->text($teaser, '.teaser-detail h3');
             if ($title === null || $title === '') {
                 continue;

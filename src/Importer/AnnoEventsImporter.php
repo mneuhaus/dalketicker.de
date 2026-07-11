@@ -111,14 +111,21 @@ final class AnnoEventsImporter implements SourceImporter
         if ($start === null) {
             return [null, null];
         }
-        // Roll over to next year if the event already lies clearly in the past.
+        // Roll over to next year only around the year boundary: the season
+        // table keeps past rows online for months, and an unconditional bump
+        // would fabricate next-year dates the organizer never announced. A
+        // rolled date more than six months ahead is such a phantom — keep the
+        // past date instead (past events are simply not displayed).
         if ($start < $today->modify('-40 days')) {
-            $year++;
-            $start = $this->makeDate($year, $month, $d1, $tz);
+            $rolled = $this->makeDate($year + 1, $month, $d1, $tz);
+            if ($rolled !== null && $rolled <= $today->modify('+6 months')) {
+                ++$year;
+                $start = $rolled;
+            }
         }
         $end = $this->makeDate($year, $month, max($d1, $d2), $tz)?->setTime(23, 59);
 
-        return [$start?->setTime(0, 0), $end];
+        return [$start->setTime(0, 0), $end];
     }
 
     private function makeDate(int $year, int $month, int $day, \DateTimeZone $tz): ?\DateTimeImmutable
