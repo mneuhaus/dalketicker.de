@@ -85,12 +85,11 @@ final class StadtGtImporter implements SourceImporter
                 continue;
             }
 
-            $externalId = $this->externalIdFromUrl($detailUrl);
-            $dedup = $externalId.'|'.$start->format('Y-m-d H:i');
-            if (isset($seen[$dedup])) {
+            $externalId = $this->externalIdFor($detailUrl, $start);
+            if (isset($seen[$externalId])) {
                 continue;
             }
-            $seen[$dedup] = true;
+            $seen[$externalId] = true;
             ++$count;
 
             // The list entry already carries the event thumbnail (lazy-loaded:
@@ -319,24 +318,16 @@ final class StadtGtImporter implements SourceImporter
         return SafeDate::create((int) $m[3], (int) $m[2], (int) $m[1], $h, $i, $tz);
     }
 
-    private function externalIdFromUrl(string $url): string
+    private function externalIdFor(string $url, \DateTimeImmutable $start): string
     {
         $path = (string) parse_url($url, PHP_URL_PATH);
         $slug = basename($path, '.php');
 
-        $splitId = '';
-        $query = parse_url($url, PHP_URL_QUERY);
-        if (is_string($query)) {
-            parse_str($query, $params);
-            $splitId = is_string($params['splitId'] ?? null) ? $params['splitId'] : '';
-        }
-
-        $id = 'stadt_gt:'.$slug;
-        if ($splitId !== '' && !str_contains($slug, '-'.$splitId)) {
-            $id .= ':'.$splitId;
-        }
-
-        return $id;
+        // The URL also carries a splitId, but the site regenerates those
+        // numbers between renders — used as identity they created a fresh
+        // row (and a visible duplicate) on every import. The occurrence
+        // start is the stable discriminator between occurrences of an entry.
+        return 'stadt_gt:'.$slug.':'.$start->format('Y-m-d\TH:i');
     }
 
     private function detailTitle(Crawler $detail): ?string

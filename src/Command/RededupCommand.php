@@ -6,6 +6,7 @@ namespace App\Command;
 
 use App\Entity\Event;
 use App\Enum\EventStatus;
+use App\Repository\EventRepository;
 use App\Repository\RegionRepository;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
@@ -74,9 +75,12 @@ final class RededupCommand extends Command
             ->from(Event::class, 'e')
             ->join('e.source', 's')
             ->where('e.status IN (:st)')
-            ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :now')
-            ->setParameter('st', [EventStatus::Published, EventStatus::Duplicate])
-            ->setParameter('now', $now);
+            // Same relevance window as the website: the nightly 04:45 run must
+            // still cover the started day's all-day events, or their duplicate
+            // copies would stay visible for the whole day.
+            ->andWhere(EventRepository::stillRelevantDql('e', 'now'))
+            ->setParameter('st', [EventStatus::Published, EventStatus::Duplicate]);
+        EventRepository::setRelevanceFloor($qb, 'now', $now);
         if ($region !== null) {
             $qb->andWhere('e.region = :region')->setParameter('region', $region);
         }

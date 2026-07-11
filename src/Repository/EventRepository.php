@@ -82,7 +82,7 @@ class EventRepository extends ServiceEntityRepository
 
         $qb = $this->visibleQueryBuilder($filter, $region);
         $qb->andWhere(self::stillRelevantDql('e', 'seriesFloor'));
-        $this->setRelevanceFloor($qb, 'seriesFloor', $this->seriesFloor($filter));
+        self::setRelevanceFloor($qb, 'seriesFloor', $this->seriesFloor($filter));
         if ($filter->to !== null) {
             $qb->andWhere('e.startsAt < :seriesTo')->setParameter('seriesTo', $filter->to->modify('+1 day'));
         }
@@ -147,6 +147,8 @@ class EventRepository extends ServiceEntityRepository
         // comes from a disabled source would suppress the whole series.
         // Title/venue/city are series-invariant and need no repetition here.
         // The :q/:categorySlugs parameters are shared with the outer query.
+        // Ties on the exact same startsAt (e.g. not-yet-rededuped copies of
+        // one event) break on id — a plain MIN(startsAt) would show them all.
         $joins = ' JOIN e2.source s2';
         $conditions = '';
         if ($filter->q !== null) {
@@ -164,8 +166,8 @@ class EventRepository extends ServiceEntityRepository
         }
 
         $qb->andWhere(
-            'e.startsAt = ('
-            .'SELECT MIN(e2.startsAt) FROM '.Event::class.' e2'.$joins.' '
+            'NOT EXISTS ('
+            .'SELECT e2.id FROM '.Event::class.' e2'.$joins.' '
             .'WHERE e2.title = e.title '
             .'AND (IDENTITY(e2.venue) = IDENTITY(e.venue) OR (e2.venue IS NULL AND e.venue IS NULL)) '
             .'AND e2.region = e.region '
@@ -173,9 +175,10 @@ class EventRepository extends ServiceEntityRepository
             .'AND s2.enabled = true '
             .'AND '.self::stillRelevantDql('e2', 'seriesFloor')
             .$conditions
+            .' AND (e2.startsAt < e.startsAt OR (e2.startsAt = e.startsAt AND e2.id < e.id))'
             .')'
         );
-        $this->setRelevanceFloor($qb, 'seriesFloor', $this->seriesFloor($filter));
+        self::setRelevanceFloor($qb, 'seriesFloor', $this->seriesFloor($filter));
     }
 
     /**
@@ -272,7 +275,7 @@ class EventRepository extends ServiceEntityRepository
             ->orderBy('e.startsAt', 'ASC')
             ->addOrderBy('e.id', 'ASC')
             ->setMaxResults($limit);
-        $this->setRelevanceFloor($qb, 'now', $now);
+        self::setRelevanceFloor($qb, 'now', $now);
         $events = $qb->getQuery()->getResult();
         $this->preloadCategories($events);
 
@@ -437,7 +440,7 @@ class EventRepository extends ServiceEntityRepository
             ->orderBy('e.startsAt', 'ASC')
             ->addOrderBy('e.id', 'ASC')
             ->setMaxResults($limit);
-        $this->setRelevanceFloor($qb, 'now', new \DateTimeImmutable('now', new \DateTimeZone('Europe/Berlin')));
+        self::setRelevanceFloor($qb, 'now', new \DateTimeImmutable('now', new \DateTimeZone('Europe/Berlin')));
         if ($region !== null) {
             $qb->andWhere('e.region = :region')->setParameter('region', $region);
         }
@@ -677,7 +680,7 @@ class EventRepository extends ServiceEntityRepository
         $floor = $filter->from ?? (!$filter->onlySaved ? $now : null);
         if ($floor !== null) {
             $qb->andWhere(self::stillRelevantDql('e', 'floor'));
-            $this->setRelevanceFloor($qb, 'floor', $floor);
+            self::setRelevanceFloor($qb, 'floor', $floor);
         }
 
         if ($filter->to !== null) {
@@ -695,7 +698,7 @@ class EventRepository extends ServiceEntityRepository
      * timestamp >= startOfDay(floor); {@see setRelevanceFloor} binds both
      * parameters.
      */
-    private static function stillRelevantDql(string $alias, string $param): string
+    public static function stillRelevantDql(string $alias, string $param): string
     {
         return sprintf(
             '((%1$s.allDay = false AND %1$s.endsAt IS NOT NULL AND %1$s.endsAt >= :%2$s)'
@@ -706,7 +709,7 @@ class EventRepository extends ServiceEntityRepository
     }
 
     /** Bind the exact floor and its Berlin day floor for {@see stillRelevantDql}. */
-    private function setRelevanceFloor(QueryBuilder $qb, string $param, \DateTimeImmutable $floor): void
+    public static function setRelevanceFloor(QueryBuilder $qb, string $param, \DateTimeImmutable $floor): void
     {
         $qb->setParameter($param, $floor)
             ->setParameter($param.'Day', $floor->setTimezone(new \DateTimeZone('Europe/Berlin'))->setTime(0, 0));
