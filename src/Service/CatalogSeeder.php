@@ -12,8 +12,10 @@ use App\Entity\Venue;
 use App\Enum\EventStatus;
 use App\Enum\SourceType;
 use App\Repository\CategoryRepository;
+use App\Repository\EventRepository;
 use App\Repository\RegionRepository;
 use App\Repository\SourceRepository;
+use App\Repository\VenueRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\String\Slugger\SluggerInterface;
@@ -52,6 +54,8 @@ final class CatalogSeeder
         private readonly CategoryRepository $categoryRepo,
         private readonly RegionRepository $regionRepo,
         private readonly SourceRepository $sourceRepo,
+        private readonly VenueRepository $venueRepo,
+        private readonly EventRepository $eventRepo,
         private readonly SluggerInterface $slugger,
         private readonly ClockInterface $clock,
     ) {
@@ -123,7 +127,7 @@ final class CatalogSeeder
         $this->em->flush();
     }
 
-    /** Create demo venues + events (throwaway content for the test run). */
+    /** Create demo venues + events (throwaway content for the test run). Idempotent. */
     public function seedDemoEvents(): void
     {
         if (!$this->categories) {
@@ -133,6 +137,11 @@ final class CatalogSeeder
 
         $now = $this->clock->now()->setTimezone(new \DateTimeZone('Europe/Berlin'));
         foreach ($this->demoEventDefs() as $i => [$title, $offset, $time, $durationDays, $catSlug, $venueName, $sourceKey, $price, $desc]) {
+            // Re-runs must not violate uniq_event_source_external — keep the
+            // previously seeded demo event untouched.
+            if ($this->eventRepo->findOneBy(['source' => $this->sources[$sourceKey], 'externalId' => 'demo-'.$i]) !== null) {
+                continue;
+            }
             $day = $now->modify('+'.$offset.' days');
             if ($time !== null) {
                 [$h, $m] = array_map('intval', explode(':', $time));
@@ -173,7 +182,10 @@ final class CatalogSeeder
             throw new \RuntimeException('Region "guetersloh" is not configured.');
         }
         foreach ($this->venueDefs() as $name => [$street, $plz, $city]) {
-            $venue = new Venue($name, $city, $region);
+            // Real imports (or an earlier --demo run) may already have created
+            // the venue — re-persisting would violate uniq_venue_region_dedup.
+            $venue = $this->venueRepo->findByDedupKey(Venue::buildDedupKey($name, $city), $region)
+                ?? new Venue($name, $city, $region);
             $venue->setStreet($street)->setPostalCode($plz);
             $this->em->persist($venue);
             $this->venues[$name] = $venue;

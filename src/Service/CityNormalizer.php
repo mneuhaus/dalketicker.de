@@ -88,12 +88,18 @@ final class CityNormalizer
             }
         }
 
-        if (isset(self::ALIAS[$key])) {
-            return self::ALIAS[$key];
-        }
-        foreach (self::CANON as $name => $prefix) {
-            if (str_starts_with($key, $prefix)) {
-                return $name;
+        // The static tables are Kreis-Gütersloh-specific: applied to another
+        // region they mislabel places ("Verlar" near Salzkotten is not "Verl",
+        // "Halle (Saale)" is not "Halle (Westf.)"). Other regions rely solely
+        // on their own alias/city configuration above.
+        if ($region === null || $region->getKey() === 'guetersloh') {
+            if (isset(self::ALIAS[$key])) {
+                return self::ALIAS[$key];
+            }
+            foreach (self::CANON as $name => $prefix) {
+                if (str_starts_with($key, $prefix)) {
+                    return $name;
+                }
             }
         }
 

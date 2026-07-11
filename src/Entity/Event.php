@@ -388,7 +388,8 @@ class Event
     {
         return $this->imageUrl !== null && $this->imageUrl !== ''
             && !$this->isFactsOnly()
-            && $this->source->isApproved();
+            && $this->source->isApproved()
+            && $this->source->isEnabled();
     }
 
     public function getSourceUrl(): ?string
@@ -444,9 +445,22 @@ class Event
         return $this->externalId;
     }
 
+    /**
+     * Single source of truth for capping external ids to the column length —
+     * upsert lookups must truncate their value identically, otherwise an
+     * overlong id never matches its own (truncated) row again and every run
+     * inserts a colliding copy.
+     */
+    public const EXTERNAL_ID_MAX_LENGTH = 191;
+
+    public static function truncateExternalId(?string $externalId): ?string
+    {
+        return $externalId !== null ? mb_substr($externalId, 0, self::EXTERNAL_ID_MAX_LENGTH) : null;
+    }
+
     public function setExternalId(?string $externalId): static
     {
-        $this->externalId = $externalId !== null ? substr($externalId, 0, 191) : null;
+        $this->externalId = self::truncateExternalId($externalId);
 
         return $this;
     }

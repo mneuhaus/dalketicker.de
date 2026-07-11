@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\Importer\ImportedEvent;
+use App\Importer\SafeDate;
 use App\Repository\RegionRepository;
 use App\Repository\SourceRepository;
 use App\Service\EventImporter;
@@ -88,18 +89,27 @@ final class AddEventCommand extends Command
 
         $start = $this->buildDateTime((string) $input->getOption('date'), (string) $input->getOption('time'), $tz);
         if ($start === null) {
-            $io->error('Ungültiges --date. Erwartet YYYY-MM-DD oder DD.MM.YYYY.');
+            $io->error('Ungültiges --date/--time. Erwartet YYYY-MM-DD oder DD.MM.YYYY und HH:MM.');
 
             return Command::INVALID;
         }
         $allDay = trim((string) $input->getOption('time')) === '';
 
         $endDateOpt = trim((string) $input->getOption('end-date'));
-        $end = $this->buildDateTime(
-            $endDateOpt !== '' ? $endDateOpt : (string) $input->getOption('date'),
-            (string) $input->getOption('end-time'),
-            $tz,
-        );
+        $endTimeOpt = trim((string) $input->getOption('end-time'));
+        $end = null;
+        if ($endDateOpt !== '' || $endTimeOpt !== '') {
+            $end = $this->buildDateTime(
+                $endDateOpt !== '' ? $endDateOpt : (string) $input->getOption('date'),
+                $endTimeOpt,
+                $tz,
+            );
+            if ($end === null) {
+                $io->error('Ungültiges --end-date/--end-time. Erwartet YYYY-MM-DD oder DD.MM.YYYY und HH:MM.');
+
+                return Command::INVALID;
+            }
+        }
         if ($end !== null && $end <= $start) {
             $end = null;
         }
@@ -164,11 +174,17 @@ final class AddEventCommand extends Command
 
         $h = 0;
         $i = 0;
-        if (preg_match('/^(\d{1,2}):(\d{2})$/', trim($time), $tm)) {
+        $time = trim($time);
+        if ($time !== '') {
+            if (!preg_match('/^(\d{1,2}):(\d{2})$/', $time, $tm)) {
+                return null;
+            }
             $h = (int) $tm[1];
             $i = (int) $tm[2];
         }
 
-        return (new \DateTimeImmutable('now', $tz))->setDate($y, $mo, $d)->setTime($h, $i);
+        // SafeDate rejects impossible values (31.06., 25:00) instead of letting
+        // PHP silently roll them over into a wrong-but-valid date.
+        return SafeDate::create($y, $mo, $d, $h, $i, $tz);
     }
 }

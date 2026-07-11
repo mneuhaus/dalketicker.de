@@ -81,7 +81,9 @@ final class PruneUnseenCommand extends Command
         // Only sources that demonstrably imported fine within the window may
         // lose events — a broken or paused source keeps its data until it
         // works again (its events' lastSeenAt being stale proves nothing then).
-        $healthySql = 'SELECT DISTINCT r.source_id FROM import_run r INNER JOIN source s ON s.id = r.source_id WHERE r.status = :ok AND r.dry_run = false AND r.started_at >= :cutoff';
+        // Runs with seen = 0 don't count as healthy: a scraper whose selectors
+        // went dead after a site redesign still completes "ok" with zero events.
+        $healthySql = 'SELECT DISTINCT r.source_id FROM import_run r INNER JOIN source s ON s.id = r.source_id WHERE r.status = :ok AND r.dry_run = false AND r.seen > 0 AND r.started_at >= :cutoff';
         $healthyParams = ['ok' => ImportRun::STATUS_OK, 'cutoff' => $cutoff->format('Y-m-d H:i:s')];
         if ($region !== null) {
             $healthySql .= ' AND s.region_id = :region';

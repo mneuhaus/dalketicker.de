@@ -30,8 +30,10 @@ final class EventImporter
     private const FLUSH_BATCH_SIZE = 50;
 
     /**
-     * Keys (source:externalId) of NEW events persisted in the current run,
-     * to avoid inserting two rows that collide on the unique (source, externalId).
+     * Keys (source:externalId, or source:dedup:dedupKey for keyless DTOs) of
+     * NEW events persisted in the current run, to avoid inserting two rows
+     * that collide on the unique (source, externalId) or duplicate a dedup
+     * key the DB lookup cannot see before the next flush.
      *
      * @var array<string, true>
      */
@@ -228,20 +230,27 @@ final class EventImporter
         // before it feeds the venue and the cross-source dedup key.
         $dto->city = $this->cityNormalizer->normalize($dto->city, $source->getRegion());
 
-        // Skip a second occurrence of the same externalId within this run —
-        // the first persist isn't flushed yet, so a DB lookup wouldn't see it
-        // and we'd violate the unique (source, externalId) constraint.
+        // Cap the external id exactly like the entity stores it — the upsert
+        // lookup must use the truncated value, otherwise an overlong id never
+        // matches its own row again and every run inserts a colliding copy.
+        $dto->externalId = Event::truncateExternalId($dto->externalId);
+
+        $dedupKey = $dto->dedupKey();
+        $hash = $dto->contentHash();
+
+        // Skip a second occurrence of the same externalId — or, for keyless
+        // DTOs, the same dedup key — within this run: the first persist isn't
+        // flushed yet, so a DB lookup wouldn't see it and we'd violate the
+        // unique (source, externalId) constraint or insert a duplicate row.
         $runKey = $dto->externalId !== null && $dto->externalId !== ''
             ? $source->getId().':'.$dto->externalId
-            : null;
-        if ($runKey !== null && isset($this->newKeysThisRun[$runKey])) {
+            : $source->getId().':dedup:'.$dedupKey;
+        if (isset($this->newKeysThisRun[$runKey])) {
             $report->unchanged++;
 
             return;
         }
 
-        $dedupKey = $dto->dedupKey();
-        $hash = $dto->contentHash();
         $existing = $this->events->findForUpsert((int) $source->getId(), $dto->externalId, $dedupKey);
 
         if ($existing !== null && $existing->getContentHash() === $hash) {
@@ -249,9 +258,11 @@ final class EventImporter
             // is refreshed regardless: its derivation can change between
             // releases without the content hash noticing, and a stale key
             // breaks cross-source dedup for every future match.
-            $existing->setLastSeenAt($now);
-            $existing->setDedupKey($dedupKey);
-            $this->republishIfPruned($existing);
+            if (!$dryRun) {
+                $existing->setLastSeenAt($now);
+                $existing->setDedupKey($dedupKey);
+                $this->republishIfPruned($existing);
+            }
             $report->unchanged++;
 
             return;
@@ -325,9 +336,7 @@ final class EventImporter
                 $report->created++;
             }
             $this->em->persist($event);
-            if ($runKey !== null) {
-                $this->newKeysThisRun[$runKey] = true;
-            }
+            $this->newKeysThisRun[$runKey] = true;
         } else {
             $this->republishIfPruned($event);
             $report->updated++;
