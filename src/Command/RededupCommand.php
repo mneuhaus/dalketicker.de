@@ -102,11 +102,12 @@ final class RededupCommand extends Command
             // richer (often aggregator) copies, so we keep the primary source as
             // canonical without losing the flyer image. Re-applied every run, so
             // it survives the import overwriting the primary's empty fields.
-            // Never borrow from facts-only sources — their creative content
-            // (text/images) must not surface on a public event (legal safeguard).
+            // Never borrow from facts-only or disabled sources — their creative
+            // content (text/images) must not surface on a public event (legal
+            // safeguard; disabling a source is the opt-out switch).
             if (!$dryRun) {
                 foreach (\array_slice($group, 1) as $loser) {
-                    if ($loser->getSource()->isFactsOnly()) {
+                    if ($loser->getSource()->isFactsOnly() || !$loser->getSource()->isEnabled()) {
                         continue;
                     }
                     if ($winner->getImageUrl() === null && $loser->getImageUrl() !== null) {
@@ -212,8 +213,15 @@ final class RededupCommand extends Command
                 if ($end === null) {
                     $changes += $this->promote($e, $dryRun, $promoted, 'Kette ohne Ziel');
                 } elseif ($end->getStatus() === EventStatus::Published) {
+                    if (!$end->getSource()->isEnabled()) {
+                        // Canonical is off the site (source disabled) — the
+                        // duplicate would be publicly invisible behind it.
+                        $changes += $this->promote($e, $dryRun, $promoted, 'Kette endet in deaktivierter Quelle');
+                        continue;
+                    }
                     if (!$dryRun) {
                         $e->setDuplicateOf($end);
+                        $this->repointAiDecision($e, $end);
                     }
                     ++$changes;
                 } elseif ($end->getStatus() === EventStatus::Hidden && $end->getPrunedAt() !== null) {
@@ -234,6 +242,14 @@ final class RededupCommand extends Command
                 continue;
             }
 
+            if (!$target->getSource()->isEnabled()) {
+                // Canonical is Published but its source was disabled: the
+                // canonical is hidden by the enabled filter, the duplicate by
+                // its status — the event would be publicly gone.
+                $changes += $this->promote($e, $dryRun, $promoted, 'Canonical-Quelle deaktiviert');
+                continue;
+            }
+
             if ($target->getDedupKey() === $e->getDedupKey()) {
                 continue; // keys still match (target just isn't in the upcoming set) — link is valid
             }
@@ -250,6 +266,20 @@ final class RededupCommand extends Command
         }
 
         return $changes;
+    }
+
+    /**
+     * Keep an active AI merge backing $duplicate pointing at the live canonical
+     * after a re-hang — otherwise the blanket retire in execute() deactivates
+     * the decision (its old canonical is now a duplicate) and the next run
+     * promotes + re-merges the pair (flip-flop with a day of visible duplicate).
+     */
+    private function repointAiDecision(Event $duplicate, Event $canonical): void
+    {
+        $this->db->executeStatement(
+            'UPDATE ai_dedup_decision SET canonical_event_id = :canonical WHERE active = true AND duplicate_event_id = :duplicate',
+            ['canonical' => $canonical->getId(), 'duplicate' => $duplicate->getId()],
+        );
     }
 
     /** @param list<string> $promoted log lines, appended to */
@@ -283,11 +313,15 @@ final class RededupCommand extends Command
         return $cur;
     }
 
-    /** Winner sort: primary before aggregator, then richer (image, longer text), then oldest. */
+    /**
+     * Winner sort: enabled source before disabled (a disabled source's events
+     * are off the site and must not act as canonical), then primary before
+     * aggregator, then richer (image, longer text), then oldest.
+     */
     private function compare(Event $a, Event $b): int
     {
-        return [$this->tier($a), $this->richness($a) * -1, $a->getId()]
-            <=> [$this->tier($b), $this->richness($b) * -1, $b->getId()];
+        return [$a->getSource()->isEnabled() ? 0 : 1, $this->tier($a), $this->richness($a) * -1, $a->getId()]
+            <=> [$b->getSource()->isEnabled() ? 0 : 1, $this->tier($b), $this->richness($b) * -1, $b->getId()];
     }
 
     private function tier(Event $e): int

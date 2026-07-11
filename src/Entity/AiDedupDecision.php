@@ -39,9 +39,17 @@ class AiDedupDecision
     #[ORM\Column(length: 80)]
     private string $model = '';
 
-    /** False once an admin has undone this merge (kept for the audit log). */
+    /** False once this merge was undone — by an admin or --reset (kept for the audit log). */
     #[ORM\Column]
     private bool $active = true;
+
+    /**
+     * Set when an admin explicitly undid this merge: a permanent veto, the AI
+     * pass never re-merges (or inverts) this pair ({@see DedupAiCommand}).
+     * Stays null for --reset undos, which are meant to be re-decided.
+     */
+    #[ORM\Column(type: Types::DATETIME_IMMUTABLE, nullable: true)]
+    private ?\DateTimeImmutable $undoneByAdminAt = null;
 
     #[ORM\Column(type: Types::DATETIME_IMMUTABLE)]
     private \DateTimeImmutable $createdAt;
@@ -94,6 +102,18 @@ class AiDedupDecision
     public function setActive(bool $active): static
     {
         $this->active = $active;
+
+        return $this;
+    }
+
+    public function getUndoneByAdminAt(): ?\DateTimeImmutable
+    {
+        return $this->undoneByAdminAt;
+    }
+
+    public function setUndoneByAdminAt(?\DateTimeImmutable $undoneByAdminAt): static
+    {
+        $this->undoneByAdminAt = $undoneByAdminAt;
 
         return $this;
     }

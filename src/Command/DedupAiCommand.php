@@ -124,6 +124,7 @@ final class DedupAiCommand extends Command
         }
 
         $dayRepo = $this->em->getRepository(AiDedupDay::class);
+        $vetoedPairs = $this->adminVetoedPairs();
         $aiCalls = 0;
         $merges = 0;
         $reviewed = 0;
@@ -183,6 +184,17 @@ final class DedupAiCommand extends Command
                         || $can->getDuplicateOf() !== null) {
                         continue;
                     }
+                    if (isset($vetoedPairs[$dup->getId().':'.$can->getId()])) {
+                        $io->writeln(sprintf(
+                            '<comment>%s</comment>  „%s" (#%d) / „%s" (#%d): Admin-Veto (Undo) – übersprungen.',
+                            $dayKey,
+                            $dup->getTitle(),
+                            $dup->getId(),
+                            $can->getTitle(),
+                            $can->getId(),
+                        ));
+                        continue;
+                    }
                     $io->writeln(sprintf(
                         '<comment>%s</comment>  „%s" (#%d) → behalte „%s" (#%d)  %s',
                         $dayKey,
@@ -218,6 +230,34 @@ final class DedupAiCommand extends Command
         ));
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * Pairs whose AI merge an admin explicitly undid (in /admin/dedup). Such an
+     * undo is a veto in both directions: after the undo the day's fingerprint
+     * changes, the model sees the same inputs again and would otherwise
+     * silently re-apply the overruled merge on the next run. --reset undos
+     * don't set the marker and stay re-decidable.
+     *
+     * @return array<string, true> keys "dupId:canId" and "canId:dupId"
+     */
+    private function adminVetoedPairs(): array
+    {
+        $rows = $this->em->createQuery(
+            'SELECT IDENTITY(d.duplicateEvent) AS dup, IDENTITY(d.canonicalEvent) AS can'
+            .' FROM '.AiDedupDecision::class.' d WHERE d.undoneByAdminAt IS NOT NULL',
+        )->getScalarResult();
+
+        $pairs = [];
+        foreach ($rows as $row) {
+            if ($row['dup'] === null || $row['can'] === null) {
+                continue;
+            }
+            $pairs[$row['dup'].':'.$row['can']] = true;
+            $pairs[$row['can'].':'.$row['dup']] = true;
+        }
+
+        return $pairs;
     }
 
     /** @param Event[] $events */

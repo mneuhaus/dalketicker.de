@@ -41,6 +41,9 @@ use Symfony\Component\Routing\Attribute\Route;
 #[Route('/admin')]
 final class AdminController extends AbstractController
 {
+    /** Raster formats only — an SVG served from our origin would render as a script-capable document. */
+    private const APPROVAL_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
     public function __construct(
         private readonly RegionContext $regionContext,
         private readonly RegionRepository $regions,
@@ -249,8 +252,8 @@ final class AdminController extends AbstractController
 
         $file = $request->files->get('image');
         if ($file instanceof \Symfony\Component\HttpFoundation\File\UploadedFile && $file->isValid()) {
-            if (!str_starts_with((string) $file->getMimeType(), 'image/')) {
-                $this->addFlash('error', 'Nur Bilddateien erlaubt.');
+            if (!\in_array($file->getMimeType(), self::APPROVAL_IMAGE_TYPES, true)) {
+                $this->addFlash('error', 'Nur Bilddateien erlaubt (JPEG, PNG, WebP oder GIF).');
 
                 return $this->redirectToRoute('admin_source', ['id' => $id] + $this->adminRegionRedirectParams($request));
             }
@@ -279,7 +282,15 @@ final class AdminController extends AbstractController
             throw $this->createNotFoundException();
         }
 
-        return new \Symfony\Component\HttpFoundation\BinaryFileResponse($path);
+        $response = new \Symfony\Component\HttpFoundation\BinaryFileResponse($path);
+        // Raster images render inline; anything else (e.g. an SVG uploaded
+        // before the allowlist existed) is forced to download so it can never
+        // run as a document on our origin.
+        $inline = \in_array($response->getFile()->getMimeType(), self::APPROVAL_IMAGE_TYPES, true);
+        $response->setContentDisposition($inline ? 'inline' : 'attachment', basename($path), 'freigabe');
+        $response->headers->set('X-Content-Type-Options', 'nosniff');
+
+        return $response;
     }
 
     /** Cookieless visit statistics: per-day views/visitors + top pages. */
@@ -431,6 +442,9 @@ final class AdminController extends AbstractController
         $decision = $em->getRepository(AiDedupDecision::class)->find($id);
         if ($decision !== null && $decision->isActive()) {
             $merger->undo($decision);
+            // Persist the veto: the nightly AI pass must never re-apply a merge
+            // an admin has explicitly overruled ({@see DedupAiCommand}).
+            $decision->setUndoneByAdminAt(new \DateTimeImmutable('now'));
             $em->flush();
             $this->addFlash('success', 'Merge rückgängig gemacht – Event wieder sichtbar.');
         }
