@@ -57,20 +57,26 @@ final class SummarizeAiCommand extends Command
     {
         $io = new SymfonyStyle($input, $output);
 
-        if (!$this->locks->acquire(self::LOCK_NAME)) {
+        // Shards work on disjoint id sets (MOD(id, shards)), so each shard gets
+        // its own lock and only guards against a duplicate of itself.
+        $shards = max(1, (int) $input->getOption('shards'));
+        $shard = max(0, (int) $input->getOption('shard'));
+        $lock = $shards > 1 ? sprintf('%s-%d-%d', self::LOCK_NAME, $shards, $shard) : self::LOCK_NAME;
+
+        if (!$this->locks->acquire($lock)) {
             $io->warning('Lauf läuft bereits – Abbruch.');
 
             return Command::SUCCESS;
         }
 
         try {
-            return $this->doExecute($input, $io);
+            return $this->doExecute($input, $io, $shards, $shard);
         } finally {
-            $this->locks->release(self::LOCK_NAME);
+            $this->locks->release($lock);
         }
     }
 
-    private function doExecute(InputInterface $input, SymfonyStyle $io): int
+    private function doExecute(InputInterface $input, SymfonyStyle $io, int $shards, int $shard): int
     {
         $apply = (bool) $input->getOption('apply');
         $limit = max(0, (int) $input->getOption('limit'));
@@ -94,8 +100,6 @@ final class SummarizeAiCommand extends Command
             return Command::FAILURE;
         }
 
-        $shards = max(1, (int) $input->getOption('shards'));
-        $shard = max(0, (int) $input->getOption('shard'));
         $events = $this->events->findWithoutSummary($limit > 0 ? $limit : 100000, $shards, $shard, $region);
         if ($events === []) {
             $io->success('Keine Events ohne Vorschau.');

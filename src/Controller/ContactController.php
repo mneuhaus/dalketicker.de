@@ -66,9 +66,12 @@ final class ContactController extends AbstractController
             return $back;
         }
 
-        $name = trim((string) $request->request->get('name', ''));
-        $email = trim((string) $request->request->get('email', ''));
-        $message = trim((string) $request->request->get('message', ''));
+        // Cap the fields once, up front — classifier prompt (token cost) and
+        // stored record use the same values; the textarea maxlength is
+        // client-side only.
+        $name = mb_substr(trim((string) $request->request->get('name', '')), 0, 120);
+        $email = mb_substr(trim((string) $request->request->get('email', '')), 0, 180);
+        $message = mb_substr(trim((string) $request->request->get('message', '')), 0, 5000);
 
         if ($name === '' || $message === '' || !filter_var($email, \FILTER_VALIDATE_EMAIL)) {
             $this->addFlash('contact_error', 'Bitte Name, eine gültige E-Mail und eine Nachricht angeben.');
@@ -76,14 +79,9 @@ final class ContactController extends AbstractController
             return $back;
         }
 
-        $verdict = $this->classifier->classify($name, mb_substr($email, 0, 180), $message);
+        $verdict = $this->classifier->classify($name, $email, $message);
 
-        $msg = new ContactMessage(
-            mb_substr($name, 0, 120),
-            mb_substr($email, 0, 180),
-            mb_substr($message, 0, 5000),
-            $this->clock->now(),
-        );
+        $msg = new ContactMessage($name, $email, $message, $this->clock->now());
         $msg->setSpam($verdict['spam'], $verdict['reason'] !== '' ? $verdict['reason'] : null);
         $this->em->persist($msg);
         $this->em->flush();

@@ -79,7 +79,9 @@ final class ContactClassifier
                 'auth_bearer' => $this->apiKey,
                 'headers' => ['Content-Type' => 'application/json', 'HTTP-Referer' => 'https://dalketicker.de', 'X-Title' => 'dalketicker'],
                 'json' => $payload,
-                'timeout' => 30,
+                // Runs synchronously inside the form request: keep the wait
+                // short — a timeout just falls through to fail-open below.
+                'timeout' => 10,
             ]);
             $data = $res->toArray(false);
         } catch (\Throwable $e) {

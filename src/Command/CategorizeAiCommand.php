@@ -7,7 +7,9 @@ namespace App\Command;
 use App\Ai\AiCategorizer;
 use App\Ai\AiUnavailableException;
 use App\Ai\CategoryApplier;
+use App\Entity\AiCategoryDecision;
 use App\Entity\Event;
+use App\Entity\Region;
 use App\Repository\EventRepository;
 use App\Repository\RegionRepository;
 use App\Service\RunLock;
@@ -58,37 +60,35 @@ final class CategorizeAiCommand extends Command
             ->addOption('max-calls', null, InputOption::VALUE_REQUIRED, 'Max. KI-Aufrufe insgesamt (0 = unbegrenzt)', '0')
             ->addOption('shards', null, InputOption::VALUE_REQUIRED, 'Gesamtzahl paralleler Läufe (für Sharding)', '1')
             ->addOption('shard', null, InputOption::VALUE_REQUIRED, 'Index dieses Laufs (0..shards-1)', '0')
-            ->addOption('reset', null, InputOption::VALUE_NONE, 'Alle KI-Kategorie-Entscheidungen zurücksetzen (für sauberen Neulauf nach Prompt-Änderung)');
+            ->addOption('reset', null, InputOption::VALUE_NONE, 'KI-Kategorie-Entscheidungen zurücksetzen (mit --region nur diese Region; für sauberen Neulauf nach Prompt-Änderung)');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
 
-        if (!$this->locks->acquire(self::LOCK_NAME)) {
+        // Shards work on disjoint id sets (MOD(id, shards)), so each shard gets
+        // its own lock and only guards against a duplicate of itself. The plain
+        // single run keeps the bare name the admin UI checks via isLocked().
+        $shards = max(1, (int) $input->getOption('shards'));
+        $shard = max(0, (int) $input->getOption('shard'));
+        $lock = $shards > 1 ? sprintf('%s-%d-%d', self::LOCK_NAME, $shards, $shard) : self::LOCK_NAME;
+
+        if (!$this->locks->acquire($lock)) {
             $io->warning('Lauf läuft bereits – Abbruch.');
 
             return Command::SUCCESS;
         }
 
         try {
-            return $this->doExecute($input, $io);
+            return $this->doExecute($input, $io, $shards, $shard);
         } finally {
-            $this->locks->release(self::LOCK_NAME);
+            $this->locks->release($lock);
         }
     }
 
-    private function doExecute(InputInterface $input, SymfonyStyle $io): int
+    private function doExecute(InputInterface $input, SymfonyStyle $io, int $shards, int $shard): int
     {
-        if ($input->getOption('reset')) {
-            return $this->reset($io);
-        }
-
-        $apply = (bool) $input->getOption('apply');
-        $mode = (string) $input->getOption('mode');
-        $limit = max(0, (int) $input->getOption('limit'));
-        $batch = max(1, (int) $input->getOption('batch'));
-        $maxCalls = max(0, (int) $input->getOption('max-calls'));
         $region = null;
         $regionKey = trim((string) $input->getOption('region'));
         if ($regionKey !== '') {
@@ -100,6 +100,16 @@ final class CategorizeAiCommand extends Command
             }
         }
 
+        if ($input->getOption('reset')) {
+            return $this->reset($io, $region);
+        }
+
+        $apply = (bool) $input->getOption('apply');
+        $mode = (string) $input->getOption('mode');
+        $limit = max(0, (int) $input->getOption('limit'));
+        $batch = max(1, (int) $input->getOption('batch'));
+        $maxCalls = max(0, (int) $input->getOption('max-calls'));
+
         $io->title(sprintf('KI-Kategorisierung %s%s – Modell: %s', $apply ? '(APPLY)' : '(Dry-Run)', $region !== null ? ' '.$region->getSiteName() : '', $this->categorizer->getModel()));
         if (!$this->categorizer->isConfigured()) {
             $io->error('OPENROUTER_API_KEY ist nicht gesetzt.');
@@ -109,9 +119,6 @@ final class CategorizeAiCommand extends Command
 
         $calls = 0;
         $stats = ['fill' => 0, 'suggestions' => 0, 'agreed' => 0, 'skipped' => 0, 'pinned' => 0];
-
-        $shards = max(1, (int) $input->getOption('shards'));
-        $shard = max(0, (int) $input->getOption('shard'));
 
         // One date-ordered pass: soonest events first, then further into the
         // future. Each event is a "fill" (no real category) or an "opinion"
@@ -185,17 +192,25 @@ final class CategorizeAiCommand extends Command
         }
     }
 
-    /** Restore pre-AI categories (undo applied decisions) and drop all decisions. */
-    private function reset(SymfonyStyle $io): int
+    /** Restore pre-AI categories (undo applied decisions) and drop the decisions — all regions or just one. */
+    private function reset(SymfonyStyle $io, ?Region $region): int
     {
-        $repo = $this->em->getRepository(\App\Entity\AiCategoryDecision::class);
-        $decisions = $repo->findAll();
+        $qb = $this->em->getRepository(AiCategoryDecision::class)->createQueryBuilder('d');
+        if ($region !== null) {
+            $qb->join('d.event', 'e')->andWhere('e.region = :region')->setParameter('region', $region);
+        }
+        /** @var list<AiCategoryDecision> $decisions */
+        $decisions = $qb->getQuery()->getResult();
         foreach ($decisions as $decision) {
             $this->applier->undo($decision); // restores previousSlugs for applied ones
             $this->em->remove($decision);
         }
         $this->em->flush();
-        $io->success(sprintf('%d Entscheidungen zurückgesetzt – nächster Lauf kategorisiert neu.', \count($decisions)));
+        $io->success(sprintf(
+            '%d Entscheidungen zurückgesetzt%s – nächster Lauf kategorisiert neu.',
+            \count($decisions),
+            $region !== null ? ' ('.$region->getSiteName().')' : '',
+        ));
 
         return Command::SUCCESS;
     }

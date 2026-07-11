@@ -65,7 +65,7 @@ final class AiSummarizer
         $lines = [];
         foreach ($events as $e) {
             $text = mb_substr(preg_replace('/\s+/', ' ', strip_tags((string) $e->getDescription())) ?? '', 0, 1200);
-            $lines[] = sprintf('id=%d | Titel: "%s" | Text: %s', $e->getId(), $e->getTitle(), $text);
+            $lines[] = sprintf('id=%d | Titel: "%s" | Text: %s', $e->getId(), PromptSanitizer::clean($e->getTitle()), $text);
         }
 
         $region = $events[0]->getRegion();
@@ -117,6 +117,21 @@ final class AiSummarizer
             $this->logger->error('AI summarize API error', ['status' => $status, 'error' => $data['error'] ?? null]);
 
             throw new AiUnavailableException(sprintf('KI-API-Fehler (HTTP %d).', $status));
+        }
+
+        // A truncated (finish_reason "length") or prose-only answer without tool
+        // calls is transient — abort so the caller retries the batch next run
+        // instead of storing empty summaries.
+        $finish = (string) ($data['choices'][0]['finish_reason'] ?? '');
+        if ($finish === 'length') {
+            $this->logger->error('AI summarize response truncated', ['finish_reason' => $finish]);
+
+            throw new AiUnavailableException('KI-Antwort abgeschnitten (max_tokens erreicht).');
+        }
+        if (($data['choices'][0]['message']['tool_calls'] ?? []) === []) {
+            $this->logger->error('AI summarize response without tool calls', ['finish_reason' => $finish]);
+
+            throw new AiUnavailableException('KI-Antwort ohne Tool-Aufrufe – Batch wird beim nächsten Lauf erneut versucht.');
         }
 
         // Only accept ids we actually sent — drop anything the model invented.

@@ -73,9 +73,9 @@ final class AiCategorizer
             $lines[] = sprintf(
                 'id=%d | "%s" | Ort: %s | Veranstalter: %s%s',
                 $e->getId(),
-                $e->getTitle(),
-                $e->getDisplayLocation() ?: '—',
-                $e->getOrganizer() ?: '—',
+                PromptSanitizer::clean($e->getTitle()),
+                PromptSanitizer::clean($e->getDisplayLocation()) ?: '—',
+                PromptSanitizer::clean($e->getOrganizer()) ?: '—',
                 $desc !== '' ? ' | '.$desc : '',
             );
         }
@@ -151,6 +151,21 @@ final class AiCategorizer
             $this->logger->error('AI categorize API error', ['status' => $status, 'error' => $data['error'] ?? null]);
 
             throw new AiUnavailableException(sprintf('KI-API-Fehler (HTTP %d).', $status));
+        }
+
+        // A truncated (finish_reason "length") or prose-only answer without tool
+        // calls is transient — abort so the caller retries the batch next run
+        // instead of marking every event as "no proposal".
+        $finish = (string) ($data['choices'][0]['finish_reason'] ?? '');
+        if ($finish === 'length') {
+            $this->logger->error('AI categorize response truncated', ['finish_reason' => $finish]);
+
+            throw new AiUnavailableException('KI-Antwort abgeschnitten (max_tokens erreicht).');
+        }
+        if (($data['choices'][0]['message']['tool_calls'] ?? []) === []) {
+            $this->logger->error('AI categorize response without tool calls', ['finish_reason' => $finish]);
+
+            throw new AiUnavailableException('KI-Antwort ohne Tool-Aufrufe – Batch wird beim nächsten Lauf erneut versucht.');
         }
 
         // Only accept ids we actually sent — drop anything the model invented.

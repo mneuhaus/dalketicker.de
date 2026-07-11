@@ -74,16 +74,16 @@ final class AiDeduper
         $lines = [];
         foreach ($events as $e) {
             $time = $e->isAllDay() ? 'ganztägig' : $e->getStartsAt()->format('H:i');
-            $loc = $e->getDisplayLocation() ?: '—';
+            $loc = PromptSanitizer::clean($e->getDisplayLocation()) ?: '—';
             $desc = $e->getDescription() ? mb_substr(preg_replace('/\s+/', ' ', strip_tags($e->getDescription())) ?? '', 0, 200) : '';
             $lines[] = sprintf(
                 'id=%d | %s | "%s" | %s | Bild: %s | Veranstalter: %s | Quelle: %s%s',
                 $e->getId(),
                 $time,
-                $e->getTitle(),
+                PromptSanitizer::clean($e->getTitle()),
                 $loc,
                 $e->getImageUrl() ? 'ja' : 'nein',
-                $e->getOrganizer() ?: '—',
+                PromptSanitizer::clean($e->getOrganizer()) ?: '—',
                 $e->getSource()->getKey(),
                 $desc !== '' ? ' | '.$desc : '',
             );
@@ -139,6 +139,15 @@ final class AiDeduper
             $this->logger->error('AI dedup API error', ['status' => $status, 'error' => $data['error'] ?? null]);
 
             throw new AiUnavailableException(sprintf('KI-API-Fehler (HTTP %d).', $status));
+        }
+
+        // Truncated answer (finish_reason "length"): proposals may be missing.
+        // Abort so the day is re-reviewed next run instead of fingerprinted as
+        // done. (Zero tool calls is fine here — it just means "no duplicates".)
+        if ((string) ($data['choices'][0]['finish_reason'] ?? '') === 'length') {
+            $this->logger->error('AI dedup response truncated', ['day' => $day->format('Y-m-d')]);
+
+            throw new AiUnavailableException('KI-Antwort abgeschnitten (max_tokens erreicht).');
         }
 
         // Only accept ids we actually sent — drop anything the model invented.
