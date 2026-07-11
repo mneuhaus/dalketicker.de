@@ -2,7 +2,8 @@
  * Shared interaction for the filter forms — the desktop chip sidebar and the
  * mobile dropdown bar both use [data-autosubmit]:
  *   - submit the form on any checkbox/radio/select change,
- *   - clicking an already-active single-select radio deselects it,
+ *   - activating an already-active single-select radio (click or Space)
+ *     deselects it,
  *   - toggle the optional custom-date panel,
  *   - open/close the mobile <details data-dd> dropdowns (one at a time,
  *     close on outside click).
@@ -12,15 +13,24 @@ function bindForm(form) {
     if (form.dataset.bound) return;
     form.dataset.bound = '1';
 
+    // A "von" without "bis" doesn't submit right away — the reload would close
+    // the mobile dropdown before "bis" can be entered. It submits once the
+    // date fields lose focus (or "bis" is filled in).
+    let pendingDate = false;
+
     form.addEventListener('change', (e) => {
         const t = e.target;
-        // "Meine Events" is handled in saved_events.js (it syncs IDs first).
-        if (t.matches('[data-meine]')) return;
         // Custom date: clear the presets so they don't conflict, then submit.
         if (t.matches('input[type=date]')) {
             if (t.value) {
                 form.querySelectorAll('input[name="zeitraum"]').forEach((r) => { r.checked = false; });
             }
+            const bis = form.querySelector('input[type=date][name="bis"]');
+            if (t.name === 'von' && t.value && bis && !bis.value) {
+                pendingDate = true;
+                return;
+            }
+            pendingDate = false;
             form.requestSubmit();
             return;
         }
@@ -33,6 +43,19 @@ function bindForm(form) {
         }
     });
 
+    // Submit a pending "von"-only range once focus leaves the date fields
+    // (checked a tick later, when the newly focused element is known).
+    form.addEventListener('focusout', () => {
+        if (!pendingDate) return;
+        window.setTimeout(() => {
+            if (!pendingDate) return;
+            const a = document.activeElement;
+            if (a && a.matches('input[type=date]') && form.contains(a)) return;
+            pendingDate = false;
+            form.requestSubmit();
+        }, 0);
+    });
+
     // Custom date panel toggle (desktop sidebar).
     const dateToggle = form.querySelector('[data-date-toggle]');
     const datePanel = form.querySelector('[data-date-panel]');
@@ -40,12 +63,18 @@ function bindForm(form) {
         dateToggle.addEventListener('click', () => datePanel.classList.toggle('hidden'));
     }
 
-    // Re-click an active single-select radio to clear it.
+    // Re-activating an active single-select radio (click or Space) clears it.
+    // The pre-activation checked state is captured on pointerdown/keydown,
+    // because inside the click handler the radio is already checked.
     form.querySelectorAll('label > input[type=radio]').forEach((radio) => {
         const label = radio.closest('label');
-        label.addEventListener('mousedown', () => { radio._was = radio.checked; });
+        const remember = () => { radio._was = radio.checked; };
+        label.addEventListener('pointerdown', remember);
+        radio.addEventListener('keydown', (e) => { if (e.key === ' ') remember(); });
         label.addEventListener('click', (e) => {
-            if (radio._was) {
+            const was = radio._was;
+            radio._was = false;
+            if (was) {
                 e.preventDefault();
                 radio.checked = false;
                 form.requestSubmit();

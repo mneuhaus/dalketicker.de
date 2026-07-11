@@ -89,6 +89,13 @@
   }
 }
 
+/* Chips hide their real input via sr-only, which clips the browser's focus
+   ring — draw a visible one on the label for keyboard users instead. */
+label:has(input.sr-only:focus-visible) {
+  outline: 2px solid var(--color-brand-600);
+  outline-offset: 2px;
+}
+
 /* On small screens the "Meine Events" nav is icon-only; hide it entirely while
    nothing is saved (JS toggles .is-empty based on the localStorage count). */
 @media (max-width: 639px) {

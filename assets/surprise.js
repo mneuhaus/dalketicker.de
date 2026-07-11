@@ -27,8 +27,14 @@ function init() {
 
     let order = shuffle([...cards.keys()]);
     let pos = 0;
+    // While the leave animation runs, further next() calls are ignored so a
+    // rapid double-tap can't skip a never-shown suggestion.
+    let leaving = false;
+    let leaveTimer = 0;
 
     function render() {
+        window.clearTimeout(leaveTimer);
+        leaving = false;
         cards.forEach((c) => {
             c.classList.add('hidden');
             c.classList.remove('surprise-leaving');
@@ -50,10 +56,12 @@ function init() {
     }
 
     function next() {
+        if (leaving) return;
         const card = cards[order[pos]];
         if (card && !card.classList.contains('hidden')) {
+            leaving = true;
             card.classList.add('surprise-leaving');
-            window.setTimeout(() => { pos++; render(); }, 180);
+            leaveTimer = window.setTimeout(() => { pos++; render(); }, 180);
         } else {
             pos++;
             render();
@@ -61,6 +69,7 @@ function init() {
     }
 
     function prev() {
+        if (leaving) return;
         if (pos >= order.length) { pos = order.length - 1; }
         else if (pos > 0) { pos--; }
         else { return; }

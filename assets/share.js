@@ -17,15 +17,30 @@ document.addEventListener('click', (e) => {
     }
 
     const label = btn.querySelector('[data-share-label]');
-    const feedback = () => {
+    const feedback = (ok) => {
         if (!label) return;
         const prev = label.textContent;
-        label.textContent = 'Link kopiert';
+        label.textContent = ok ? 'Link kopiert' : 'Kopieren fehlgeschlagen';
         window.setTimeout(() => { label.textContent = prev; }, 1600);
     };
+    // Legacy copy for browsers without the async Clipboard API (or when it
+    // rejects): a temporary textarea + execCommand('copy').
+    const legacyCopy = () => {
+        const ta = document.createElement('textarea');
+        ta.value = url;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        let ok = false;
+        try { ok = document.execCommand('copy'); } catch { ok = false; }
+        ta.remove();
+        feedback(ok);
+    };
     if (navigator.clipboard) {
-        navigator.clipboard.writeText(url).then(feedback).catch(() => {});
+        navigator.clipboard.writeText(url).then(() => feedback(true)).catch(legacyCopy);
     } else {
-        feedback();
+        legacyCopy();
     }
 });
