@@ -22,16 +22,25 @@
                 <h2 class="font-semibold text-ink mb-1">Kontakt</h2>
                 <p class="mb-4">Schreib mir direkt über das Formular – ich melde mich.</p>
 
-                {% for msg in app.flashes('contact_success') %}
-                    <div class="rounded-xl bg-emerald-50 text-emerald-800 text-sm px-4 py-3 mb-4">{{ msg }}</div>
-                {% endfor %}
-                {% for msg in app.flashes('contact_error') %}
-                    <div class="rounded-xl bg-rose-50 text-rose-700 text-sm px-4 py-3 mb-4">{{ msg }}</div>
-                {% endfor %}
+                {# Outcome of a submit arrives as ?kontakt=<status> rather than a
+                   flash message: flashes live in the session and would set a
+                   cookie on an otherwise cookie-free public page. #}
+                {% set contact_status = app.request.query.get('kontakt') %}
+                {% set contact_errors = {
+                    'abgelaufen': 'Das Formular ist abgelaufen – bitte erneut senden.',
+                    'unvollstaendig': 'Bitte Name, eine gültige E-Mail und eine Nachricht angeben.',
+                    'limit': 'Du hast in kurzer Zeit mehrere Nachrichten gesendet. Bitte versuch es später nochmal.',
+                } %}
+                {% if contact_status == 'ok' %}
+                    <div class="rounded-xl bg-emerald-50 text-emerald-800 text-sm px-4 py-3 mb-4">Danke! Deine Nachricht ist angekommen – ich melde mich.</div>
+                {% elseif contact_status in contact_errors|keys %}
+                    <div class="rounded-xl bg-rose-50 text-rose-700 text-sm px-4 py-3 mb-4">{{ contact_errors[contact_status] }}</div>
+                {% endif %}
 
                 <form method="post" action="{{ path('contact_submit') }}" class="not-prose space-y-3 max-w-xl">
-                    <input type="hidden" name="_token" value="{{ csrf_token('contact') }}">
-                    <input type="hidden" name="ts" value="{{ 'now'|date('U') }}">
+                    {# Signed timestamp instead of a session CSRF token (ContactFormToken): no cookie for visitors. #}
+                    <input type="hidden" name="_token" value="{{ contact_form.token }}">
+                    <input type="hidden" name="ts" value="{{ contact_form.ts }}">
                     {# Honeypot: hidden from humans, bots tend to fill it. #}
                     <div class="absolute left-[-9999px]" aria-hidden="true">
                         <label>Website<input type="text" name="website" tabindex="-1" autocomplete="off"></label>

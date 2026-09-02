@@ -56,8 +56,9 @@ final class VisitCounter
         }
 
         $route = (string) $request->attributes->get('_route', '');
-        // Skip internal (_wdt/_profiler/_error), admin, auth and the image proxy.
-        if ($route === '' || $route[0] === '_' || str_starts_with($route, 'admin_') || str_starts_with($route, 'app_') || $route === 'image_proxy') {
+        // Skip internal (_wdt/_profiler/_error), admin and auth routes. Non-HTML
+        // responses (image proxy, feeds, manifest) were already filtered above.
+        if ($route === '' || $route[0] === '_' || str_starts_with($route, 'admin_') || str_starts_with($route, 'app_')) {
             return;
         }
 

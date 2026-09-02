@@ -47,7 +47,9 @@ final class EventFilter
     public static function fromRequest(Request $request): self
     {
         $categories = [];
-        foreach ((array) $request->query->all('kategorie') as $slug) {
+        // Not ->all('kategorie'): that throws a 400 when the value is scalar,
+        // and a hand-typed or old ?kategorie=kino link is scalar.
+        foreach ((array) ($request->query->all()['kategorie'] ?? []) as $slug) {
             $slug = is_string($slug) ? trim($slug) : '';
             if ($slug !== '') {
                 $categories[] = $slug;

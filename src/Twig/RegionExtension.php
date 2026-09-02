@@ -36,6 +36,7 @@ final class RegionExtension extends AbstractExtension implements GlobalsInterfac
     {
         return [
             new TwigFunction('region_share_image', $this->shareImage(...)),
+            new TwigFunction('region_icon', $this->iconPath(...)),
         ];
     }
 
@@ -46,12 +47,25 @@ final class RegionExtension extends AbstractExtension implements GlobalsInterfac
      */
     public function shareImage(): string
     {
-        $region = $this->regions->current();
-        $path = '/share/'.$region->getKey().'/status.png';
-        if (!is_file($this->projectDir.'/public'.$path)) {
-            $path = '/share/status.png';
-        }
+        return $this->regions->current()->getBaseUrl().$this->regionalOrDefault('/share', 'status.png');
+    }
 
-        return $region->getBaseUrl().$path;
+    /**
+     * Web path of an app icon: /icons/{regionKey}/{file} when a region-specific
+     * set exists, otherwise the shared default set. Single source for the
+     * manifest, the favicon routes and the templates, so they can't drift once
+     * a regional set is dropped into public/icons/<region>/.
+     */
+    public function iconPath(string $filename): string
+    {
+        return $this->regionalOrDefault('/icons', $filename);
+    }
+
+    /** public{$dir}/{regionKey}/{$filename} when that file exists, else public{$dir}/{$filename}. */
+    private function regionalOrDefault(string $dir, string $filename): string
+    {
+        $regional = $dir.'/'.$this->regions->current()->getKey().'/'.$filename;
+
+        return is_file($this->projectDir.'/public'.$regional) ? $regional : $dir.'/'.$filename;
     }
 }

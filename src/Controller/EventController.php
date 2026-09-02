@@ -7,6 +7,7 @@ namespace App\Controller;
 use App\Calendar\IcsFeedBuilder;
 use App\Entity\Event;
 use App\Entity\Region;
+use App\Enum\BookingStatus;
 use App\Repository\CategoryRepository;
 use App\Repository\EventRepository;
 use App\Search\EventFilter;
@@ -17,7 +18,6 @@ use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
-use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
 final class EventController extends AbstractController
 {
@@ -39,11 +39,13 @@ final class EventController extends AbstractController
     {
         $filter = EventFilter::fromRequest($request);
         $region = $this->regions->current();
-        $page = max(1, $request->query->getInt('seite', 1));
-        $offset = ($page - 1) * self::PER_PAGE;
-
-        $events = $this->events->findUpcoming($filter, self::PER_PAGE, $offset, $region);
         $total = $this->events->countUpcoming($filter, $region);
+        $pages = max(1, (int) ceil($total / self::PER_PAGE));
+        // Clamp to what exists: an absurd ?seite= would overflow the offset
+        // into a float (TypeError → 500); it simply lands on the last page.
+        $page = min(max(1, $request->query->getInt('seite', 1)), $pages);
+
+        $events = $this->events->findUpcoming($filter, self::PER_PAGE, ($page - 1) * self::PER_PAGE, $region);
 
         // Recurring series (same title+venue) are collapsed to one card by the
         // repository; map the label data ("täglich · bis …") onto those cards.
@@ -57,17 +59,18 @@ final class EventController extends AbstractController
         }
 
         $today = $this->clock->now()->setTimezone(new \DateTimeZone('Europe/Berlin'));
-        // Group multi-day events that span into the window under the window start
-        // (e.g. a Thu–Sun market shows on Saturday for the "Wochenende" filter).
-        $floor = $filter->onlySaved
-            ? null
-            : (($filter->from !== null && $filter->from > $today) ? $filter->from : $today);
+        // Group multi-day events that span into the window under the window
+        // start (e.g. a Thu–Sun market shows on Saturday for the "Wochenende"
+        // filter). The window start is "von" when given — also when it lies in
+        // the past, otherwise a custom August range would collapse into one
+        // "Heute" group — and today for the default upcoming list.
+        $floor = $filter->onlySaved ? null : ($filter->from ?? $today);
 
         return $this->render('event/index.html.twig', [
             'groups' => $this->groupByDay($events, $floor),
             'total' => $total,
             'page' => $page,
-            'pages' => max(1, (int) ceil($total / self::PER_PAGE)),
+            'pages' => $pages,
             'filter' => $filter,
             'view' => 'list',
             'seriesByEvent' => $seriesByEvent,
@@ -177,7 +180,7 @@ final class EventController extends AbstractController
         $response = new Response($ics, Response::HTTP_OK, ['Content-Type' => 'text/calendar; charset=utf-8']);
         $response->headers->set('Content-Disposition', 'inline; filename="'.$region->getSiteName().'.ics"');
         // Nothing user-specific in the feed; let clients and the proxy absorb
-        // the frequent calendar-app polls (imports run twice a day anyway).
+        // the frequent calendar-app polls (imports only run every three hours).
         $response->setPublic();
         $response->setMaxAge(3600);
         $response->setSharedMaxAge(3600);
@@ -251,7 +254,12 @@ final class EventController extends AbstractController
      */
     private function eventJsonLd(Event $event): string
     {
-        $url = $this->generateUrl('event_show', ['id' => $event->getId(), 'slug' => $event->getSlug()], UrlGeneratorInterface::ABSOLUTE_URL);
+        // Absolute URLs are built on the region's canonical host, not the
+        // request host: alias hosts serve the same page, and the structured
+        // data must agree with <link rel="canonical">.
+        $base = $event->getRegion()->getBaseUrl();
+        $url = $base.$this->generateUrl('event_show', ['id' => $event->getId(), 'slug' => $event->getSlug()]);
+        $booking = $event->getBookingStatus();
         $data = [
             '@context' => 'https://schema.org',
             '@type' => 'Event',
@@ -261,7 +269,10 @@ final class EventController extends AbstractController
             'startDate' => $event->isAllDay()
                 ? $event->getStartsAt()->format('Y-m-d')
                 : $event->getStartsAt()->format('Y-m-d\TH:i:sP'),
-            'eventStatus' => 'https://schema.org/EventScheduled',
+            // What the page badges as "Fällt aus" must not be "scheduled" for Google.
+            'eventStatus' => $booking === BookingStatus::Cancelled
+                ? 'https://schema.org/EventCancelled'
+                : 'https://schema.org/EventScheduled',
             'eventAttendanceMode' => 'https://schema.org/OfflineEventAttendanceMode',
             'url' => $url,
         ];
@@ -292,7 +303,11 @@ final class EventController extends AbstractController
         // Offer (recommended): the original event/ticket page + price when we can
         // read it from the free-text price ("Eintritt frei" → 0, "12 €" → 12 EUR).
         $offerUrl = preg_match('#^https?://#', (string) $event->getSourceUrl()) ? $event->getSourceUrl() : $url;
-        $offer = ['@type' => 'Offer', 'url' => $offerUrl, 'availability' => 'https://schema.org/InStock'];
+        $offer = [
+            '@type' => 'Offer',
+            'url' => $offerUrl,
+            'availability' => $booking?->isSoldOut() ? 'https://schema.org/SoldOut' : 'https://schema.org/InStock',
+        ];
         $price = $event->getPrice();
         if ($price !== null && preg_match('/frei|kostenlos|gratis|umsonst/i', $price)) {
             $offer['price'] = '0';
@@ -306,7 +321,7 @@ final class EventController extends AbstractController
         // Creative parts only where allowed; otherwise our own fallbacks (logo
         // image + a factual one-liner) so the recommended fields aren't empty.
         if (!$event->isFactsOnly() && $event->getImageUrl() !== null) {
-            $data['image'] = $this->generateUrl('image_proxy', ['id' => $event->getId()], UrlGeneratorInterface::ABSOLUTE_URL);
+            $data['image'] = $base.$this->generateUrl('image_proxy', ['id' => $event->getId()]);
         } else {
             $data['image'] = $this->regionExtension->shareImage();
         }
@@ -319,9 +334,11 @@ final class EventController extends AbstractController
         }
         $data['description'] = mb_substr($desc, 0, 500);
 
-        // Keep slashes escaped (\/) so a "</script>" in any value can't break out
-        // of the inline JSON-LD <script> block.
-        return json_encode($data, \JSON_UNESCAPED_UNICODE) ?: '{}';
+        // Escape "<", ">" and "&" (< …) on top of the slashes: an upstream
+        // title containing "<!--<script" would otherwise flip the HTML tokenizer
+        // into its double-escaped script state, where the real "</script>" no
+        // longer closes the JSON-LD block and the rest of the page vanishes.
+        return json_encode($data, \JSON_UNESCAPED_UNICODE | \JSON_HEX_TAG | \JSON_HEX_AMP) ?: '{}';
     }
 
     /** Reduce a source URL to its bare homepage (scheme + host) for linking. */

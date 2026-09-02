@@ -110,4 +110,13 @@ final class IcsFeedBuilderTest extends TestCase
         self::assertStringContainsString('UID:event-42@dalketicker.de', $ics);
         self::assertStringContainsString('https://dalketicker.de/event/42-test-event', $ics);
     }
+
+    public function testRefreshHintsMatchTheImportCadence(): void
+    {
+        // Imports run every 3 h; the feed advertises 6 h (see IcsFeedBuilder::build).
+        $ics = $this->builder->build([], 'Testkalender');
+
+        self::assertStringContainsString('REFRESH-INTERVAL;VALUE=DURATION:PT6H', $ics);
+        self::assertStringContainsString('X-PUBLISHED-TTL:PT6H', $ics);
+    }
 }

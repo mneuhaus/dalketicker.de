@@ -30,6 +30,17 @@ framework:
                     multiplier: 4
                     http_codes: [429, 500, 502, 503, 504]
 
+    rate_limiter:
+        # Contact form: per-IP cap, consumed before the paid AI classifier
+        # runs (ContactController). Sliding window so a burst around the hour
+        # boundary cannot double the allowance. Stored in the app cache pool;
+        # no lock factory since symfony/lock is not installed, which is fine
+        # for a spam brake (the classifier is the real gate).
+        contact_form:
+            policy: sliding_window
+            limit: 3
+            interval: '1 hour'
+
     #esi: true
     #fragments: true
 

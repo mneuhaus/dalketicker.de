@@ -34,10 +34,12 @@ final class IcsFeedBuilder
         $calendar = new VCalendar();
         $calendar->PRODID = '-//'.$this->prodIdHost($events).'//'.$calName.'//DE';
         $calendar->add('METHOD', 'PUBLISH');
-        // Auto-refresh hints (RFC 7986 + the Apple/Microsoft extension), ~twice a
-        // day to match the import cron.
-        $calendar->add('REFRESH-INTERVAL', 'PT12H', ['VALUE' => 'DURATION']);
-        $calendar->add('X-PUBLISHED-TTL', 'PT12H');
+        // Auto-refresh hints (RFC 7986 + the Apple/Microsoft extension). Imports
+        // run every 3 h (docker/cron.sh); 6 h keeps subscribers reasonably fresh
+        // without every calendar app polling on each import cycle. The response
+        // is additionally HTTP-cached for an hour (EventController::feed).
+        $calendar->add('REFRESH-INTERVAL', 'PT6H', ['VALUE' => 'DURATION']);
+        $calendar->add('X-PUBLISHED-TTL', 'PT6H');
         $calendar->add('X-WR-CALNAME', $calName);
         $calendar->add('X-WR-TIMEZONE', 'Europe/Berlin');
 

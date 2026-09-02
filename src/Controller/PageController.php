@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Repository\SourceRepository;
+use App\Service\ContactFormToken;
 use App\Service\RegionContext;
+use App\Twig\RegionExtension;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -20,16 +22,18 @@ final class PageController extends AbstractController
 {
     public function __construct(
         private readonly RegionContext $regions,
+        private readonly RegionExtension $regionExtension,
         #[Autowire('%kernel.project_dir%')]
         private readonly string $projectDir,
-    )
-    {
+    ) {
     }
 
     #[Route('/impressum', name: 'page_impressum', methods: ['GET'])]
-    public function impressum(): Response
+    public function impressum(ContactFormToken $contactToken): Response
     {
-        return $this->render('page/impressum.html.twig');
+        // Signed timestamp + token for the contact form instead of a session
+        // CSRF token, so this public page sets no cookie (see ContactFormToken).
+        return $this->render('page/impressum.html.twig', ['contact_form' => $contactToken->issueNow()]);
     }
 
     #[Route('/quellen', name: 'page_quellen', methods: ['GET'])]
@@ -75,8 +79,8 @@ final class PageController extends AbstractController
             'background_color' => '#faf9f6',
             'theme_color' => $region->getThemeColor(),
             'icons' => [
-                ['src' => $this->iconPath('icon-192.png'), 'sizes' => '192x192', 'type' => 'image/png', 'purpose' => 'any maskable'],
-                ['src' => $this->iconPath('icon-512.png'), 'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'any maskable'],
+                ['src' => $this->regionExtension->iconPath('icon-192.png'), 'sizes' => '192x192', 'type' => 'image/png', 'purpose' => 'any maskable'],
+                ['src' => $this->regionExtension->iconPath('icon-512.png'), 'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'any maskable'],
             ],
         ], Response::HTTP_OK, ['Content-Type' => 'application/manifest+json']);
     }
@@ -113,26 +117,19 @@ final class PageController extends AbstractController
         return new Response($body, Response::HTTP_OK, ['Content-Type' => 'text/plain; charset=utf-8']);
     }
 
-    /**
-     * Web path of an app icon: public/icons/{regionKey}/{file} when a
-     * region-specific set exists, otherwise the shared default set.
-     */
-    private function iconPath(string $filename): string
-    {
-        $regional = '/icons/'.$this->regions->current()->getKey().'/'.$filename;
-
-        return is_file($this->projectDir.'/public'.$regional) ? $regional : '/icons/'.$filename;
-    }
-
     private function iconResponse(string $filename): BinaryFileResponse
     {
-        $response = new BinaryFileResponse($this->projectDir.'/public'.$this->iconPath($filename));
+        $response = new BinaryFileResponse($this->projectDir.'/public'.$this->regionExtension->iconPath($filename));
         $response->headers->set('Content-Type', 'image/png');
         $response->headers->set('X-Robots-Tag', 'noindex');
+        // A day, and explicitly NOT immutable: these paths are fixed, not
+        // content-hashed, and {@see RegionExtension::iconPath} silently
+        // switches to a regional icon set the moment one is dropped into
+        // public/icons/<region>/. With a year of immutable caching that switch
+        // would take a year to reach everyone who had already visited.
         $response->setPublic();
-        $response->setMaxAge(31536000);
-        $response->setSharedMaxAge(31536000);
-        $response->setImmutable();
+        $response->setMaxAge(86400);
+        $response->setSharedMaxAge(86400);
 
         return $response;
     }

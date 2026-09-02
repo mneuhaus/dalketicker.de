@@ -6,30 +6,34 @@ namespace App\Controller;
 
 use App\Ai\ContactClassifier;
 use App\Entity\ContactMessage;
+use App\Service\ContactFormToken;
 use Doctrine\ORM\EntityManagerInterface;
-use Psr\Cache\CacheItemPoolInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\RateLimiter\RateLimiterFactoryInterface;
 use Symfony\Component\Routing\Attribute\Route;
 
 /**
  * Public contact form handler. Layered, cheap-to-expensive spam defence:
- * CSRF → honeypot → time-trap → per-IP rate limit → AI classifier. Everything
- * that clears the cheap filters is stored (real or flagged-spam) for the admin
- * inbox; bot hits are dropped silently with a success message so they learn
- * nothing.
+ * signed form token (incl. time-trap) → honeypot → field validation → per-IP
+ * rate limit → AI classifier. Everything that clears the cheap filters is
+ * stored (real or flagged-spam) for the admin inbox; bot hits are dropped
+ * silently with a success message so they learn nothing.
+ *
+ * Stateless on purpose: neither a session CSRF token nor flash messages, as
+ * both would set a session cookie and the privacy notice promises that public
+ * pages set none. The outcome travels back as a query parameter which
+ * impressum.html.twig turns into the message.
  */
 final class ContactController extends AbstractController
 {
-    private const MAX_PER_HOUR = 3;
-    private const MIN_FILL_SECONDS = 3;
-
     public function __construct(
         private readonly EntityManagerInterface $em,
         private readonly ContactClassifier $classifier,
-        private readonly CacheItemPoolInterface $cache,
+        private readonly ContactFormToken $formToken,
+        private readonly RateLimiterFactoryInterface $contactFormLimiter,
         private readonly ClockInterface $clock,
     ) {
     }
@@ -37,33 +41,16 @@ final class ContactController extends AbstractController
     #[Route('/kontakt', name: 'contact_submit', methods: ['POST'])]
     public function submit(Request $request): RedirectResponse
     {
-        $back = $this->redirectToRoute('page_impressum');
-
-        if (!$this->isCsrfTokenValid('contact', (string) $request->request->get('_token'))) {
-            $this->addFlash('contact_error', 'Das Formular ist abgelaufen – bitte erneut senden.');
-
-            return $back;
-        }
+        $ts = (int) $request->request->get('ts', 0);
 
         // Honeypot + time-trap: a real browser leaves the hidden field empty and
         // needs a few seconds to fill the form. Bots fail one of these → drop
         // silently (pretend success so they don't probe further).
-        $ts = (int) $request->request->get('ts', 0);
-        $tooFast = $ts <= 0 || ($this->clock->now()->getTimestamp() - $ts) < self::MIN_FILL_SECONDS;
-        if (trim((string) $request->request->get('website', '')) !== '' || $tooFast) {
-            $this->addFlash('contact_success', 'Danke! Deine Nachricht ist angekommen.');
-
-            return $back;
+        if (trim((string) $request->request->get('website', '')) !== '' || $this->formToken->isTooFresh($ts)) {
+            return $this->backWith('ok');
         }
-
-        // Per-IP rate limit via the app cache (no extra dependency).
-        $key = 'contact_rl_'.sha1(($request->getClientIp() ?? '').'|contact');
-        $item = $this->cache->getItem($key);
-        $count = (int) ($item->get() ?? 0);
-        if ($count >= self::MAX_PER_HOUR) {
-            $this->addFlash('contact_error', 'Du hast in kurzer Zeit mehrere Nachrichten gesendet. Bitte versuch es später nochmal.');
-
-            return $back;
+        if (!$this->formToken->isValid($ts, (string) $request->request->get('_token', ''))) {
+            return $this->backWith('abgelaufen');
         }
 
         // Cap the fields once, up front — classifier prompt (token cost) and
@@ -74,9 +61,16 @@ final class ContactController extends AbstractController
         $message = mb_substr(trim((string) $request->request->get('message', '')), 0, 5000);
 
         if ($name === '' || $message === '' || !filter_var($email, \FILTER_VALIDATE_EMAIL)) {
-            $this->addFlash('contact_error', 'Bitte Name, eine gültige E-Mail und eine Nachricht angeben.');
+            return $this->backWith('unvollstaendig');
+        }
 
-            return $back;
+        // Per-IP limit (config: framework.rate_limiter.contact_form), consumed
+        // before the paid classifier call so a flood costs no tokens and after
+        // validation so typos don't eat the allowance. Hashed key: the limiter
+        // store must not hold raw IPs.
+        $limit = $this->contactFormLimiter->create(sha1(($request->getClientIp() ?? '').'|contact'))->consume();
+        if (!$limit->isAccepted()) {
+            return $this->backWith('limit');
         }
 
         $verdict = $this->classifier->classify($name, $email, $message);
@@ -86,11 +80,12 @@ final class ContactController extends AbstractController
         $this->em->persist($msg);
         $this->em->flush();
 
-        $item->set($count + 1)->expiresAfter(3600);
-        $this->cache->save($item);
+        return $this->backWith('ok');
+    }
 
-        $this->addFlash('contact_success', 'Danke! Deine Nachricht ist angekommen – ich melde mich.');
-
-        return $back;
+    /** Back to the form; the template maps the status key to the message shown. */
+    private function backWith(string $status): RedirectResponse
+    {
+        return $this->redirectToRoute('page_impressum', ['kontakt' => $status, '_fragment' => 'kontakt']);
     }
 }
