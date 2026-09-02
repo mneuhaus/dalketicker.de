@@ -6,9 +6,11 @@ namespace App\Command;
 
 use App\Entity\Region;
 use App\Entity\Source;
+use App\Importer\ImporterRegistry;
 use App\Repository\SourceRepository;
 use App\Repository\RegionRepository;
 use App\Service\EventImporter;
+use App\Service\ImportReport;
 use App\Service\RunLock;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -38,6 +40,7 @@ final class ImportCommand extends Command
         private readonly SourceRepository $sources,
         private readonly RegionRepository $regions,
         private readonly EventImporter $importer,
+        private readonly ImporterRegistry $registry,
         private readonly RunLock $locks,
         #[Autowire('%kernel.project_dir%')] private readonly string $projectDir,
     ) {
@@ -111,6 +114,7 @@ final class ImportCommand extends Command
             return Command::INVALID;
         }
 
+        $sources = $this->importableOnly($sources, $io);
         if (!$sources) {
             $io->warning('Keine Quellen zum Importieren.');
 
@@ -168,7 +172,7 @@ final class ImportCommand extends Command
         try {
             $io->section($source->getName().' ['.$label.']');
             $report = $this->importer->import($source, $dryRun);
-            if ($report->fatal !== null) {
+            if ($report->fatal !== null || $this->everyEventFailed($report)) {
                 $io->error($report->summary());
 
                 return $report->summary();
@@ -180,6 +184,39 @@ final class ImportCommand extends Command
         } finally {
             $this->locks->release($lockName);
         }
+    }
+
+    /**
+     * Drop sources no importer can serve (manual sources, a typo in the key)
+     * with a visible warning: the scheduled --all-regions run must not fail
+     * just because a manual source is enabled.
+     *
+     * @param Source[] $sources
+     *
+     * @return list<Source>
+     */
+    private function importableOnly(array $sources, SymfonyStyle $io): array
+    {
+        $importable = [];
+        foreach ($sources as $source) {
+            if (!$this->registry->has($source)) {
+                $io->warning(sprintf('%s/%s: kein Importer "%s" registriert – übersprungen.', $source->getRegion()->getKey(), $source->getKey(), $source->getImporter()));
+                continue;
+            }
+            $importable[] = $source;
+        }
+
+        return $importable;
+    }
+
+    /**
+     * A run in which every event failed to upsert is a broken source (e.g. a
+     * schema mismatch rejecting each row), not a "partial" success: fail the
+     * command like a fatal does, so the scheduler log shows it.
+     */
+    private function everyEventFailed(ImportReport $report): bool
+    {
+        return $report->seen > 0 && $report->errors === $report->seen;
     }
 
     /**

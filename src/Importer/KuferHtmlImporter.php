@@ -358,7 +358,9 @@ final class KuferHtmlImporter implements SourceImporter
     {
         $tz = new \DateTimeZone('Europe/Berlin');
 
-        if (!preg_match('/(\d{1,2})\.(\d{1,2})\.(\d{2}|\d{4})/', $text, $d)) {
+        // Four-digit year first: PCRE takes the first alternative that
+        // matches, so "\d{2}|\d{4}" read "2026" as "20" (+2000 = 2020).
+        if (!preg_match('/(\d{1,2})\.(\d{1,2})\.(\d{4}|\d{2})(?!\d)/', $text, $d)) {
             return null;
         }
         $day = (int) $d[1];

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Entity\AiCategoryDecision;
 use App\Entity\Event;
 use App\Entity\ImportRun;
 use App\Entity\Source;
@@ -100,6 +101,13 @@ final class EventImporter
                 'source' => $source->getKey(),
                 'error' => $e->getMessage(),
             ]);
+        }
+
+        // Every single row rejected is not a "partial" success with an "OK:"
+        // status — it is the source being broken (markup change, schema
+        // mismatch) and must show up as a failure in the admin and the exit code.
+        if ($report->fatal === null && $report->seen > 0 && $report->errors === $report->seen) {
+            $report->fatal = sprintf('Alle %d Events konnten nicht gespeichert werden (siehe Log).', $report->seen);
         }
 
         if (!$dryRun) {
@@ -230,6 +238,15 @@ final class EventImporter
         // before it feeds the venue and the cross-source dedup key.
         $dto->city = $this->cityNormalizer->normalize($dto->city, $source->getRegion());
 
+        // Every timestamp is stored and compared as Berlin wall-clock (the
+        // columns are "timestamp without time zone", php.ini pins the zone).
+        // Normalize here, before the dedup key and content hash are derived,
+        // so an importer handing over a UTC or foreign-TZID object can't shift
+        // the stored time or produce a key no other source's copy matches.
+        $berlin = new \DateTimeZone('Europe/Berlin');
+        $dto->startsAt = $dto->startsAt->setTimezone($berlin);
+        $dto->endsAt = $dto->endsAt?->setTimezone($berlin);
+
         // Cap the external id exactly like the entity stores it — the upsert
         // lookup must use the truncated value, otherwise an overlong id never
         // matches its own row again and every run inserts a colliding copy.
@@ -289,12 +306,22 @@ final class EventImporter
             $event->setAllDay($dto->allDay);
         }
         if (!$event->isFieldLocked('description')) {
+            if ($event->getDescription() !== $dto->description) {
+                // The teaser was written for the old text: keeping it would
+                // advertise content the source has replaced (or removed).
+                // The nightly summarize pass writes a fresh one.
+                $event->setSummary(null);
+            }
             $event->setDescription($dto->description);
         }
         $event->setLocationText($dto->locationText !== null ? mb_substr($dto->locationText, 0, 255) : null);
         $event->setRegion($source->getRegion());
         $event->setVenue($this->venues->findOrCreate($dto->venueName, $dto->city, $source->getRegion()));
-        if (!$event->isFieldLocked('categories')) {
+        // Admin-pinned categories keep their value — and so do categories the
+        // nightly AI pass applied: the importer's guess must not win back over
+        // the model's verdict on every upstream content edit, and the event is
+        // never re-categorized (its decision already exists).
+        if (!$event->isFieldLocked('categories') && ($isNew || !$this->hasAiCategories($event))) {
             $cats = [];
             foreach ($dto->allCategorySlugs() as $slug) {
                 $category = $this->categories->findBySlug($slug);
@@ -358,6 +385,12 @@ final class EventImporter
             $event->setStatus(EventStatus::Published);
         }
         $event->setPrunedAt(null);
+    }
+
+    /** Whether the nightly categorize pass has applied categories to this event ({@see \App\Ai\CategoryApplier}). */
+    private function hasAiCategories(Event $event): bool
+    {
+        return $this->em->getRepository(AiCategoryDecision::class)->count(['event' => $event, 'status' => 'applied']) > 0;
     }
 
     private function buildSlug(ImportedEvent $dto): string

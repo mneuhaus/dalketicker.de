@@ -6,6 +6,7 @@ namespace App\Tests\Importer;
 
 use App\Entity\Region;
 use App\Entity\Source;
+use App\Enum\BookingStatus;
 use App\Enum\SourceType;
 use App\Importer\IcsImporter;
 use App\Importer\ImportedEvent;
@@ -78,5 +79,66 @@ final class IcsImporterTest extends TestCase
         self::assertSame('Lesung', $events[0]->title);
         self::assertNull($events[0]->description);
         self::assertSame('Stadtbibliothek', $events[0]->venueName);
+    }
+
+    public function testCancelledStatusIsKeptAsCancelledBookingInsteadOfDroppingTheEvent(): void
+    {
+        $ics = implode("\r\n", [
+            'BEGIN:VCALENDAR',
+            'BEGIN:VEVENT',
+            'UID:ev-3',
+            'SUMMARY:Stadtführung',
+            'DTSTART:20260910T150000',
+            'DTEND:20260910T170000',
+            'STATUS:CANCELLED',
+            'END:VEVENT',
+            'BEGIN:VEVENT',
+            'UID:ev-4',
+            'SUMMARY:Vortrag',
+            'DTSTART:20260911T190000',
+            'STATUS:CONFIRMED',
+            'END:VEVENT',
+            'END:VCALENDAR',
+        ]);
+
+        $events = $this->import($ics);
+
+        self::assertCount(2, $events);
+        self::assertSame('Stadtführung', $events[0]->title);
+        self::assertSame(BookingStatus::Cancelled, $events[0]->bookingStatus);
+        self::assertNull($events[1]->bookingStatus);
+    }
+
+    public function testTimedEndOnOrBeforeStartIsDropped(): void
+    {
+        $ics = implode("\r\n", [
+            'BEGIN:VCALENDAR',
+            'BEGIN:VEVENT',
+            'UID:ev-5',
+            'SUMMARY:Verdrehte Zeiten',
+            'DTSTART:20260910T190000',
+            'DTEND:20260910T180000',
+            'END:VEVENT',
+            'BEGIN:VEVENT',
+            'UID:ev-6',
+            'SUMMARY:Ohne Dauer',
+            'DTSTART:20260910T190000',
+            'DTEND:20260910T190000',
+            'END:VEVENT',
+            'BEGIN:VEVENT',
+            'UID:ev-7',
+            'SUMMARY:Mit Ende',
+            'DTSTART:20260910T190000',
+            'DTEND:20260910T210000',
+            'END:VEVENT',
+            'END:VCALENDAR',
+        ]);
+
+        $events = $this->import($ics);
+
+        self::assertCount(3, $events);
+        self::assertNull($events[0]->endsAt);
+        self::assertNull($events[1]->endsAt);
+        self::assertSame('2026-09-10 21:00', $events[2]->endsAt?->format('Y-m-d H:i'));
     }
 }

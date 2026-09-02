@@ -97,20 +97,18 @@ final class StadtGtImporter implements SourceImporter
             // original; no extra request needed.
             $imageUrl = $this->imageFromListEntry($entry);
 
-            $venueName = null;
-            $locationText = null;
-            $description = null;
-
+            // Without the detail page the event would be stored with venue and
+            // description missing — a different content hash that downgrades
+            // the existing row until the next run. Skipping it is harmless:
+            // prune-unseen tolerates a week of misses.
             $detailHtml = $this->tryFetch($detailUrl);
-            if ($detailHtml !== null) {
-                $detail = new Crawler($detailHtml, $detailUrl);
-                $detailTitle = $this->detailTitle($detail);
-                if ($detailTitle !== null) {
-                    $title = $detailTitle;
-                }
-                [$venueName, $locationText] = $this->location($detail);
-                $description = $this->description($detail);
+            if ($detailHtml === null) {
+                continue;
             }
+            $detail = new Crawler($detailHtml, $detailUrl);
+            $title = $this->detailTitle($detail) ?? $title;
+            [$venueName, $locationText] = $this->location($detail);
+            $description = $this->description($detail);
 
             $allDay = $start->format('H:i') === '00:00'
                 && ($end === null || $end->format('H:i') === '00:00');

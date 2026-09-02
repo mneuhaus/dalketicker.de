@@ -8,6 +8,8 @@ use App\Entity\Event;
 use App\Entity\ImportRun;
 use App\Enum\EventStatus;
 use App\Enum\SourceType;
+use App\Repository\EventRepository;
+use App\Repository\ImportRunRepository;
 use App\Repository\RegionRepository;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
@@ -37,11 +39,22 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 #[AsCommand(name: 'dalketicker:prune-unseen', description: 'Anstehende Events verstecken, die ihre Quelle nicht mehr listet (Dry-Run ohne --apply)')]
 final class PruneUnseenCommand extends Command
 {
+    /**
+     * Default for --days: an upcoming event its healthy source hasn't listed
+     * for this long is treated as dropped. {@see RededupCommand} applies the
+     * same window so its rescue pass never resurrects what prune would hide.
+     */
+    public const DEFAULT_UNSEEN_DAYS = 7;
+
+    /** Import run records older than this are dropped in the same pass ({@see ImportRunRepository::deleteOlderThan}). */
+    private const IMPORT_RUN_RETENTION_DAYS = 90;
+
     public function __construct(
         private readonly EntityManagerInterface $em,
         private readonly Connection $db,
         private readonly ClockInterface $clock,
         private readonly RegionRepository $regions,
+        private readonly ImportRunRepository $importRuns,
     ) {
         parent::__construct();
     }
@@ -51,7 +64,7 @@ final class PruneUnseenCommand extends Command
         $this
             ->addOption('apply', null, InputOption::VALUE_NONE, 'Änderungen wirklich schreiben (Standard: Dry-Run)')
             ->addOption('region', null, InputOption::VALUE_REQUIRED, 'Nur diese Region verarbeiten (z. B. guetersloh)')
-            ->addOption('days', null, InputOption::VALUE_REQUIRED, 'Nicht-mehr-gesehen-Schwelle in Tagen', '7');
+            ->addOption('days', null, InputOption::VALUE_REQUIRED, 'Nicht-mehr-gesehen-Schwelle in Tagen', (string) self::DEFAULT_UNSEEN_DAYS);
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -101,19 +114,21 @@ final class PruneUnseenCommand extends Command
             ->from(Event::class, 'e')
             ->join('e.source', 's')
             ->where('e.status = :published')
-            ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :now')
+            // "Upcoming" exactly as the listings define it — an all-day event
+            // today is still upcoming, not past, and must be prunable.
+            ->andWhere(EventRepository::stillRelevantDql('e', 'now'))
             ->andWhere('e.lastSeenAt < :cutoff')
             ->andWhere('s.enabled = true')
             ->andWhere('s.id IN (:healthy)')
             ->andWhere('s.type != :manualType')
             ->andWhere('(e.externalId IS NULL OR e.externalId NOT LIKE :manualPrefix)')
             ->setParameter('published', EventStatus::Published)
-            ->setParameter('now', $now)
             ->setParameter('cutoff', $cutoff)
             ->setParameter('healthy', $healthySourceIds)
             ->setParameter('manualType', SourceType::Manual)
             ->setParameter('manualPrefix', 'manual:%')
             ->orderBy('e.startsAt', 'ASC');
+        EventRepository::setRelevanceFloor($qb, 'now', $now);
         if ($region !== null) {
             $qb->andWhere('e.region = :region')->setParameter('region', $region);
         }
@@ -136,6 +151,12 @@ final class PruneUnseenCommand extends Command
 
         if ($apply) {
             $this->em->flush();
+            // Housekeeping in the same weekly pass: import_run grows by ~800
+            // rows a day (every source, every 3 h) and nothing else trims it.
+            $dropped = $this->importRuns->deleteOlderThan($now->modify(sprintf('-%d days', self::IMPORT_RUN_RETENTION_DAYS)));
+            if ($dropped > 0) {
+                $io->writeln(sprintf('%d Importlauf-Protokolle älter als %d Tage gelöscht.', $dropped, self::IMPORT_RUN_RETENTION_DAYS));
+            }
         }
 
         $io->success(sprintf(

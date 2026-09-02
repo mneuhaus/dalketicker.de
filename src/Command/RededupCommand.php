@@ -6,6 +6,7 @@ namespace App\Command;
 
 use App\Entity\Event;
 use App\Enum\EventStatus;
+use App\Enum\SourceType;
 use App\Repository\EventRepository;
 use App\Repository\RegionRepository;
 use Doctrine\DBAL\Connection;
@@ -21,17 +22,22 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 /**
  * Key-based cross-source dedup with source-tier preference: within each dedup
  * key, the version from a PRIMARY source (a venue/organizer/city) wins over an
- * aggregator (Erfolgskreis, veranstaltungen-gt, Radio GT, marktcom, flowl, NW),
- * so the public listing shows the richer original and the aggregator copy is
- * demoted. Idempotent; meant to run right after the import cron.
+ * aggregator (a facts-only source: Erfolgskreis, veranstaltungen-gt, Radio GT,
+ * marktcom, flowl, EWU Bund, ...), so the public listing shows the richer
+ * original and the aggregator copy is demoted. Idempotent; meant to run right
+ * after the import cron.
  *
  * Leaves AI-dedup decisions (fuzzy, different keys) untouched.
  */
 #[AsCommand(name: 'dalketicker:rededup', description: 'Cross-Source-Dedup mit Primärquellen-Vorrang (nach dem Import)')]
 final class RededupCommand extends Command
 {
-    /** Importer keys that are third-party aggregators (lower priority). */
-    private const AGGREGATORS = ['erfolgskreis_gt', 'auf_schluer', 'radio_gt', 'marktcom', 'flowl', 'nw'];
+    /**
+     * Same window as prune-unseen's --days default. A duplicate its own source
+     * stopped listing this long ago would have been pruned had it been
+     * published, so the rescue pass must not resurrect it either.
+     */
+    private const PRUNE_WINDOW_DAYS = PruneUnseenCommand::DEFAULT_UNSEEN_DAYS;
 
     public function __construct(
         private readonly EntityManagerInterface $em,
@@ -108,19 +114,24 @@ final class RededupCommand extends Command
             // it survives the import overwriting the primary's empty fields.
             // Never borrow from facts-only or disabled sources — their creative
             // content (text/images) must not surface on a public event (legal
-            // safeguard; disabling a source is the opt-out switch).
+            // safeguard; disabling a source is the opt-out switch). Admin-pinned
+            // winner fields (lockedFields) are deliberate corrections and stay.
             if (!$dryRun) {
                 foreach (\array_slice($group, 1) as $loser) {
                     if ($loser->getSource()->isFactsOnly() || !$loser->getSource()->isEnabled()) {
                         continue;
                     }
-                    if ($winner->getImageUrl() === null && $loser->getImageUrl() !== null) {
+                    // Event::canShowImage() checks the *winner's* source
+                    // approval, so only take an image the loser itself may
+                    // publish — otherwise an unapproved source's image would go
+                    // live under an approved winner.
+                    if ($winner->getImageUrl() === null && $loser->canShowImage() && !$winner->isFieldLocked('imageUrl')) {
                         $winner->setImageUrl($loser->getImageUrl());
                     }
-                    if (($winner->getDescription() === null || $winner->getDescription() === '') && (string) $loser->getDescription() !== '') {
+                    if (($winner->getDescription() === null || $winner->getDescription() === '') && (string) $loser->getDescription() !== '' && !$winner->isFieldLocked('description')) {
                         $winner->setDescription($loser->getDescription());
                     }
-                    if ($winner->getOrganizer() === null && (string) $loser->getOrganizer() !== '') {
+                    if ($winner->getOrganizer() === null && (string) $loser->getOrganizer() !== '' && !$winner->isFieldLocked('organizer')) {
                         $winner->setOrganizer($loser->getOrganizer());
                     }
                 }
@@ -146,7 +157,7 @@ final class RededupCommand extends Command
             }
         }
 
-        $rescued = $this->rescueStrandedDuplicates($events, $groups, $dryRun, $promoted);
+        $rescued = $this->rescueStrandedDuplicates($events, $groups, $now, $dryRun, $promoted);
         $flips += $rescued;
 
         if (!$dryRun) {
@@ -180,7 +191,8 @@ final class RededupCommand extends Command
      * admin set to Hidden (no prunedAt) stays untouched — that hiding was
      * deliberate, and so are fuzzy AI merges (different keys, backed by an
      * AiDedupDecision). A canonical hidden by prune-unseen (prunedAt set) is
-     * automation, so its duplicate gets promoted instead.
+     * automation, so its duplicate gets promoted instead — unless the
+     * duplicate's own source dropped it as well ({@see promote()}).
      *
      * @param Event[]               $events   upcoming published/duplicate events (as loaded above)
      * @param array<string, Event[]> $groups  the same events grouped by dedup key
@@ -188,7 +200,7 @@ final class RededupCommand extends Command
      *
      * @return int number of changes
      */
-    private function rescueStrandedDuplicates(array $events, array $groups, bool $dryRun, array &$promoted): int
+    private function rescueStrandedDuplicates(array $events, array $groups, \DateTimeImmutable $now, bool $dryRun, array &$promoted): int
     {
         $changes = 0;
         $aiDupIds = null; // lazily fetched: events demoted by an active AI merge
@@ -206,7 +218,7 @@ final class RededupCommand extends Command
 
             if ($target === null) {
                 // Canonical was deleted (FK SET NULL) — the event is orphaned.
-                $changes += $this->promote($e, $dryRun, $promoted, 'verwaist');
+                $changes += $this->promote($e, $now, $dryRun, $promoted, 'verwaist');
                 continue;
             }
 
@@ -215,12 +227,12 @@ final class RededupCommand extends Command
                 // chain dangles (ends in null or a cycle).
                 $end = $this->chainEnd($target);
                 if ($end === null) {
-                    $changes += $this->promote($e, $dryRun, $promoted, 'Kette ohne Ziel');
+                    $changes += $this->promote($e, $now, $dryRun, $promoted, 'Kette ohne Ziel');
                 } elseif ($end->getStatus() === EventStatus::Published) {
                     if (!$end->getSource()->isEnabled()) {
                         // Canonical is off the site (source disabled) — the
                         // duplicate would be publicly invisible behind it.
-                        $changes += $this->promote($e, $dryRun, $promoted, 'Kette endet in deaktivierter Quelle');
+                        $changes += $this->promote($e, $now, $dryRun, $promoted, 'Kette endet in deaktivierter Quelle');
                         continue;
                     }
                     if (!$dryRun) {
@@ -230,7 +242,7 @@ final class RededupCommand extends Command
                     ++$changes;
                 } elseif ($end->getStatus() === EventStatus::Hidden && $end->getPrunedAt() !== null) {
                     // prune-unseen hid the chain's end — not an admin call.
-                    $changes += $this->promote($e, $dryRun, $promoted, 'Kette endet in gepruntem Canonical');
+                    $changes += $this->promote($e, $now, $dryRun, $promoted, 'Kette endet in gepruntem Canonical');
                 }
                 // Chain ending in admin-Hidden (no prunedAt): deliberate, leave it.
                 continue;
@@ -241,7 +253,7 @@ final class RededupCommand extends Command
                 // admin decision — the duplicate may resurface. A manual
                 // Hidden (no prunedAt) stays untouched.
                 if ($target->getPrunedAt() !== null) {
-                    $changes += $this->promote($e, $dryRun, $promoted, 'Canonical geprunt');
+                    $changes += $this->promote($e, $now, $dryRun, $promoted, 'Canonical geprunt');
                 }
                 continue;
             }
@@ -250,7 +262,7 @@ final class RededupCommand extends Command
                 // Canonical is Published but its source was disabled: the
                 // canonical is hidden by the enabled filter, the duplicate by
                 // its status — the event would be publicly gone.
-                $changes += $this->promote($e, $dryRun, $promoted, 'Canonical-Quelle deaktiviert');
+                $changes += $this->promote($e, $now, $dryRun, $promoted, 'Canonical-Quelle deaktiviert');
                 continue;
             }
 
@@ -265,7 +277,7 @@ final class RededupCommand extends Command
                 'SELECT duplicate_event_id FROM ai_dedup_decision WHERE active = true AND duplicate_event_id IS NOT NULL',
             )));
             if (!isset($aiDupIds[(int) $e->getId()])) {
-                $changes += $this->promote($e, $dryRun, $promoted, 'Key ohne Published-Pendant');
+                $changes += $this->promote($e, $now, $dryRun, $promoted, 'Key ohne Published-Pendant');
             }
         }
 
@@ -287,14 +299,33 @@ final class RededupCommand extends Command
     }
 
     /** @param list<string> $promoted log lines, appended to */
-    private function promote(Event $e, bool $dryRun, array &$promoted, string $reason): int
+    private function promote(Event $e, \DateTimeImmutable $now, bool $dryRun, array &$promoted, string $reason): int
     {
+        if ($this->isUnseenBeyondPruneWindow($e, $now)) {
+            // Its own source stopped listing it too — resurrecting would show
+            // a (likely cancelled) event until the next weekly prune run.
+            return 0;
+        }
         if (!$dryRun) {
             $e->setStatus(EventStatus::Published)->setDuplicateOf(null);
         }
         $promoted[] = sprintf('%s (#%d, %s) — %s', $e->getTitle(), $e->getId(), $e->getSource()->getImporter(), $reason);
 
         return 1;
+    }
+
+    /**
+     * Mirrors prune-unseen's exemptions: manual sources and hand-added events
+     * ("manual:" external id) are never refreshed by an import, so a stale
+     * lastSeenAt says nothing about them.
+     */
+    private function isUnseenBeyondPruneWindow(Event $e, \DateTimeImmutable $now): bool
+    {
+        if ($e->getSource()->getType() === SourceType::Manual || str_starts_with((string) $e->getExternalId(), 'manual:')) {
+            return false;
+        }
+
+        return $e->getLastSeenAt() < $now->modify(sprintf('-%d days', self::PRUNE_WINDOW_DAYS));
     }
 
     /**
@@ -328,9 +359,10 @@ final class RededupCommand extends Command
             <=> [$b->getSource()->isEnabled() ? 0 : 1, $this->tier($b), $this->richness($b) * -1, $b->getId()];
     }
 
+    /** Facts-only sources are the third-party aggregators ({@see Source::isFactsOnly()}). */
     private function tier(Event $e): int
     {
-        return \in_array($e->getSource()->getImporter(), self::AGGREGATORS, true) ? 1 : 0;
+        return $e->getSource()->isFactsOnly() ? 1 : 0;
     }
 
     private function richness(Event $e): int

@@ -169,8 +169,14 @@ final class KommunalEventsImporter implements SourceImporter
         $hasStartTime = $this->parseTime($fromTime) !== null;
         $end = null;
         if ($toDate !== '') {
-            $endTime = $this->parseTime($toTime) ?? ($hasStartTime ? null : [23, 59]);
-            $end = $this->parseDate($toDate, $endTime, $tz);
+            // A date-only end means "until the end of that day" — for timed
+            // events too, or the relevance check reads the 00:00 end as a clock
+            // time and drops the event at midnight of its final day.
+            $endTime = $this->parseTime($toTime);
+            $end = $this->parseDate($toDate, $endTime ?? [23, 59], $tz);
+            if ($end !== null && $endTime === null && $hasStartTime && $end->format('Y-m-d') === $start->format('Y-m-d')) {
+                $end = null; // single-day timed event, real end unknown
+            }
         } elseif ($toTime !== '') {
             $end = $this->parseDate($fromDate, $this->parseTime($toTime), $tz);
         }

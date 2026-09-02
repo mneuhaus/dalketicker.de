@@ -592,8 +592,10 @@ final class CatalogSeeder
             ];
         }
 
-        // Throwaway demo source for the optional demo-event batch.
-        $out['demo'] = ['guetersloh', 'Dalketicker (Demo-Daten)', SourceType::Manual, null, null, null, true];
+        // Throwaway demo source for the optional demo-event batch. Disabled: a
+        // manual source has no importer, and an enabled one only produces a
+        // "kein Importer" warning on every scheduled --all-regions run.
+        $out['demo'] = ['guetersloh', 'Dalketicker (Demo-Daten)', SourceType::Manual, null, null, null, false];
 
         // Legacy demo-event sources kept (disabled) so seedDemoEvents() still works.
         $demoSources = [

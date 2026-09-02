@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Command;
 
+use App\Entity\Region;
+use App\Entity\Source;
 use App\Importer\ImportedEvent;
 use App\Importer\SafeDate;
 use App\Repository\RegionRepository;
@@ -80,10 +82,8 @@ final class AddEventCommand extends Command
             return Command::FAILURE;
         }
 
-        $source = $this->sources->findByKey($sourceKey, $region);
+        $source = $this->resolveSource($sourceKey, $region, $io);
         if ($source === null) {
-            $io->error(sprintf('Quelle "%s" nicht gefunden.', $sourceKey));
-
             return Command::FAILURE;
         }
 
@@ -151,6 +151,36 @@ final class AddEventCommand extends Command
         ));
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * Same rule as {@see ImportCommand}: a key that exists in several regions
+     * must be pinned with --region instead of silently landing in one of them.
+     */
+    private function resolveSource(string $key, ?Region $region, SymfonyStyle $io): ?Source
+    {
+        if ($region !== null) {
+            $source = $this->sources->findByKey($key, $region);
+            if ($source === null) {
+                $io->error(sprintf('Quelle "%s" in %s nicht gefunden.', $key, $region->getKey()));
+            }
+
+            return $source;
+        }
+
+        $matches = $this->sources->findAllByKey($key);
+        if (\count($matches) > 1) {
+            $io->error(sprintf('Quelle "%s" existiert in mehreren Regionen – bitte --region=... angeben.', $key));
+
+            return null;
+        }
+        if ($matches === []) {
+            $io->error(sprintf('Quelle "%s" nicht gefunden.', $key));
+
+            return null;
+        }
+
+        return $matches[0];
     }
 
     private function opt(InputInterface $input, string $name): ?string

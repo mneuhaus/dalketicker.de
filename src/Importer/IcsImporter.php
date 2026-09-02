@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Importer;
 
 use App\Entity\Source;
+use App\Enum\BookingStatus;
 use Symfony\Component\DependencyInjection\Attribute\AutoconfigureTag;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
@@ -124,16 +125,21 @@ final class IcsImporter implements SourceImporter
         $allDay = $this->isDateOnly($fields['DTSTART']);
         $end = isset($fields['DTEND']) ? $this->parseDate($fields['DTEND']) : null;
         // RFC 5545: a date-only DTEND is exclusive (the day after the last
-        // event day), so shift it back; on or before the start day the event
-        // is single-day and carries no end.
+        // event day), so shift it back.
         if ($end !== null && $this->isDateOnly($fields['DTEND'])) {
             $end = $end->modify('-1 day');
-            if ($end <= $start) {
-                $end = null;
-            }
+        }
+        // An end on or before the start (single-day event, or a feed with
+        // swapped values) is no end at all — for timed values too, or the
+        // listing would show a bogus "19:00–18:00".
+        if ($end !== null && $end <= $start) {
+            $end = null;
         }
 
         $location = trim($fields['LOCATION']['value'] ?? '');
+        // A cancelled VEVENT stays listed with its "Fällt aus" badge instead of
+        // vanishing: visitors who noted the date should learn it was called off.
+        $cancelled = strtoupper(trim($fields['STATUS']['value'] ?? '')) === 'CANCELLED';
 
         return new ImportedEvent(
             title: $summary,
@@ -148,6 +154,7 @@ final class IcsImporter implements SourceImporter
             sourceUrl: ($fields['URL']['value'] ?? '') ?: null,
             externalId: ($fields['UID']['value'] ?? '') ?: null,
             raw: array_map(static fn ($f) => $f['value'], $fields),
+            bookingStatus: $cancelled ? BookingStatus::Cancelled : null,
         );
     }
 
