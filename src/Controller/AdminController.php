@@ -37,6 +37,7 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Process\Process;
 use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Component\Security\Http\Authenticator\Passport\Badge\RememberMeBadge;
 
 #[Route('/admin')]
 final class AdminController extends AbstractController
@@ -108,29 +109,9 @@ final class AdminController extends AbstractController
             return [];
         }
 
-        // One scalar pass over all finished runs (newest first): last
-        // successful run + the "seen" counts of the last three runs per source.
-        $rows = $runs->createQueryBuilder('r')
-            ->select('IDENTITY(r.source) AS sid, r.status AS status, r.seen AS seen, r.startedAt AS startedAt')
-            ->andWhere('r.source IN (:sources)')
-            ->andWhere('r.status != :running')
-            ->setParameter('sources', $sourceIds)
-            ->setParameter('running', ImportRun::STATUS_RUNNING)
-            ->orderBy('r.startedAt', 'DESC')
-            ->getQuery()
-            ->getArrayResult();
-
-        $lastSuccessAt = [];
-        $recentSeen = [];
-        foreach ($rows as $row) {
-            $sid = (int) $row['sid'];
-            if (!isset($lastSuccessAt[$sid]) && \in_array($row['status'], [ImportRun::STATUS_OK, ImportRun::STATUS_PARTIAL], true)) {
-                $lastSuccessAt[$sid] = $row['startedAt'];
-            }
-            if (\count($recentSeen[$sid] ?? []) < 3) {
-                $recentSeen[$sid][] = (int) $row['seen'];
-            }
-        }
+        // Two bounded queries instead of a scan over every run ever recorded.
+        $lastSuccessAt = $runs->lastSuccessPerSource($sourceIds);
+        $recentSeen = $runs->recentSeenCounts($sourceIds);
 
         $now = new \DateTimeImmutable('now');
         $warnings = [];
@@ -145,10 +126,7 @@ final class AdminController extends AbstractController
 
             $staleDays = null;
             $successAt = $lastSuccessAt[$sid] ?? null;
-            if (\is_string($successAt)) {
-                $successAt = new \DateTimeImmutable($successAt);
-            }
-            if ($successAt instanceof \DateTimeInterface) {
+            if ($successAt !== null) {
                 $days = (int) $successAt->diff($now)->days;
                 if ($days > 7) {
                     $staleDays = $days;
@@ -376,10 +354,22 @@ final class AdminController extends AbstractController
 
     /** Review the AI deduplication merges and undo them if needed. */
     #[Route('/dedup', name: 'admin_dedup', methods: ['GET'])]
-    public function dedup(Request $request, EntityManagerInterface $em, AiDeduper $deduper): Response
+    public function dedup(Request $request, EntityManagerInterface $em, AiDeduper $deduper, EventRepository $events): Response
     {
         $region = $this->resolveAdminRegion($request);
         $decisions = $this->findDedupDecisions($em, $region);
+
+        // The list renders both events' categories — batch-load them instead
+        // of two lazy queries per row.
+        $shown = [];
+        foreach ($decisions as $decision) {
+            foreach ([$decision->getDuplicateEvent(), $decision->getCanonicalEvent()] as $event) {
+                if ($event !== null) {
+                    $shown[] = $event;
+                }
+            }
+        }
+        $events->preloadCategories($shown);
 
         return $this->render('admin/dedup.html.twig', $this->withAdminRegion($region, [
             'decisions' => $decisions,
@@ -644,7 +634,12 @@ final class AdminController extends AbstractController
 
         $event->setTitle(mb_substr(trim((string) $request->request->get('title', '')), 0, 300) ?: $event->getTitle());
         $event->setOrganizer($this->blankToNull(mb_substr(trim((string) $request->request->get('organizer', '')), 0, 200)));
-        $event->setDescription($this->blankToNull(trim((string) $request->request->get('description', ''))));
+        $description = $this->blankToNull(trim((string) $request->request->get('description', '')));
+        if ($description !== $event->getDescription()) {
+            // The AI teaser describes the old text; the nightly pass writes a new one.
+            $event->setSummary(null);
+        }
+        $event->setDescription($description);
         $event->setImageUrl($this->blankToNull(mb_substr(trim((string) $request->request->get('imageUrl', '')), 0, 1024)));
 
         // Date/time (datetime-local inputs). Only applied when the start parses.
@@ -884,6 +879,9 @@ final class AdminController extends AbstractController
                 $error = 'Das aktuelle Passwort stimmt nicht.';
             } elseif (filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
                 $error = 'Bitte eine gültige E-Mail-Adresse angeben.';
+            } elseif (mb_strlen($email) > 180) {
+                // Column length of User::$email; a longer value would only surface as a DB exception.
+                $error = 'Die E-Mail-Adresse darf höchstens 180 Zeichen lang sein.';
             } elseif ($email !== $user->getEmail() && $users->findByEmail($email) !== null) {
                 $error = 'Diese E-Mail-Adresse ist bereits vergeben.';
             } elseif ($new !== '' && mb_strlen($new) < 8) {
@@ -897,8 +895,13 @@ final class AdminController extends AbstractController
                 }
                 $em->flush();
                 // Re-establish the session so changing the identifier/password
-                // doesn't log the user out.
-                $security->login($user);
+                // doesn't log the user out. The remember-me cookie is signed
+                // with the password hash and names the old e-mail, so it is
+                // dead now too: re-issue it when the admin had opted in
+                // (cookie present, default name from security.yaml), otherwise
+                // the next browser restart would log them out.
+                $badges = $request->cookies->has('REMEMBERME') ? [(new RememberMeBadge())->enable()] : [];
+                $security->login($user, badges: $badges);
                 $this->addFlash('success', 'Konto aktualisiert.');
 
                 return $this->redirectToRoute('admin_account');

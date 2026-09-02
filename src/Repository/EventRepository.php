@@ -125,7 +125,13 @@ class EventRepository extends ServiceEntityRepository
 
     private function seriesFloor(EventFilter $filter): \DateTimeImmutable
     {
-        return $filter->from ?? new \DateTimeImmutable('now', new \DateTimeZone('Europe/Berlin'));
+        return $filter->from ?? $this->berlinNow();
+    }
+
+    /** "Now" in the timezone every date in this application is reasoned about in. */
+    private function berlinNow(): \DateTimeImmutable
+    {
+        return new \DateTimeImmutable('now', new \DateTimeZone('Europe/Berlin'));
     }
 
     /**
@@ -189,15 +195,17 @@ class EventRepository extends ServiceEntityRepository
      */
     public function findInRange(\DateTimeImmutable $start, \DateTimeImmutable $end, EventFilter $filter, ?Region $region = null): array
     {
-        $events = $this->visibleQueryBuilder($filter, $region)
+        // The lower bound is the shared relevance predicate (not a plain
+        // COALESCE >= start), so a timed event ending exactly at the range
+        // start — Sunday 00:00 — doesn't bleed into the following week.
+        $qb = $this->visibleQueryBuilder($filter, $region)
             ->andWhere('e.startsAt < :end')
-            ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :start')
-            ->setParameter('start', $start)
+            ->andWhere(self::stillRelevantDql('e', 'start'))
             ->setParameter('end', $end)
             ->orderBy('e.startsAt', 'ASC')
-            ->addOrderBy('e.id', 'ASC')
-            ->getQuery()
-            ->getResult();
+            ->addOrderBy('e.id', 'ASC');
+        self::setRelevanceFloor($qb, 'start', $start);
+        $events = $qb->getQuery()->getResult();
         $this->preloadCategories($events);
 
         return $events;
@@ -290,7 +298,7 @@ class EventRepository extends ServiceEntityRepository
      *
      * @param Event[] $events
      */
-    private function preloadCategories(array $events): void
+    public function preloadCategories(array $events): void
     {
         if ($events === []) {
             return;
@@ -316,11 +324,11 @@ class EventRepository extends ServiceEntityRepository
     public function findUncheckedUpcoming(int $limit = 100000, int $shards = 1, int $shard = 0, ?Region $region = null): array
     {
         $qb = $this->visibleQueryBuilder(new EventFilter(), $region)
-            ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :now')
+            ->andWhere(self::stillRelevantDql('e', 'now'))
             ->andWhere('e.id NOT IN (SELECT IDENTITY(aicd.event) FROM '.\App\Entity\AiCategoryDecision::class.' aicd)')
-            ->setParameter('now', new \DateTimeImmutable('now', new \DateTimeZone('Europe/Berlin')))
             ->orderBy('e.startsAt', 'ASC')
             ->setMaxResults($limit);
+        self::setRelevanceFloor($qb, 'now', $this->berlinNow());
         $this->applyShard($qb, $shards, $shard);
 
         return $qb->getQuery()->getResult();
@@ -345,14 +353,14 @@ class EventRepository extends ServiceEntityRepository
     public function findWithoutSummary(int $limit = 100000, int $shards = 1, int $shard = 0, ?Region $region = null): array
     {
         $qb = $this->visibleQueryBuilder(new EventFilter(), $region)
-            ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :now')
+            ->andWhere(self::stillRelevantDql('e', 'now'))
             ->andWhere('e.summary IS NULL')
             ->andWhere("e.description IS NOT NULL AND e.description != ''")
             // Never summarize foreign aggregator text (legal safeguard).
             ->andWhere('s.factsOnly = false')
-            ->setParameter('now', new \DateTimeImmutable('now', new \DateTimeZone('Europe/Berlin')))
             ->orderBy('e.startsAt', 'ASC')
             ->setMaxResults($limit);
+        self::setRelevanceFloor($qb, 'now', $this->berlinNow());
         $this->applyShard($qb, $shards, $shard);
 
         return $qb->getQuery()->getResult();
@@ -388,37 +396,39 @@ class EventRepository extends ServiceEntityRepository
     /** Events that already have an AI teaser (for admin progress). */
     public function countWithSummary(?Region $region = null): int
     {
-        return (int) $this->visibleQueryBuilder(new EventFilter(), $region)
+        $qb = $this->visibleQueryBuilder(new EventFilter(), $region)
             ->select('COUNT(e.id)')
-            ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :now')
+            ->andWhere(self::stillRelevantDql('e', 'now'))
             ->andWhere('e.summary IS NOT NULL')
-            ->andWhere('s.factsOnly = false')
-            ->setParameter('now', new \DateTimeImmutable('now', new \DateTimeZone('Europe/Berlin')))
-            ->getQuery()->getSingleScalarResult();
+            ->andWhere('s.factsOnly = false');
+        self::setRelevanceFloor($qb, 'now', $this->berlinNow());
+
+        return (int) $qb->getQuery()->getSingleScalarResult();
     }
 
     /** Events eligible for a teaser (own source, upcoming, has description). */
     public function countSummaryEligible(?Region $region = null): int
     {
-        return (int) $this->visibleQueryBuilder(new EventFilter(), $region)
+        $qb = $this->visibleQueryBuilder(new EventFilter(), $region)
             ->select('COUNT(e.id)')
-            ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :now')
+            ->andWhere(self::stillRelevantDql('e', 'now'))
             ->andWhere("e.description IS NOT NULL AND e.description != ''")
-            ->andWhere('s.factsOnly = false')
-            ->setParameter('now', new \DateTimeImmutable('now', new \DateTimeZone('Europe/Berlin')))
-            ->getQuery()->getSingleScalarResult();
+            ->andWhere('s.factsOnly = false');
+        self::setRelevanceFloor($qb, 'now', $this->berlinNow());
+
+        return (int) $qb->getQuery()->getSingleScalarResult();
     }
 
     /** Upcoming published events the categorizer hasn't looked at yet (no decision). */
     public function countWithoutCategoryDecision(?Region $region = null): int
     {
-        return (int) $this->visibleQueryBuilder(new EventFilter(), $region)
+        $qb = $this->visibleQueryBuilder(new EventFilter(), $region)
             ->select('COUNT(e.id)')
-            ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :now')
-            ->andWhere('e.id NOT IN (SELECT IDENTITY(aicd.event) FROM '.\App\Entity\AiCategoryDecision::class.' aicd)')
-            ->setParameter('now', new \DateTimeImmutable('now', new \DateTimeZone('Europe/Berlin')))
-            ->getQuery()
-            ->getSingleScalarResult();
+            ->andWhere(self::stillRelevantDql('e', 'now'))
+            ->andWhere('e.id NOT IN (SELECT IDENTITY(aicd.event) FROM '.\App\Entity\AiCategoryDecision::class.' aicd)');
+        self::setRelevanceFloor($qb, 'now', $this->berlinNow());
+
+        return (int) $qb->getQuery()->getSingleScalarResult();
     }
 
     /**
@@ -440,7 +450,7 @@ class EventRepository extends ServiceEntityRepository
             ->orderBy('e.startsAt', 'ASC')
             ->addOrderBy('e.id', 'ASC')
             ->setMaxResults($limit);
-        self::setRelevanceFloor($qb, 'now', new \DateTimeImmutable('now', new \DateTimeZone('Europe/Berlin')));
+        self::setRelevanceFloor($qb, 'now', $this->berlinNow());
         if ($region !== null) {
             $qb->andWhere('e.region = :region')->setParameter('region', $region);
         }
@@ -448,28 +458,29 @@ class EventRepository extends ServiceEntityRepository
         return $qb->getQuery()->getArrayResult();
     }
 
+    /**
+     * A single event under the exact visibility rules of the listings (so
+     * disabling a source takes its detail page and proxied image offline
+     * too), with venue and source fetch-joined like there — the detail page
+     * and the image proxy otherwise lazy-load both.
+     */
     public function findVisible(int $id, ?Region $region = null): ?Event
     {
-        $qb = $this->createQueryBuilder('e')
-            ->join('e.source', 's')
+        return $this->visibleQueryBuilder(new EventFilter(), $region)
             ->andWhere('e.id = :id')
-            ->andWhere('e.status = :published')
-            // Disabling a source takes its detail pages (and proxied images)
-            // offline too, not just the listings.
-            ->andWhere('s.enabled = true')
             ->setParameter('id', $id)
-            ->setParameter('published', EventStatus::Published);
-        if ($region !== null) {
-            $qb->andWhere('e.region = :region')->setParameter('region', $region);
-        }
-
-        return $qb->getQuery()->getOneOrNullResult();
+            ->getQuery()
+            ->getOneOrNullResult();
     }
 
     /**
      * Distinct cities present on visible events, for the location filter.
      * "Kreis Gütersloh" is the kreis-wide bucket, not a town — it's excluded
      * here and represented by the "all" option (which the UI labels accordingly).
+     *
+     * Restricted to what the listing can actually show: a city whose events are
+     * all in the past or come from a disabled source would otherwise sit in the
+     * filter bar and answer every click with "0 Veranstaltungen".
      *
      * @return list<string>
      */
@@ -478,9 +489,13 @@ class EventRepository extends ServiceEntityRepository
         $qb = $this->createQueryBuilder('e')
             ->select('DISTINCT v.city AS city')
             ->join('e.venue', 'v')
+            ->join('e.source', 's')
             ->andWhere('e.status = :published')
+            ->andWhere('s.enabled = true')
+            ->andWhere(self::stillRelevantDql('e', 'now'))
             ->setParameter('published', EventStatus::Published)
             ->orderBy('v.city', 'ASC');
+        self::setRelevanceFloor($qb, 'now', $this->berlinNow());
         if ($region !== null) {
             $qb->andWhere('e.region = :region')
                 ->andWhere('v.city != :defaultCity')
@@ -543,9 +558,10 @@ class EventRepository extends ServiceEntityRepository
      */
     public function findBySource(Source $source, int $limit = 300): array
     {
-        // e.categories is to-many → lazy-loaded for display, not fetch-joined
-        // (a join + addSelect would multiply rows under the limit).
-        return $this->createQueryBuilder('e')
+        // e.categories is to-many → not fetch-joined (a join + addSelect would
+        // multiply rows under the limit); batch-loaded afterwards instead of
+        // one lazy query per row while the page renders.
+        $events = $this->createQueryBuilder('e')
             ->leftJoin('e.venue', 'v')->addSelect('v')
             ->leftJoin('e.duplicateOf', 'd')->addSelect('d')
             ->leftJoin('d.source', 'ds')->addSelect('ds')
@@ -555,6 +571,9 @@ class EventRepository extends ServiceEntityRepository
             ->setMaxResults($limit)
             ->getQuery()
             ->getResult();
+        $this->preloadCategories($events);
+
+        return $events;
     }
 
     /**
@@ -580,17 +599,15 @@ class EventRepository extends ServiceEntityRepository
             $counts['total'] += (int) $row['cnt'];
         }
 
-        $now = new \DateTimeImmutable('now', new \DateTimeZone('Europe/Berlin'));
-        $counts['upcoming'] = (int) $this->createQueryBuilder('e')
+        $upcomingQb = $this->createQueryBuilder('e')
             ->select('COUNT(e.id)')
             ->andWhere('e.source = :source')
             ->andWhere('e.status = :published')
-            ->andWhere('COALESCE(e.endsAt, e.startsAt) >= :now')
+            ->andWhere(self::stillRelevantDql('e', 'now'))
             ->setParameter('source', $source)
-            ->setParameter('published', EventStatus::Published)
-            ->setParameter('now', $now)
-            ->getQuery()
-            ->getSingleScalarResult();
+            ->setParameter('published', EventStatus::Published);
+        self::setRelevanceFloor($upcomingQb, 'now', $this->berlinNow());
+        $counts['upcoming'] = (int) $upcomingQb->getQuery()->getSingleScalarResult();
 
         return $counts;
     }
@@ -690,18 +707,20 @@ class EventRepository extends ServiceEntityRepository
 
     /**
      * DQL predicate "the event still counts at the :<param> floor". A timed
-     * event with a real end time ends exactly then. All-day events and events
-     * without an end time carry midnight timestamps that mark a DAY, not a
-     * clock time — they count through the end of their last day, otherwise
-     * today's fest vanishes from "heute" one second after midnight.
-     * "Its day is not over yet" is expressed midnight-free as
-     * timestamp >= startOfDay(floor); {@see setRelevanceFloor} binds both
-     * parameters.
+     * event with a real end time ends exactly then — strictly: an end at
+     * 00:00 (an ICS DTEND at midnight) belongs to the evening before, and
+     * with ">=" a "heute" floor of 00:00 would list yesterday's concert under
+     * today. All-day events and events without an end time carry midnight
+     * timestamps that mark a DAY, not a clock time — they count through the
+     * end of their last day, otherwise today's fest vanishes from "heute" one
+     * second after midnight. "Its day is not over yet" is expressed
+     * midnight-free as timestamp >= startOfDay(floor); {@see setRelevanceFloor}
+     * binds both parameters.
      */
     public static function stillRelevantDql(string $alias, string $param): string
     {
         return sprintf(
-            '((%1$s.allDay = false AND %1$s.endsAt IS NOT NULL AND %1$s.endsAt >= :%2$s)'
+            '((%1$s.allDay = false AND %1$s.endsAt IS NOT NULL AND %1$s.endsAt > :%2$s)'
             .' OR ((%1$s.allDay = true OR %1$s.endsAt IS NULL) AND COALESCE(%1$s.endsAt, %1$s.startsAt) >= :%2$sDay))',
             $alias,
             $param,

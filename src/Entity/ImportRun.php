@@ -16,7 +16,9 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Entity(repositoryClass: ImportRunRepository::class)]
 #[ORM\Table(name: 'import_run')]
 #[ORM\Index(name: 'idx_import_run_started', columns: ['started_at'])]
-#[ORM\Index(name: 'idx_import_run_source', columns: ['source_id'])]
+// (source_id, started_at): the "latest run per source" lookup and the
+// per-source history are both "this source, newest first".
+#[ORM\Index(name: 'idx_import_run_source_started', columns: ['source_id', 'started_at'])]
 class ImportRun
 {
     public const STATUS_RUNNING = 'running';
