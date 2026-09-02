@@ -11,10 +11,21 @@
  */
 const CACHE = 'dalke-v4';
 
+// The region's brand colour arrives on the script URL (see pwa.js): the shell
+// below is static markup precached at install time and can't ask the page for
+// it. Anything but a plain hex colour falls back to the neutral ink tone, so a
+// missing or odd value never yields an unstyled button.
+const BRAND = (() => {
+    const c = new URLSearchParams(self.location.search).get('c') || '';
+    return /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(c) ? c : '#1b1d1e';
+})();
+
 // Authenticated / private paths that must never be written to the cache.
 const NO_CACHE = /^\/(admin|login|logout)(\/|$)/;
 
-// Synthetic cache key for the precached offline shell (no real route).
+// Synthetic cache key for the precached offline shell (no real route). It is
+// re-put on every install, so changes to the shell (or to BRAND via the script
+// URL) reach clients without a CACHE version bump.
 const OFFLINE_URL = '/offline.html';
 const OFFLINE_HTML = `<!doctype html>
 <html lang="de">
@@ -27,7 +38,7 @@ const OFFLINE_HTML = `<!doctype html>
   main { text-align: center; padding: 2rem; max-width: 26rem; }
   h1 { font-size: 1.25rem; margin: 0 0 0.5rem; }
   p { margin: 0 0 1.25rem; color: rgba(27, 29, 30, 0.7); }
-  button { border: 0; border-radius: 9999px; padding: 0.6rem 1.4rem; font: inherit; font-weight: 600; color: #fff; background: #0a8da3; cursor: pointer; }
+  button { border: 0; border-radius: 9999px; padding: 0.6rem 1.4rem; font: inherit; font-weight: 600; color: #fff; background: ${BRAND}; cursor: pointer; }
 </style>
 </head>
 <body>

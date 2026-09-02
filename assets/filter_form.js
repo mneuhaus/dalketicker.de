@@ -56,11 +56,15 @@ function bindForm(form) {
         }, 0);
     });
 
-    // Custom date panel toggle (desktop sidebar).
+    // Custom date panel toggle (desktop sidebar). The button's aria-expanded
+    // mirrors the panel so screen readers announce the disclosure state.
     const dateToggle = form.querySelector('[data-date-toggle]');
     const datePanel = form.querySelector('[data-date-panel]');
     if (dateToggle && datePanel) {
-        dateToggle.addEventListener('click', () => datePanel.classList.toggle('hidden'));
+        dateToggle.addEventListener('click', () => {
+            const open = !datePanel.classList.toggle('hidden');
+            dateToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        });
     }
 
     // Re-activating an active single-select radio (click or Space) clears it.

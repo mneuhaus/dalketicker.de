@@ -40,7 +40,6 @@
 
 {% block body %}
     {% import _self as ui %}
-    {% set color = event.category ? event.category.color : 'var(--color-brand-600)' %}
     {% set displayEnd = event.endsAt|de_display_end(event.startsAt, event.allDay) %}
     {% set multiDay = displayEnd and displayEnd|date('Y-m-d') != event.startsAt|date('Y-m-d') %}
     {% set prev = before ? before|last : null %}

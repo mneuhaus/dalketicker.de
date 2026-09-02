@@ -19,9 +19,12 @@ document.addEventListener('click', (e) => {
     const label = btn.querySelector('[data-share-label]');
     const feedback = (ok) => {
         if (!label) return;
-        const prev = label.textContent;
+        // Keep the original label from the first click only: a second click
+        // within the 1.6 s would otherwise capture "Link kopiert" as the text
+        // to restore, and the feedback would stick.
+        if (label.dataset.orig === undefined) label.dataset.orig = label.textContent;
         label.textContent = ok ? 'Link kopiert' : 'Kopieren fehlgeschlagen';
-        window.setTimeout(() => { label.textContent = prev; }, 1600);
+        window.setTimeout(() => { label.textContent = label.dataset.orig; }, 1600);
     };
     // Legacy copy for browsers without the async Clipboard API (or when it
     // rejects): a temporary textarea + execCommand('copy').

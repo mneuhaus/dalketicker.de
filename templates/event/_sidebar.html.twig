@@ -16,9 +16,11 @@
         <div class="flex items-center justify-between mb-2">
             <span id="sidebar-kategorien" class="text-xs font-semibold uppercase tracking-wide text-ink/40">Kategorien</span>
             {% if filter.categorySlugs is not empty %}
-                {# Reset only the category selection; keep every other filter. #}
+                {# Reset only the category selection; keep every other filter.
+                   data-reset-filters lets filters.js sync the filter memory to
+                   the residual params (see there). #}
                 {% set categoryReset = filter.toQueryParams|filter((v, k) => k != 'kategorie') %}
-                <a href="{{ app.request.pathInfo }}{{ categoryReset ? '?' ~ categoryReset|url_encode : '' }}" class="text-xs text-brand-700 hover:underline">alle</a>
+                <a href="{{ app.request.pathInfo }}{{ categoryReset ? '?' ~ categoryReset|url_encode : '' }}" data-reset-filters class="text-xs text-brand-700 hover:underline">alle</a>
             {% endif %}
         </div>
         <div class="flex flex-wrap gap-1.5">
@@ -75,9 +77,10 @@
                         {{ label }}
                     </label>
                 {% endfor %}
-                <button type="button" data-date-toggle class="{{ filter.hasCustomDate ? 'chip-active' : 'chip-muted' }}">Datum…</button>
+                <button type="button" data-date-toggle aria-controls="sidebar-date-panel" aria-expanded="{{ filter.hasCustomDate ? 'true' : 'false' }}"
+                        class="{{ filter.hasCustomDate ? 'chip-active' : 'chip-muted' }}">Datum…</button>
             </div>
-            <div data-date-panel class="{{ filter.hasCustomDate ? '' : 'hidden' }} mt-2 grid grid-cols-2 gap-2">
+            <div id="sidebar-date-panel" data-date-panel class="{{ filter.hasCustomDate ? '' : 'hidden' }} mt-2 grid grid-cols-2 gap-2">
                 <input type="date" name="von" value="{{ filter.hasCustomDate and filter.from ? filter.from|date('Y-m-d') }}" aria-label="von"
                        class="rounded-xl border border-black/10 bg-white px-2.5 py-2 text-sm focus:border-brand-500 outline-none">
                 <input type="date" name="bis" value="{{ filter.hasCustomDate and filter.to ? filter.to|date('Y-m-d') }}" aria-label="bis"
@@ -97,8 +100,10 @@
         </div>
     {% endif %}
 
-    {# Subscribe to the current (filtered) selection in your own calendar app. #}
-    {% set feedUrl = url('event_feed', filter.toQueryParams)|replace({'https://': 'webcal://', 'http://': 'webcal://'}) %}
+    {# Subscribe to the current (filtered) selection in your own calendar app.
+       Only the scheme is swapped for webcal:// — a blanket replace would also
+       rewrite an "https://" inside the search term. #}
+    {% set feedUrl = 'webcal://' ~ app.request.httpHost ~ path('event_feed', filter.toQueryParams) %}
     <div class="pt-4 border-t border-black/5">
         <a href="{{ feedUrl }}" class="inline-flex items-center gap-1.5 text-sm text-ink/50 hover:text-brand-700 transition"
            title="{{ filter.hasAny ? 'Diese Auswahl' : 'Alle Veranstaltungen' }} im eigenen Kalender abonnieren – aktualisiert sich automatisch">

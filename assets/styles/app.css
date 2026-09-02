@@ -78,9 +78,6 @@
 }
 
 @layer components {
-  .chip {
-    @apply inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-medium transition;
-  }
   .chip-muted {
     @apply inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-medium transition bg-black/5 text-ink/70 hover:bg-black/10;
   }

@@ -3,9 +3,15 @@
  * install prompt on demand and show a small iOS home-screen hint.
  */
 
+import { local } from './storage.js';
+
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').catch(() => {});
+        // The worker's precached offline shell is static markup, so it can't
+        // read the region colour from the page — hand it over on the script
+        // URL instead (constant per host, so the registration stays stable).
+        const color = document.querySelector('meta[name="theme-color"]')?.content || '';
+        navigator.serviceWorker.register('/sw.js?c=' + encodeURIComponent(color)).catch(() => {});
     });
 }
 
@@ -125,23 +131,16 @@ function isAppleTouchDevice() {
 }
 
 function isRecentlyDismissed() {
-    try {
-        const raw = window.localStorage.getItem(DISMISS_KEY);
-        if (!raw) {
-            return false;
-        }
-
-        const dismissedAt = Number.parseInt(raw, 10);
-        return Number.isFinite(dismissedAt) && Date.now() - dismissedAt < DISMISS_DAYS * 24 * 60 * 60 * 1000;
-    } catch {
+    const raw = local.get(DISMISS_KEY);
+    if (!raw) {
         return false;
     }
+
+    const dismissedAt = Number.parseInt(raw, 10);
+    return Number.isFinite(dismissedAt) && Date.now() - dismissedAt < DISMISS_DAYS * 24 * 60 * 60 * 1000;
 }
 
 function rememberDismissed() {
-    try {
-        window.localStorage.setItem(DISMISS_KEY, String(Date.now()));
-    } catch {
-        // localStorage can be disabled; the hint is still useful for this visit.
-    }
+    // Best effort: with storage blocked the hint simply shows again next time.
+    local.set(DISMISS_KEY, String(Date.now()));
 }

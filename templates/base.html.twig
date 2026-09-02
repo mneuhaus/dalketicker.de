@@ -6,6 +6,13 @@
     <title>{% block title %}{{ site_name }} – {{ site_tagline }}{% endblock %}</title>
     <meta name="description" content="{% block meta_description %}Alle Veranstaltungen {{ current_region.areaInPhrase }} an einem Ort – Konzerte, Sport, Familie, Kultur und mehr. Endlich übersichtlich.{% endblock %}">
 
+    {# Canonical/og:url always point at the region's canonical host so alias
+       hosts (www., *.neuhaus.nrw) aren't indexed as duplicate sites. The page
+       number is part of it (page 2 is its own document, not a copy of page 1);
+       filters are deliberately left off. #}
+    {% set canonical_page = app.request.query.getInt('seite') %}
+    {% set canonical_url = current_region.baseUrl ~ app.request.pathInfo ~ (canonical_page > 1 ? '?seite=' ~ canonical_page : '') %}
+
     {# Link-Vorschau (Open Graph / Twitter) – greift in WhatsApp, Signal, Telegram, iMessage, Facebook … #}
     {% block og %}
         <meta property="og:type" content="website">
@@ -13,7 +20,7 @@
         <meta property="og:locale" content="de_DE">
         <meta property="og:title" content="{% block og_title %}{{ site_name }} – {{ site_tagline }}{% endblock %}">
         <meta property="og:description" content="{% block og_description %}{{ block('meta_description') }}{% endblock %}">
-        <meta property="og:url" content="{{ current_region.baseUrl }}{{ app.request.pathInfo }}">
+        <meta property="og:url" content="{{ canonical_url }}">
         <meta property="og:image" content="{% block og_image %}{{ region_share_image() }}{% endblock %}">
         <meta name="twitter:card" content="summary_large_image">
         <meta name="twitter:title" content="{{ block('og_title') }}">
@@ -29,9 +36,7 @@
     <meta name="apple-mobile-web-app-title" content="{{ site_name }}">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
-    {# Canonical/og:url always point at the region's canonical host so alias
-       hosts (www., *.neuhaus.nrw) aren't indexed as duplicate sites. #}
-    <link rel="canonical" href="{{ current_region.baseUrl }}{{ app.request.pathInfo }}">
+    <link rel="canonical" href="{{ canonical_url }}">
     {% block head_links %}{% endblock %}
     {% block stylesheets %}
         {# Linked directly (not imported via JS) so the browser applies it
@@ -70,7 +75,10 @@
                 <a href="{{ meineActive ? path('event_index') : path('event_index', {meine: 1}) }}" data-meine-nav
                    class="px-2.5 sm:px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 {{ meineActive ? 'bg-brand-600 text-white' : 'text-ink/70 hover:bg-black/5' }}">
                     <svg class="w-4 h-4" fill="{{ meineActive ? 'currentColor' : 'none' }}" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>
-                    <span class="hidden sm:inline">Meine Events</span>
+                    {# Below sm only the icon + count are visible; the sr-only copy keeps
+                       the link's accessible name from collapsing to a bare digit. #}
+                    <span class="sr-only">Meine Events</span>
+                    <span class="hidden sm:inline" aria-hidden="true">Meine Events</span>
                     <span data-save-count class="hidden min-w-5 h-5 px-1.5 items-center justify-center rounded-full text-xs font-semibold {{ meineActive ? 'bg-white/25 text-white' : 'bg-brand-100 text-brand-800' }}">0</span>
                 </a>
             </nav>

@@ -7,19 +7,21 @@
  * requested functionality under § 25 TDDDG).
  */
 
+import { local } from './storage.js';
+
 const KEY = 'dalketicker:saved';
 
 function read() {
     try {
-        const raw = JSON.parse(localStorage.getItem(KEY) || '[]');
+        const raw = JSON.parse(local.get(KEY) || '[]');
         return Array.isArray(raw) ? raw.map(String) : [];
-    } catch (e) {
-        return [];
+    } catch {
+        return []; // corrupt JSON — start over
     }
 }
 
 function write(ids) {
-    localStorage.setItem(KEY, JSON.stringify(ids));
+    local.set(KEY, JSON.stringify(ids));
 }
 
 function toggle(id) {
