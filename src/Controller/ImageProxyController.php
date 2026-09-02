@@ -8,7 +8,6 @@ use App\Repository\EventRepository;
 use App\Service\RegionContext;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\HttpKernel\Attribute\Cache;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
@@ -28,6 +27,15 @@ final class ImageProxyController extends AbstractController
     private const MAX_REDIRECTS = 3;
     private const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif'];
 
+    /** Cache entries nobody requested for this long are evicted ({@see sweepCache}). */
+    private const CACHE_TTL_DAYS = 60;
+    /** A failed fetch is not retried upstream for this long ({@see recentlyMissed}). */
+    private const MISS_TTL = 3600;
+    /** Roughly one in N cache misses runs a sweep. */
+    private const SWEEP_EVERY = 100;
+    /** Upper bound on files inspected per sweep, so a single request can't stall on it. */
+    private const SWEEP_MAX_FILES = 50000;
+
     public function __construct(
         private readonly EventRepository $events,
         private readonly HttpClientInterface $http,
@@ -37,7 +45,6 @@ final class ImageProxyController extends AbstractController
     }
 
     #[Route('/img/{id}', name: 'image_proxy', requirements: ['id' => '\d+'], methods: ['GET'])]
-    #[Cache(public: true, maxage: 2592000)]
     public function image(int $id): Response
     {
         $event = $this->events->findVisible($id, $this->regions->current());
@@ -55,30 +62,164 @@ final class ImageProxyController extends AbstractController
         $key = sha1($url);
         $bin = $this->imageCacheDir.'/'.$key;
         $ctFile = $bin.'.ct';
+        $missFile = $bin.'.miss';
 
-        if (is_file($bin) && is_file($ctFile)) {
-            return $this->serve((string) file_get_contents($bin), (string) file_get_contents($ctFile));
+        if (($cached = $this->readCached($bin, $ctFile)) !== null) {
+            return $this->serve(...$cached);
         }
-
-        [$data, $type] = $this->fetch($url);
-        if ($data === null) {
+        if ($this->recentlyMissed($missFile)) {
             return $this->transparentPixel();
-        }
-
-        // Downscale oversized images (event flyers are often 1–2 MB) so cards
-        // stay fast. We only ever display them a few hundred px wide.
-        $shrunk = $this->downscale($data);
-        if ($shrunk !== null) {
-            [$data, $type] = $shrunk;
         }
 
         if (!is_dir($this->imageCacheDir)) {
             @mkdir($this->imageCacheDir, 0775, true);
         }
-        $this->writeAtomic($ctFile, $type);
-        $this->writeAtomic($bin, $data);
+
+        // Collapse concurrent first views of one image into a single upstream
+        // fetch: everyone else waits on the lock, then finds the cache filled.
+        $lock = @fopen($bin.'.lock', 'c');
+        if ($lock !== false && !@flock($lock, \LOCK_EX)) {
+            fclose($lock);
+            $lock = false;
+        }
+        try {
+            if ($lock !== false) {
+                if (($cached = $this->readCached($bin, $ctFile)) !== null) {
+                    return $this->serve(...$cached);
+                }
+                if ($this->recentlyMissed($missFile)) {
+                    return $this->transparentPixel();
+                }
+            }
+
+            [$data, $type] = $this->fetch($url);
+            if ($data === null) {
+                // Negative cache. Without it a source serving SVGs, a dead
+                // link or a slow host costs an upstream round-trip (up to
+                // 20 s of worker time) on every single page view — and hands
+                // anyone controlling an image URL a cheap way to pin workers.
+                $this->writeAtomic($missFile, (string) time());
+
+                return $this->transparentPixel();
+            }
+
+            // Downscale oversized images (event flyers are often 1–2 MB) so
+            // cards stay fast. We only ever display them a few hundred px wide.
+            $shrunk = $this->downscale($data);
+            if ($shrunk !== null) {
+                [$data, $type] = $shrunk;
+            }
+
+            $this->writeAtomic($ctFile, $type);
+            $this->writeAtomic($bin, $data);
+            @unlink($missFile);
+        } finally {
+            if ($lock !== false) {
+                flock($lock, \LOCK_UN);
+                fclose($lock);
+            }
+        }
+        $this->sweepOccasionally();
 
         return $this->serve($data, $type);
+    }
+
+    /**
+     * The cached entry, or null when there is none. Reads first and checks
+     * after: between an is_file() and the read another replica's sweep may
+     * have unlinked the entry, and an empty body must fall through to a fetch
+     * instead of being served with a 30-day max-age.
+     *
+     * @return array{0: string, 1: string}|null
+     *
+     * @phpstan-impure
+     */
+    private function readCached(string $bin, string $ctFile): ?array
+    {
+        $data = @file_get_contents($bin);
+        $type = @file_get_contents($ctFile);
+        if ($data === false || $data === '' || $type === false || $type === '') {
+            return null;
+        }
+        $this->keepAlive($bin, $ctFile);
+
+        return [$data, $type];
+    }
+
+    /**
+     * Whether a fetch of this image failed within the last {@see MISS_TTL} seconds.
+     *
+     * @phpstan-impure
+     */
+    private function recentlyMissed(string $missFile): bool
+    {
+        $mtime = @filemtime($missFile);
+
+        return $mtime !== false && $mtime > time() - self::MISS_TTL;
+    }
+
+    /**
+     * Mark a cache entry as recently used. {@see sweepCache} evicts by
+     * modification time, so without this a popular image would be dropped
+     * {@see CACHE_TTL_DAYS} days after it was first fetched, no matter how
+     * often it is viewed. Refreshed at most once a day — touching on every
+     * hit would mean a write per card image per page view.
+     */
+    private function keepAlive(string ...$paths): void
+    {
+        $cutoff = time() - 86400;
+        foreach ($paths as $path) {
+            if ((int) @filemtime($path) < $cutoff) {
+                @touch($path);
+            }
+        }
+    }
+
+    /**
+     * Run {@see sweepCache} on roughly one in {@see SWEEP_EVERY} cache misses.
+     * A miss already pays for a network fetch, so a directory scan next to it
+     * doesn't show — and no cron job is needed, which matters here: the
+     * scheduler container does not mount the uploads volume this cache lives
+     * on (docker-compose.prod.yml) and could not see these files at all.
+     */
+    private function sweepOccasionally(): void
+    {
+        if (random_int(1, self::SWEEP_EVERY) === 1) {
+            $this->sweepCache();
+        }
+    }
+
+    /**
+     * Evict cache entries nobody has requested in {@see CACHE_TTL_DAYS} days,
+     * plus any ".tmp" left behind by an interrupted write. The cache is pure
+     * derived data — an evicted image is simply re-fetched on its next view.
+     */
+    private function sweepCache(): void
+    {
+        $now = time();
+        $cutoff = $now - self::CACHE_TTL_DAYS * 86400;
+        $seen = 0;
+        try {
+            $entries = new \FilesystemIterator($this->imageCacheDir, \FilesystemIterator::SKIP_DOTS);
+        } catch (\Throwable) {
+            return;
+        }
+        foreach ($entries as $entry) {
+            if (++$seen > self::SWEEP_MAX_FILES) {
+                return;
+            }
+            $path = $entry->getPathname();
+            // filemtime() (not the iterator's getMTime()) so a file another
+            // replica just swept yields false instead of throwing mid-scan.
+            $mtime = @filemtime($path);
+            if ($mtime === false) {
+                continue;
+            }
+            $stale = str_ends_with($path, '.tmp') ? $mtime < $now - 3600 : $mtime < $cutoff;
+            if ($stale) {
+                @unlink($path);
+            }
+        }
     }
 
     /**
@@ -115,7 +256,7 @@ final class ImageProxyController extends AbstractController
                     return [null, ''];
                 }
                 $resp = $this->http->request('GET', $url, [
-                    'headers' => ['User-Agent' => 'Dalketicker/1.0 (+https://dalketicker.neuhaus.nrw)'],
+                    'headers' => ['User-Agent' => 'Dalketicker/1.0 (+https://dalketicker.de)'],
                     'timeout' => 15, // idle timeout
                     'max_duration' => 20, // hard cap — a slow-drip upstream can't pin the worker
                     'max_redirects' => 0,
