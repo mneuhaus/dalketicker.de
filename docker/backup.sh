@@ -12,9 +12,14 @@
 set -eu
 
 BACKUP_DIR=${BACKUP_DIR:-/backups}
+UPLOADS_DIR=${UPLOADS_DIR:-/uploads}
 RETENTION_DAYS=${RETENTION_DAYS:-14}
 
 log() { echo "[db-backup] $(date '+%Y-%m-%d %H:%M:%S') $*"; }
+
+# A dump interrupted by a container stop leaves its ".part" behind forever
+# (only the failure branch below cleans up) — sweep on start.
+rm -f "$BACKUP_DIR"/*.part
 
 seconds_until_3am() {
     h=$(date +%H); m=$(date +%M); s=$(date +%S)
@@ -26,7 +31,8 @@ seconds_until_3am() {
 }
 
 dump() {
-    file="$BACKUP_DIR/dalketicker-$(date +%Y-%m-%d_%H%M%S).dump"
+    stamp=$(date +%Y-%m-%d_%H%M%S)
+    file="$BACKUP_DIR/dalketicker-$stamp.dump"
     tmp="$file.part"
     log "Dump nach $file"
     # Dump to a temp name and only promote a verified result (pg_dump exit 0
@@ -35,12 +41,29 @@ dump() {
         mv "$tmp" "$file"
         touch "$BACKUP_DIR/.last-success"
         log "Fertig: $(du -h "$file" | cut -f1)"
+        dump_uploads "$stamp"
         # Prune ONLY after a verified fresh dump — otherwise consecutive
         # failures would eventually delete the last remaining good backup.
-        find "$BACKUP_DIR" -name 'dalketicker-*.dump' -mtime +"$RETENTION_DAYS" -delete
+        find "$BACKUP_DIR" \( -name 'dalketicker-*.dump' -o -name 'dalketicker-uploads-*.tar.gz' \) -mtime +"$RETENTION_DAYS" -delete
     else
         log "FEHLER: pg_dump fehlgeschlagen oder Dump unplausibel klein — Retention uebersprungen"
         rm -f "$tmp"
+    fi
+}
+
+# The approval proofs (var/uploads/freigaben, mounted read-only at
+# $UPLOADS_DIR) are the one thing besides the database that cannot be
+# re-imported — they go next to every dump. The image cache in the same
+# volume is derived data and deliberately left out.
+dump_uploads() {
+    [ -d "$UPLOADS_DIR/freigaben" ] || return 0
+    tarball="$BACKUP_DIR/dalketicker-uploads-$1.tar.gz"
+    if tar -C "$UPLOADS_DIR" -czf "$tarball.part" freigaben; then
+        mv "$tarball.part" "$tarball"
+        log "Freigabe-Nachweise gesichert: $(du -h "$tarball" | cut -f1)"
+    else
+        log "FEHLER: Freigabe-Nachweise konnten nicht gepackt werden"
+        rm -f "$tarball.part"
     fi
 }
 

@@ -1,6 +1,7 @@
 # Production deployment for dalketicker.de plus temporary regional aliases.
 # Runs on the shared host behind Traefik (external network "web", certresolver "neuhaus").
-#   docker compose -f docker-compose.prod.yml up -d --build
+# Deploy with `make deploy` (blue-green swap) — a plain `up -d --build` would
+# recreate the app container in place and drop requests meanwhile.
 # Secrets (APP_SECRET, DB_PASSWORD) come from a sibling .env file (not committed).
 
 # Cap container log size (json-file rotates; without this, logs grow unbounded).
@@ -17,11 +18,9 @@ x-app-environment: &app-environment
   APP_SECRET: ${APP_SECRET}
   TRUSTED_PROXIES: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
   DATABASE_URL: "postgresql://dalke:${DB_PASSWORD}@database:5432/dalketicker?serverVersion=16&charset=utf8"
-  MAILER_DSN: null://null
-  MESSENGER_TRANSPORT_DSN: "doctrine://default?auto_setup=0"
   DEFAULT_URI: https://dalketicker.de
   OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
-  DEDUP_AI_MODEL: ${DEDUP_AI_MODEL:-anthropic/claude-sonnet-4}
+  DEDUP_AI_MODEL: ${DEDUP_AI_MODEL:-anthropic/claude-sonnet-4.6}
 
 services:
   app:
@@ -159,6 +158,9 @@ services:
     restart: always
     logging: *default-logging
     command: ["bash", "docker/cron.sh"]
+    # cron.sh traps TERM and lets the running console command finish first;
+    # give a long import or AI pass the time to do so before Docker kills it.
+    stop_grace_period: 15m
     healthcheck:
       test: ["CMD-SHELL", "tr '\\0' ' ' < /proc/1/cmdline | grep -q 'bash docker/cron.sh'"]
       interval: 30s
@@ -230,6 +232,9 @@ services:
       # additionally force-recreate this service (make deploy/sidecars).
       - ./docker:/opt/scripts:ro
       - dalketicker-db-backups:/backups
+      # Approval proofs go next to every dump (backup.sh); read-only, the
+      # image cache in the same volume is skipped there.
+      - dalketicker-uploads:/uploads:ro
     depends_on:
       database:
         condition: service_healthy

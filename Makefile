@@ -184,6 +184,9 @@ PROD = docker compose -f docker-compose.prod.yml
 
 deploy: deploy/check deploy/sync deploy/build deploy/migrate deploy/rollout deploy/sidecars ## Sync, build, migrate, zero-downtime swap
 	@echo "Deployed -> https://dalketicker.de"
+	@# Nothing else consumes the container health status — show it once here
+	@# so an unhealthy sidecar (stale backup, dead scheduler) is at least seen.
+	@ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && $(PROD) ps'
 
 deploy/check: ## Guard: clean working tree + confirmation (DEPLOY_FORCE=1 / DEPLOY_YES=1 to skip)
 	@if [ "$(DEPLOY_FORCE)" != "1" ] && [ -n "$$(git status --porcelain)" ]; then \
@@ -200,14 +203,19 @@ deploy/sync: ## rsync code to the server (excludes .env and build artifacts)
 	  --exclude '.git/' --exclude 'var/' --exclude 'vendor/' --exclude 'node_modules/' \
 	  --exclude 'public/assets/' --exclude 'assets/vendor/' --exclude '.docker-initialized' \
 	  --exclude '.env' --exclude '.env.local' --exclude '.env.*.local' --exclude 'tools/' \
+	  --exclude '.phpunit.cache/' --exclude 'backups/' \
 	  -e 'ssh -o BatchMode=yes' \
 	  ./ $(DEPLOY_HOST):$(DEPLOY_PATH)/
 
 deploy/build: ## Build the new prod image (the running container keeps serving)
 	ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && $(PROD) build app'
 
+# Migrations run while the OLD app + scheduler are still serving, so they must
+# stay compatible with the previous release (expand/contract, see AGENTS.md).
+# The one-off container inherits the service's Traefik labels; the override
+# keeps it out of the router instead of relying on health gating alone.
 deploy/migrate: ## Run migrations in a one-off container on the freshly built image
-	ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && $(PROD) run --rm --no-deps app php bin/console doctrine:migrations:migrate --no-interaction'
+	ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && $(PROD) run --rm --no-deps -l traefik.enable=false app php bin/console doctrine:migrations:migrate --no-interaction'
 
 deploy/rollout: ## Blue-green swap: start new container, wait until healthy, then drop the old one
 	ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && \
@@ -238,10 +246,16 @@ deploy/rollout: ## Blue-green swap: start new container, wait until healthy, the
 	    docker rm -f "$$NEW" >/dev/null 2>&1 || true; \
 	    exit 1; \
 	  fi; \
-	  echo "neuer Container gesund - kurz drainen, dann alten entfernen"; \
+	  if ! docker exec "$$NEW" curl -fsS -o /dev/null -H "Host: dalketicker.de" http://localhost/; then \
+	    echo "ABBRUCH: Startseite im neuen Container liefert keinen 200 (/healthz allein prueft keine DB, kein Template) - alter bleibt aktiv"; \
+	    docker rm -f "$$NEW" >/dev/null 2>&1 || true; \
+	    exit 1; \
+	  fi; \
+	  echo "neuer Container gesund, Startseite antwortet - kurz drainen, dann alten entfernen"; \
 	  sleep 3; \
 	  docker stop "$$OLD" >/dev/null && docker rm "$$OLD" >/dev/null; \
-	  echo "Swap abgeschlossen"'
+	  docker image prune -f >/dev/null; \
+	  echo "Swap abgeschlossen (alte Images aufgeraeumt)"'
 
 # --force-recreate: db-backup reads the mounted backup.sh only at start, and
 # rsync replaces the file with a new inode — without recreate the running
@@ -253,6 +267,15 @@ deploy/backup: ## Manual pg_dump on the server (into the backup volume, see dock
 	ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && \
 	  $(PROD) exec -T db-backup pg_dump -Fc -f /backups/dalketicker-manual-$$(date +%Y-%m-%d_%H%M%S).dump && \
 	  $(PROD) exec -T db-backup ls -lh /backups'
+
+# The backup volume lives on the same disk as the database — this is the
+# off-host copy. Streams the whole volume (dumps + uploads tarballs) through
+# the db-backup service so no volume name has to be known; ./backups/ is
+# git-ignored and excluded from the deploy rsync.
+deploy/backup/pull: ## Copy the server-side backup volume to ./backups/ (off-host copy)
+	@mkdir -p backups
+	ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && $(PROD) run --rm --no-deps -T db-backup tar -C /backups -cf - .' | tar -xf - -C backups/
+	@ls -lh backups | tail -n 6
 
 deploy/import: ## Run importers on the server
 	ssh -o BatchMode=yes $(DEPLOY_HOST) 'cd $(DEPLOY_PATH) && $(PROD) exec -T app php bin/console dalketicker:import --all-regions --workers=4'

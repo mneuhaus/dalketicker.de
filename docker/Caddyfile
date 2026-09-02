@@ -37,12 +37,23 @@
 	@public not path /admin /admin/* /login /logout
 	header @public Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
 
-	# Content-hashed assets + self-hosted fonts can be cached forever.
-	@immutable path /assets/* /fonts/*
+	# Content-hashed assets can be cached forever. The fonts are NOT hashed
+	# (fixed file names under /fonts), so a replaced font must be able to
+	# reach returning visitors: a week, not an immutable year.
+	@immutable path /assets/*
 	header @immutable Cache-Control "public, max-age=31536000, immutable"
+	@fonts path /fonts/*
+	header @fonts Cache-Control "public, max-age=604800"
 
 	# Symfony front controller
 	php_server
+
+	# Traefik probes /healthz once a second per replica, Docker every 10 s —
+	# ~90k access-log lines a day that would push the real entries (and
+	# monolog's JSON errors on stderr) out of the json-file rotation window
+	# within a day.
+	@health path /healthz
+	log_skip @health
 
 	log {
 		output stdout

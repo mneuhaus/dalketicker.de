@@ -17,13 +17,35 @@ mkdir -p "$MARKER_DIR"
 
 log() { echo "[scheduler] $(date '+%Y-%m-%d %H:%M:%S') $*"; }
 
+# Graceful stop. This loop is PID 1, so `docker stop` (every deploy recreates
+# the scheduler) sends TERM here — without a trap bash ignores it, Docker
+# kills everything after 10 s, and a half-done import leaves "running" run
+# records behind while a nightly AI pass is skipped for the day (its marker
+# is already set). So: let the running console command finish, then exit.
+# The compose file grants a matching stop_grace_period. Commands are started
+# in the background and waited for, because a trap never fires while bash
+# sits on a foreground command.
+child=
+on_term() {
+    if [ -n "$child" ]; then
+        log "Stop angefordert - laufender Befehl wird noch zu Ende gebracht"
+        wait "$child"
+    fi
+    log "Scheduler beendet"
+    exit 0
+}
+trap on_term TERM INT
+
 run() {
     log "Start: bin/console $*"
-    if php bin/console "$@"; then
+    php bin/console "$@" &
+    child=$!
+    if wait "$child"; then
         log "OK:    bin/console $*"
     else
         log "FEHLER (Exit $?): bin/console $*"
     fi
+    child=
 }
 
 ran_today() { [ -f "$MARKER_DIR/$1" ] && [ "$(cat "$MARKER_DIR/$1")" = "$(date +%F)" ]; }

@@ -47,6 +47,15 @@ Prod-Image: `docker/Dockerfile.prod` (Multi-Stage, Code gebacken, Assets +
 Tailwind precompiled, `APP_ENV=prod`). Fixtures gibt es in prod **nicht**
 (dev-only) — Daten via `php bin/console dalketicker:seed [--demo]`.
 
+> **Migrationen laufen, während der alte Code noch bedient** (App-Replika und
+> Scheduler werden erst danach getauscht). Deshalb expand/contract: eine
+> Migration muss mit dem vorherigen Release verträglich sein — Spalten erst
+> hinzufügen, nie im selben Deploy umbenennen oder löschen; das Aufräumen
+> kommt ein Deploy später.
+
+Off-Host-Kopie der Backups: `make deploy/backup/pull` holt das Backup-Volume
+(DB-Dumps + Freigabe-Nachweise) nach `./backups/` (git-ignoriert).
+
 ## Betrieb (Scheduler, Backup, Locks)
 
 - **Scheduler:** Der Service `scheduler` (gleiches App-Image, `docker/cron.sh`)
@@ -59,6 +68,12 @@ Tailwind precompiled, `APP_ENV=prod`). Fixtures gibt es in prod **nicht**
   14 Tage. Manuell: `make deploy/backup`. Restore via `pg_restore`.
 - **Locks:** Die Console-Commands sichern sich selbst per flock — Überlappung
   von Scheduler- und Hand-Läufen ist unkritisch.
+- **Bildcache:** Der Bildproxy legt proxied Bilder unter
+  `var/uploads/dalketicker_images` ab (Volume `dalketicker-uploads`). Aufgeräumt
+  wird im Request selbst: jeder Treffer hält seinen Eintrag frisch, und grob
+  jeder 100. Fehltreffer wirft Einträge raus, die 60 Tage niemand abgerufen hat
+  (`ImageProxyController::sweepCache`). Kein Cron — der `scheduler`-Container
+  mountet das uploads-Volume nicht und käme an die Dateien gar nicht heran.
 
 ## Konventionen
 

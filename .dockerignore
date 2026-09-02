@@ -21,3 +21,9 @@ compose*.yaml
 *.md
 .idea/
 .vscode/
+# Test suite, static analysis and local backup copies — nothing of it runs in prod.
+tests/
+.phpunit.cache/
+phpunit.dist.xml
+phpstan*
+backups/

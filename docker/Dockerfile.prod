@@ -43,8 +43,8 @@ RUN composer dump-autoload --no-dev --classmap-authoritative \
  && php bin/console asset-map:compile \
  && php bin/console cache:clear \
  # var/run + var/uploads are mounted as shared volumes in prod (locks/uploads);
- # pre-create them so the named volumes inherit this ownership on first use.
- && mkdir -p var/run var/uploads \
- && chown -R www-data:www-data var
+ # pre-create them so the named volumes start out with these paths in place.
+ # No chown: like the FrankenPHP base image, the container runs as root.
+ && mkdir -p var/run var/uploads
 
 EXPOSE 80

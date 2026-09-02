@@ -21,4 +21,6 @@
 
 ###> dalketicker ###
 /.docker-initialized
+# Off-host copies of the prod backup volume (make deploy/backup/pull).
+/backups/
 ###< dalketicker ###
