@@ -13,11 +13,11 @@ use Doctrine\ORM\Mapping as ORM;
  *
  * mode:   'fill'    — event had no real category; AI categories were applied.
  *         'opinion' — event already had a category; AI gave a second opinion.
- * status: 'applied'   — categories were set by us (fill, or an accepted suggestion).
- *         'pending'   — opinion contradicts the importer category; awaits admin.
+ * status: 'applied'   — categories were set by us (fill, or an opinion that overrode the importer).
  *         'agreed'    — opinion matched; nothing changed (just a "checked" marker).
- *         'dismissed' — admin rejected the suggestion.
+ *         'dismissed' — nothing applied: categories admin-pinned, or the AI had no proposal.
  *         'undone'    — admin reverted a previously applied decision.
+ *         'pending'   — legacy only: the former "await admin review" flow; no longer created.
  */
 #[ORM\Entity]
 #[ORM\Table(name: 'ai_category_decision')]

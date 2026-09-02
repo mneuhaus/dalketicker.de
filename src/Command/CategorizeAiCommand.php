@@ -24,10 +24,12 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 /**
  * AI categorization pass (run after import/dedup).
  *  - "fill":    events without a real category get AI categories applied directly.
- *  - "opinion": events that already have a category get a second opinion; a clear
- *               contradiction is recorded as a pending suggestion for /admin.
+ *  - "opinion": events that already have a category get a second opinion; when
+ *               it contradicts the importer's pick, the AI wins (applied, undoable
+ *               in /admin), otherwise the event is just marked as checked.
  * Every looked-at event gets an {@see \App\Entity\AiCategoryDecision} (auditable,
- * reversible, and used to skip already-processed events on re-runs).
+ * reversible, and used to skip already-processed events on re-runs). Applied
+ * categories survive re-imports ({@see \App\Service\EventImporter}).
  * Dry-run by default; pass --apply to write.
  */
 #[AsCommand(
@@ -72,6 +74,13 @@ final class CategorizeAiCommand extends Command
         // single run keeps the bare name the admin UI checks via isLocked().
         $shards = max(1, (int) $input->getOption('shards'));
         $shard = max(0, (int) $input->getOption('shard'));
+        if ($shard >= $shards) {
+            // MOD(id, shards) never equals such a shard — the run would
+            // silently process nothing.
+            $io->error(sprintf('--shard muss kleiner als --shards sein (%d >= %d).', $shard, $shards));
+
+            return Command::INVALID;
+        }
         $lock = $shards > 1 ? sprintf('%s-%d-%d', self::LOCK_NAME, $shards, $shard) : self::LOCK_NAME;
 
         if (!$this->locks->acquire($lock)) {
@@ -100,12 +109,25 @@ final class CategorizeAiCommand extends Command
             }
         }
 
+        $apply = (bool) $input->getOption('apply');
         if ($input->getOption('reset')) {
+            // Same guard as dedup-ai --reset: a reset writes, so it needs the
+            // explicit --apply like every other writing pass of this command.
+            if (!$apply) {
+                $io->error('--reset schreibt in die Datenbank und braucht --apply.');
+
+                return Command::INVALID;
+            }
+
             return $this->reset($io, $region);
         }
 
-        $apply = (bool) $input->getOption('apply');
         $mode = (string) $input->getOption('mode');
+        if (!\in_array($mode, ['fill', 'opinion', 'all'], true)) {
+            $io->error(sprintf('Unbekannter --mode "%s" (erwartet fill, opinion oder all).', $mode));
+
+            return Command::INVALID;
+        }
         $limit = max(0, (int) $input->getOption('limit'));
         $batch = max(1, (int) $input->getOption('batch'));
         $maxCalls = max(0, (int) $input->getOption('max-calls'));
@@ -124,6 +146,15 @@ final class CategorizeAiCommand extends Command
         // future. Each event is a "fill" (no real category) or an "opinion"
         // (already categorized) — decided per event, not in separate phases.
         $events = $this->events->findUncheckedUpcoming($limit > 0 ? $limit : 100000, $shards, $shard, $region);
+        if ($mode !== 'all') {
+            // A restricted run leaves the other kind unchecked for later — so
+            // drop it BEFORE the AI call, or every such run pays for events it
+            // then throws away.
+            $events = array_values(array_filter(
+                $events,
+                fn (Event $event): bool => $mode === ($this->hasRealCategory($event) ? 'opinion' : 'fill'),
+            ));
+        }
         $io->writeln(sprintf('%d ungeprüfte Events (nach Datum) …', \count($events)));
 
         foreach ($this->regionChunks($events, $batch) as $chunk) {
@@ -144,9 +175,6 @@ final class CategorizeAiCommand extends Command
 
             foreach ($chunk as $event) {
                 $uncategorized = !$this->hasRealCategory($event);
-                if ($mode !== 'all' && $mode !== ($uncategorized ? 'fill' : 'opinion')) {
-                    continue; // restricted run; leave the other kind for later
-                }
                 $proposal = $proposals[$event->getId()] ?? null;
                 if ($proposal === null) {
                     ++$stats['skipped'];

@@ -147,8 +147,10 @@ final class DedupAiCommand extends Command
                     continue; // unchanged since last review
                 }
                 if (!$this->hasCandidatePair($events)) {
-                    $this->storeDay($dayRepo, $rec, $region, $dayKey, $fpBefore);
-                    $this->em->flush();
+                    if (!$dryRun) {
+                        $this->storeDay($dayRepo, $rec, $region, $dayKey, $fpBefore);
+                        $this->em->flush();
+                    }
                     continue;
                 }
                 if ($aiCalls >= $budget) {
@@ -212,8 +214,12 @@ final class DedupAiCommand extends Command
 
                 if (!$dryRun) {
                     $this->em->flush();
-                    // Recompute fingerprint from the post-merge visible set so the next run skips it.
-                    $after = $this->events->findInRange($dayStart, $dayStart->modify('+1 day'), new EventFilter(), $region);
+                    // Fingerprint the set the model actually judged, minus what
+                    // it merged away, so the next run skips the day. Computed
+                    // locally on purpose: a re-query would also bake in events
+                    // a concurrent import added meanwhile, which would then be
+                    // skipped as "reviewed" without ever being judged.
+                    $after = array_values(array_filter($events, static fn (Event $e): bool => $e->getStatus() === EventStatus::Published));
                     $this->storeDay($dayRepo, $dayRepo->find(['regionKey' => $region->getKey(), 'day' => $dayKey]), $region, $dayKey, $this->fingerprint($after));
                     $this->em->flush();
                 }

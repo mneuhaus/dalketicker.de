@@ -7,6 +7,7 @@ namespace App\Ai;
 use App\Entity\Event;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
+use Symfony\Component\DependencyInjection\Attribute\Target;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
@@ -32,7 +33,7 @@ final class AiSummarizer
         TXT;
 
     public function __construct(
-        private readonly HttpClientInterface $http,
+        #[Target('openrouterClient')] private readonly HttpClientInterface $http,
         private readonly LoggerInterface $logger,
         #[Autowire('%env(OPENROUTER_API_KEY)%')] private readonly string $apiKey,
         #[Autowire('%env(DEDUP_AI_MODEL)%')] private readonly string $model,
@@ -64,7 +65,7 @@ final class AiSummarizer
 
         $lines = [];
         foreach ($events as $e) {
-            $text = mb_substr(preg_replace('/\s+/', ' ', strip_tags((string) $e->getDescription())) ?? '', 0, 1200);
+            $text = PromptSanitizer::cleanHtml($e->getDescription(), 1200);
             $lines[] = sprintf('id=%d | Titel: "%s" | Text: %s', $e->getId(), PromptSanitizer::clean($e->getTitle()), $text);
         }
 

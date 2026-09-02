@@ -8,6 +8,7 @@ use App\Entity\Event;
 use App\Entity\Region;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
+use Symfony\Component\DependencyInjection\Attribute\Target;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
@@ -41,7 +42,7 @@ final class AiDeduper
         TXT;
 
     public function __construct(
-        private readonly HttpClientInterface $http,
+        #[Target('openrouterClient')] private readonly HttpClientInterface $http,
         private readonly LoggerInterface $logger,
         #[Autowire('%env(OPENROUTER_API_KEY)%')] private readonly string $apiKey,
         #[Autowire('%env(DEDUP_AI_MODEL)%')] private readonly string $model,
@@ -75,7 +76,7 @@ final class AiDeduper
         foreach ($events as $e) {
             $time = $e->isAllDay() ? 'ganztägig' : $e->getStartsAt()->format('H:i');
             $loc = PromptSanitizer::clean($e->getDisplayLocation()) ?: '—';
-            $desc = $e->getDescription() ? mb_substr(preg_replace('/\s+/', ' ', strip_tags($e->getDescription())) ?? '', 0, 200) : '';
+            $desc = PromptSanitizer::cleanHtml($e->getDescription(), 200);
             $lines[] = sprintf(
                 'id=%d | %s | "%s" | %s | Bild: %s | Veranstalter: %s | Quelle: %s%s',
                 $e->getId(),

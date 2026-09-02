@@ -12,6 +12,24 @@ framework:
     # Note that the session will be started ONLY if you read or write from it.
     session: true
 
+    http_client:
+        scoped_clients:
+            # OpenRouter for the nightly AI passes (dedup/categorize/summarize).
+            # Transient failures are retried with backoff (5 s, 20 s; honours
+            # Retry-After) — without this a single 429/5xx aborts the whole
+            # run and the remaining batches wait a full day for the next one.
+            # Timeouts are deliberately NOT retried: POST is not idempotent and
+            # a slow model answer would only double the wait. The request-time
+            # ContactClassifier stays on the default client — a visitor must
+            # not sit through retries while submitting the form.
+            openrouter.client:
+                base_uri: 'https://openrouter.ai/api/v1/'
+                retry_failed:
+                    max_retries: 2
+                    delay: 5000
+                    multiplier: 4
+                    http_codes: [429, 500, 502, 503, 504]
+
     #esi: true
     #fragments: true
 

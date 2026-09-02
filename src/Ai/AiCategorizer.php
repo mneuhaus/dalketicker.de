@@ -8,6 +8,7 @@ use App\Entity\Event;
 use App\Repository\CategoryRepository;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
+use Symfony\Component\DependencyInjection\Attribute\Target;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
@@ -23,7 +24,7 @@ final class AiCategorizer
     private const ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
 
     public function __construct(
-        private readonly HttpClientInterface $http,
+        #[Target('openrouterClient')] private readonly HttpClientInterface $http,
         private readonly LoggerInterface $logger,
         private readonly CategoryRepository $categories,
         #[Autowire('%env(OPENROUTER_API_KEY)%')] private readonly string $apiKey,
@@ -69,7 +70,7 @@ final class AiCategorizer
 
         $lines = [];
         foreach ($events as $e) {
-            $desc = $e->getDescription() ? mb_substr(preg_replace('/\s+/', ' ', strip_tags($e->getDescription())) ?? '', 0, 240) : '';
+            $desc = PromptSanitizer::cleanHtml($e->getDescription(), 240);
             $lines[] = sprintf(
                 'id=%d | "%s" | Ort: %s | Veranstalter: %s%s',
                 $e->getId(),
